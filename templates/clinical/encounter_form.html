@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_create %}New encounter{% else %}Edit encounter{% endif %}{% endblock %}
+{% block page_title %}{% if is_create %}New encounter{% else %}Edit encounter{% endif %}{% endblock %}
+
+{% block content %}
+<form method="post" class="space-y-4 max-w-5xl">
+  {% csrf_token %}
+
+  <section class="card-surface rounded-xl p-6">
+    <h2 class="font-semibold mb-4">Consultation</h2>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% for field in form %}
+        <div class="{% if field.name in 'chief_complaint examination assessment plan' %}sm:col-span-2{% endif %}">
+          <label class="label" for="{{ field.id_for_label }}">
+            <span class="label-text">{{ field.label }}</span>
+          </label>
+          {{ field }}
+          {% for error in field.errors %}
+            <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card-surface rounded-xl p-6">
+    <h2 class="font-semibold mb-4">Prescription</h2>
+
+    {{ item_formset.management_form }}
+    <div id="item-rows" class="space-y-3">
+      {% for item_form in item_formset %}
+        {% include 'clinical/_item_row.html' with form=item_form %}
+      {% endfor %}
+    </div>
+
+    {% comment %}
+      Add-row without a page reload. hx-get fetches one blank formset row;
+      hx-include sends the management form's current TOTAL_FORMS so the server
+      knows which index to name the inputs with; hx-on::after-request bumps that
+      counter, because Django ignores any row beyond TOTAL_FORMS on submit.
+    {% endcomment %}
+    <button type="button" class="btn btn-sm btn-brand-ghost mt-4"
+            hx-get="{% url 'clinical:item_row' %}"
+            hx-include="[name='items-TOTAL_FORMS']"
+            hx-target="#item-rows"
+            hx-swap="beforeend"
+            hx-on::after-request="const total = document.getElementById('id_items-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
+      Add another item
+    </button>
+
+    <div class="grid gap-4 sm:grid-cols-2 mt-6">
+      {% for field in prescription_form %}
+        <div>
+          <label class="label" for="{{ field.id_for_label }}">
+            <span class="label-text">{{ field.label }}</span>
+          </label>
+          {{ field }}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="flex gap-3">
+    <button type="submit" class="btn btn-brand">Save encounter</button>
+    <a href="{% if encounter %}{% url 'clinical:encounter_detail' encounter.pk %}{% else %}{% url 'clinical:encounter_list' %}{% endif %}"
+       class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

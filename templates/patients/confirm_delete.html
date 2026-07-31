@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+
+{% block title %}Remove {{ patient.full_name }}{% endblock %}
+{% block page_title %}Remove patient{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-6 max-w-lg">
+  <h2 class="font-semibold text-lg">Remove {{ patient.full_name }}?</h2>
+  <p class="text-sm text-muted mt-2">
+    The record is hidden from lists and search but not destroyed — clinical history
+    is retained and an administrator can restore it.
+  </p>
+  <form method="post" class="flex gap-3 mt-6">
+    {% csrf_token %}
+    <button type="submit" class="btn bg-[var(--cc-danger)] text-white border-none">Yes, remove</button>
+    <a href="{% url 'patients:detail' patient.pk %}" class="btn btn-ghost">Cancel</a>
+  </form>
+</div>
+{% endblock %}

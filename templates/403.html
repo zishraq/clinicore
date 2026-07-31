@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}Not permitted{% endblock %}
+{% block page_title %}Not permitted{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-8 max-w-lg">
+  <h1 class="text-xl font-semibold">You don't have access to this</h1>
+  <p class="text-sm text-muted mt-2">
+    Your role in this clinic doesn't include this page. If you think that's wrong,
+    ask the clinic owner to review your access.
+  </p>
+  <a href="{% url 'core:dashboard' %}" class="btn btn-brand mt-6">Back to dashboard</a>
+</div>
+{% endblock %}
+
+{% block anon_content %}
+<div class="min-h-screen flex items-center justify-center p-4">
+  <div class="card-surface rounded-2xl p-8 max-w-md text-center">
+    <h1 class="text-xl font-semibold">You don't have access to this</h1>
+    <a href="{% url 'core:dashboard' %}" class="btn btn-brand mt-6">Back to dashboard</a>
+  </div>
+</div>
+{% endblock %}

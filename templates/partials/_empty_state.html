@@ -1,0 +1,8 @@
+{# Usage: {% include 'partials/_empty_state.html' with title="No patients yet" body="..." action_url=... action_label=... #}
+<div class="text-center py-16 px-6">
+  <p class="text-lg font-medium">{{ title|default:'Nothing here yet' }}</p>
+  {% if body %}<p class="mt-2 text-sm text-[var(--cc-text-muted)]">{{ body }}</p>{% endif %}
+  {% if action_url %}
+    <a href="{{ action_url }}" class="btn btn-brand mt-6">{{ action_label|default:'Create one' }}</a>
+  {% endif %}
+</div>

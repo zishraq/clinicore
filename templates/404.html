@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}Not found{% endblock %}
+{% block page_title %}Not found{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-8 max-w-lg">
+  <h1 class="text-xl font-semibold">That page doesn't exist</h1>
+  <p class="text-sm text-muted mt-2">It may have been removed, or it belongs to another clinic.</p>
+  <a href="{% url 'core:dashboard' %}" class="btn btn-brand mt-6">Back to dashboard</a>
+</div>
+{% endblock %}
+
+{% block anon_content %}
+<div class="min-h-screen flex items-center justify-center p-4">
+  <div class="card-surface rounded-2xl p-8 max-w-md text-center">
+    <h1 class="text-xl font-semibold">That page doesn't exist</h1>
+    <a href="{% url 'accounts:login' %}" class="btn btn-brand mt-6">Sign in</a>
+  </div>
+</div>
+{% endblock %}

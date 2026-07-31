@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}Encounter — {{ encounter.patient.full_name }}{% endblock %}
+{% block page_title %}{{ encounter.patient.full_name }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'clinical:prescription_print' encounter.pk %}" class="btn btn-sm btn-brand" target="_blank">Print prescription</a>
+  {% if encounter.is_editable %}
+    <a href="{% url 'clinical:encounter_update' encounter.pk %}" class="btn btn-sm btn-brand-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+  <section class="card-surface rounded-xl p-6 lg:col-span-2 space-y-5">
+    <div class="flex items-center justify-between">
+      <h2 class="font-semibold">Consultation notes</h2>
+      <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
+        {{ encounter.get_status_display }}
+      </span>
+    </div>
+
+    <div>
+      <p class="text-sm text-muted">Chief complaint</p>
+      <p class="whitespace-pre-line">{{ encounter.chief_complaint|default:'—' }}</p>
+    </div>
+    <div>
+      <p class="text-sm text-muted">Examination</p>
+      <p class="whitespace-pre-line">{{ encounter.examination|default:'—' }}</p>
+    </div>
+    <div>
+      <p class="text-sm text-muted">Assessment</p>
+      <p class="whitespace-pre-line">{{ encounter.assessment|default:'—' }}</p>
+    </div>
+    <div>
+      <p class="text-sm text-muted">Plan</p>
+      <p class="whitespace-pre-line">{{ encounter.plan|default:'—' }}</p>
+    </div>
+  </section>
+
+  <aside class="card-surface rounded-xl p-6 space-y-3 text-sm">
+    <div><p class="text-muted">Patient</p>
+      <a class="link" href="{% url 'patients:detail' encounter.patient.pk %}">{{ encounter.patient.full_name }} ({{ encounter.patient.code }})</a>
+    </div>
+    <div><p class="text-muted">When</p><p>{{ encounter.occurred_at|date:'d M Y, H:i' }}</p></div>
+    <div><p class="text-muted">Practitioner</p><p>{{ encounter.practitioner.full_name }}</p></div>
+    <div><p class="text-muted">Branch</p><p>{{ encounter.branch.name }}</p></div>
+    <div><p class="text-muted">Follow-up</p><p>{{ encounter.follow_up_date|date:'d M Y'|default:'—' }}</p></div>
+
+    {% if encounter.is_editable %}
+      {# Destructive-ish and irreversible, so it goes through a confirm dialog. #}
+      <button class="btn btn-brand btn-sm w-full mt-4" onclick="finalize_modal.showModal()">Finalize</button>
+      <dialog id="finalize_modal" class="modal">
+        <div class="modal-box">
+          <h3 class="font-semibold text-lg">Finalize this encounter?</h3>
+          <p class="py-3 text-sm">Finalized notes become read-only. Corrections after this need an amendment.</p>
+          <div class="modal-action">
+            <form method="dialog"><button class="btn btn-ghost">Cancel</button></form>
+            <form method="post" action="{% url 'clinical:encounter_finalize' encounter.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-brand">Finalize</button>
+            </form>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+      </dialog>
+    {% else %}
+      <p class="text-xs text-muted mt-4">Finalized {{ encounter.finalized_at|date:'d M Y, H:i' }}.</p>
+    {% endif %}
+  </aside>
+</div>
+
+<section class="card-surface rounded-xl p-6 mt-4">
+  <h2 class="font-semibold">Prescription</h2>
+  {% if items %}
+    <div class="overflow-x-auto mt-4">
+      <table class="table">
+        <thead><tr><th>Item</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td class="font-medium">{{ item.free_text_name }}</td>
+              <td>{{ item.dosage|default:'—' }}</td>
+              <td>{{ item.frequency|default:'—' }}</td>
+              <td>{{ item.duration|default:'—' }}</td>
+              <td>{{ item.instructions|default:'—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if prescription.general_instructions %}
+      <p class="mt-4 text-sm"><span class="text-muted">General instructions:</span> {{ prescription.general_instructions }}</p>
+    {% endif %}
+  {% else %}
+    <p class="text-sm text-muted mt-3">No items prescribed.</p>
+  {% endif %}
+</section>
+{% endblock %}

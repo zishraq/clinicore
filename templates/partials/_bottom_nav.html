@@ -1,0 +1,14 @@
+{# Mobile only: the sidebar collapses into a drawer, so the primary destinations move to the thumb zone. #}
+<nav class="btm-nav lg:hidden z-20 border-t border-black/5 bg-[var(--cc-surface)]">
+  <a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.view_name == 'core:dashboard' %}active text-[var(--cc-primary)]{% endif %}">
+    <span class="btm-nav-label">Dashboard</span>
+  </a>
+  <a href="{% url 'patients:list' %}" class="{% if 'patients' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+    <span class="btm-nav-label">Patients</span>
+  </a>
+  {% if membership.can_view_clinical %}
+    <a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+      <span class="btm-nav-label">Encounters</span>
+    </a>
+  {% endif %}
+</nav>

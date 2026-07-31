@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Encounters{% endblock %}
+{% block page_title %}Encounters{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'clinical:encounter_create' %}" class="btn btn-brand btn-sm">New encounter</a>
+{% endblock %}
+
+{% block content %}
+<form method="get" class="card-surface rounded-xl p-4 mb-4">
+  <input type="search" name="q" value="{{ query }}" placeholder="Filter by patient name"
+         class="input input-bordered w-full max-w-lg">
+</form>
+
+{% if encounters %}
+  <div class="card-surface rounded-xl overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr><th>Date</th><th>Patient</th><th>Practitioner</th><th>Branch</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for encounter in encounters %}
+          <tr class="hover cursor-pointer" onclick="window.location='{% url 'clinical:encounter_detail' encounter.pk %}'">
+            <td>{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
+            <td class="font-medium">{{ encounter.patient.full_name }}</td>
+            <td>{{ encounter.practitioner.full_name }}</td>
+            <td>{{ encounter.branch.name }}</td>
+            <td>
+              <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
+                {{ encounter.get_status_display }}
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if encounters.has_other_pages %}
+    <div class="join mt-4 flex justify-center">
+      {% if encounters.has_previous %}
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&page={{ encounters.previous_page_number }}">«</a>
+      {% endif %}
+      <span class="join-item btn btn-sm btn-disabled">Page {{ encounters.number }} of {{ encounters.paginator.num_pages }}</span>
+      {% if encounters.has_next %}
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&page={{ encounters.next_page_number }}">»</a>
+      {% endif %}
+    </div>
+  {% endif %}
+{% else %}
+  {% url 'clinical:encounter_create' as create_url %}
+  {% include 'partials/_empty_state.html' with title='No encounters yet' body='Consultations you record will appear here.' action_url=create_url action_label='New encounter' %}
+{% endif %}
+{% endblock %}

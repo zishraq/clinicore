@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}Patients{% endblock %}
+{% block page_title %}Patients{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'patients:create' %}" class="btn btn-brand btn-sm">Add patient</a>
+{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-4">
+  {% comment %}
+    HTMX live search, three attributes doing the work:
+      hx-get     — where to fetch results from (the partial-only view)
+      hx-trigger — fire 300ms after typing stops, and only if the value changed;
+                   `changed delay:300ms` is the debounce, so a fast typist causes
+                   one request, not eight
+      hx-target  — replace just #patient-results, never the whole page
+    hx-push-url keeps the query in the address bar so a reload/back button works.
+  {% endcomment %}
+  <label class="form-control">
+    <span class="label-text mb-1">Search by name, phone, or patient code</span>
+    <div class="flex items-center gap-2">
+      <input type="search" name="q" value="{{ query }}" autofocus
+             placeholder="Start typing…"
+             class="input input-bordered w-full max-w-lg"
+             hx-get="{% url 'patients:search' %}"
+             hx-trigger="input changed delay:300ms, search"
+             hx-target="#patient-results"
+             hx-push-url="true"
+             hx-indicator="#search-indicator">
+      <span id="search-indicator">{% include 'partials/_loading.html' %}</span>
+    </div>
+  </label>
+</div>
+
+<div id="patient-results" class="mt-4">
+  {% include 'patients/_results.html' %}
+</div>
+{% endblock %}

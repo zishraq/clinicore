@@ -1,0 +1,30 @@
+{% comment %} One prescription item row. Also served standalone to the HTMX add-row button,
+   which substitutes __prefix__ for the new index (see clinical/views.py). {% endcomment %}
+<div class="grid gap-2 sm:grid-cols-12 items-end border border-black/5 rounded-lg p-3">
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  <div class="sm:col-span-4">
+    <label class="label py-1"><span class="label-text text-xs">Item</span></label>
+    {{ form.free_text_name }}
+  </div>
+  <div class="sm:col-span-2">
+    <label class="label py-1"><span class="label-text text-xs">Dosage</span></label>
+    {{ form.dosage }}
+  </div>
+  <div class="sm:col-span-2">
+    <label class="label py-1"><span class="label-text text-xs">Frequency</span></label>
+    {{ form.frequency }}
+  </div>
+  <div class="sm:col-span-2">
+    <label class="label py-1"><span class="label-text text-xs">Duration</span></label>
+    {{ form.duration }}
+  </div>
+  <div class="sm:col-span-2">
+    <label class="label py-1"><span class="label-text text-xs">Instructions</span></label>
+    {{ form.instructions }}
+  </div>
+  {% if form.DELETE %}
+    <label class="sm:col-span-12 label cursor-pointer justify-start gap-2">
+      {{ form.DELETE }}<span class="label-text text-xs">Remove this item</span>
+    </label>
+  {% endif %}
+</div>

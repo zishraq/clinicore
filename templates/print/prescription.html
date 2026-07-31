@@ -1,0 +1,236 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prescription — {{ encounter.patient.full_name }}</title>
+
+  {% comment %}
+    Deliberately standalone: no base.html, no Tailwind, no daisyUI, no HTMX.
+    Print CSS is the one place where a utility framework's reset and its
+    print-media rules fight you, and a prescription must render identically on a
+    machine that cannot reach a CDN. Everything below is hand-written and inline.
+  {% endcomment %}
+  <style>
+    /* Page geometry. Chrome honours @page size, so the paper dropdown in the
+       print dialog is preselected and the margins below are the real ones. */
+    @page {
+      size: {% if page_size == 'A4' %}A4{% else %}A5{% endif %};
+      margin: {% if page_size == 'A4' %}16mm 14mm{% else %}10mm 9mm{% endif %};
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: #1E293B;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: {% if page_size == 'A4' %}12pt{% else %}10.5pt{% endif %};
+      line-height: 1.45;
+    }
+
+    /* On screen, mimic the sheet so what you see is what prints. */
+    .sheet {
+      width: {% if page_size == 'A4' %}210mm{% else %}148mm{% endif %};
+      min-height: {% if page_size == 'A4' %}297mm{% else %}210mm{% endif %};
+      margin: 12mm auto;
+      padding: {% if page_size == 'A4' %}16mm 14mm{% else %}10mm 9mm{% endif %};
+      background: #fff;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08);
+    }
+
+    .letterhead {
+      border-bottom: 2px solid {{ letterhead_color }};
+      padding-bottom: 6mm;
+      margin-bottom: 6mm;
+    }
+    .clinic-name { font-size: 1.5em; font-weight: 700; color: {{ letterhead_color }}; margin: 0; }
+    .clinic-meta { margin: 1mm 0 0; font-size: .82em; color: #64748B; }
+
+    .patient-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2mm 8mm;
+      font-size: .88em;
+      border-bottom: 1px solid #E2E8F0;
+      padding-bottom: 4mm;
+      margin-bottom: 5mm;
+    }
+    .patient-bar dt { color: #64748B; margin: 0; font-size: .85em; }
+    .patient-bar dd { margin: 0; font-weight: 600; }
+
+    .section-title {
+      font-size: .78em;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #64748B;
+      margin: 0 0 2mm;
+    }
+
+    .notes p { margin: 0 0 3mm; white-space: pre-line; }
+
+    /* The Rx mark is the visual anchor practitioners scan for. */
+    .rx-mark { font-size: 1.8em; font-weight: 700; color: {{ letterhead_color }}; line-height: 1; }
+
+    table.items { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    table.items th {
+      text-align: left;
+      font-size: .78em;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #64748B;
+      border-bottom: 1px solid #CBD5E1;
+      padding: 1.5mm 2mm 1.5mm 0;
+    }
+    table.items td {
+      padding: 2mm 2mm 2mm 0;
+      border-bottom: 1px solid #F1F5F9;
+      vertical-align: top;
+    }
+    table.items td.name { font-weight: 600; width: 34%; }
+    /* Never split a prescribed item across two sheets. */
+    table.items tr { break-inside: avoid; page-break-inside: avoid; }
+
+    .signature {
+      margin-top: 14mm;
+      text-align: right;
+      break-inside: avoid;
+    }
+    .signature .line {
+      display: inline-block;
+      border-top: 1px solid #1E293B;
+      padding-top: 1.5mm;
+      min-width: 55mm;
+      font-size: .85em;
+    }
+
+    .footer-note {
+      margin-top: 6mm;
+      font-size: .72em;
+      color: #94A3B8;
+      border-top: 1px solid #F1F5F9;
+      padding-top: 2mm;
+    }
+
+    /* Screen-only controls. */
+    .toolbar {
+      max-width: 210mm;
+      margin: 8mm auto 0;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 10pt;
+    }
+    .toolbar a, .toolbar button {
+      font: inherit;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #CBD5E1;
+      background: #fff;
+      color: #1E293B;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .toolbar .current { background: {{ letterhead_color }}; color: #fff; border-color: {{ letterhead_color }}; }
+
+    @media print {
+      /* No app chrome on paper: the toolbar and the simulated sheet disappear. */
+      .toolbar { display: none !important; }
+      html, body { background: #fff; }
+      .sheet {
+        width: auto;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button type="button" onclick="window.print()">Print</button>
+  <a href="?size=A5" class="{% if page_size == 'A5' %}current{% endif %}">A5</a>
+  <a href="?size=A4" class="{% if page_size == 'A4' %}current{% endif %}">A4</a>
+  <a href="{% url 'clinical:encounter_detail' encounter.pk %}">Back to encounter</a>
+</div>
+
+<article class="sheet">
+  <header class="letterhead">
+    <h1 class="clinic-name">{{ organization.name }}</h1>
+    {% if letterhead %}<p class="clinic-meta">{{ letterhead|linebreaksbr }}</p>{% endif %}
+    <p class="clinic-meta">
+      {{ encounter.branch.name }}{% if encounter.branch.address %} · {{ encounter.branch.address }}{% endif %}{% if encounter.branch.phone %} · {{ encounter.branch.phone }}{% endif %}
+    </p>
+  </header>
+
+  <dl class="patient-bar">
+    <div><dt>Patient</dt><dd>{{ encounter.patient.full_name }}</dd></div>
+    <div><dt>Code</dt><dd>{{ encounter.patient.code }}</dd></div>
+    <div><dt>Age</dt><dd>{{ encounter.patient.age_display }}</dd></div>
+    <div><dt>Sex</dt><dd>{{ encounter.patient.get_sex_display }}</dd></div>
+    <div><dt>Date</dt><dd>{{ encounter.occurred_at|date:'d M Y' }}</dd></div>
+  </dl>
+
+  {% if encounter.chief_complaint or encounter.assessment %}
+    <section class="notes">
+      {% if encounter.chief_complaint %}
+        <p class="section-title">Complaint</p>
+        <p>{{ encounter.chief_complaint }}</p>
+      {% endif %}
+      {% if encounter.assessment %}
+        <p class="section-title">Assessment</p>
+        <p>{{ encounter.assessment }}</p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <section>
+    <p class="rx-mark">℞</p>
+    {% if items %}
+      <table class="items">
+        <thead>
+          <tr><th>Item</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td class="name">{{ item.free_text_name }}</td>
+              <td>{{ item.dosage|default:'—' }}</td>
+              <td>{{ item.frequency|default:'—' }}</td>
+              <td>{{ item.duration|default:'—' }}</td>
+              <td>{{ item.instructions|default:'—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No items prescribed.</p>
+    {% endif %}
+
+    {% if prescription.general_instructions %}
+      <p class="section-title" style="margin-top:5mm">Instructions</p>
+      <p style="white-space:pre-line">{{ prescription.general_instructions }}</p>
+    {% endif %}
+
+    {% if encounter.follow_up_date %}
+      <p class="section-title" style="margin-top:5mm">Follow-up</p>
+      <p>{{ encounter.follow_up_date|date:'d M Y' }}</p>
+    {% endif %}
+  </section>
+
+  <div class="signature">
+    <div class="line">{{ encounter.practitioner.full_name }}</div>
+  </div>
+
+  <p class="footer-note">
+    {{ organization.name }} · Generated {{ now|date:'d M Y, H:i' }}
+    {% if prescription.issued_at %}· Issued {{ prescription.issued_at|date:'d M Y' }}{% endif %}
+  </p>
+</article>
+
+</body>
+</html>

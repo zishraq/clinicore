@@ -1,0 +1,53 @@
+/* Brand layer over daisyUI.
+ *
+ * daisyUI's own theme variables are OKLCH triplets, which would mean converting
+ * Organization.branding hex values at request time. Instead the palette lands as
+ * --cc-* custom properties (see core/context_processors.py) and these few classes
+ * consume them, so rebranding stays a settings change. Swapping this for a real
+ * compiled daisyUI theme is noted in docs/MVP-NOTES.md.
+ */
+
+.btn-brand {
+  background-color: var(--cc-primary);
+  border-color: var(--cc-primary);
+  color: #fff;
+}
+
+.btn-brand:hover {
+  background-color: var(--cc-primary-dark);
+  border-color: var(--cc-primary-dark);
+}
+
+.btn-brand-ghost {
+  color: var(--cc-primary);
+  border-color: var(--cc-primary);
+  background-color: transparent;
+}
+
+.card-surface {
+  background-color: var(--cc-surface);
+  border: 1px solid rgb(0 0 0 / 0.06);
+}
+
+.text-muted {
+  color: var(--cc-text-muted);
+}
+
+/* HTMX indicators: hidden by default, shown only while a request is in flight. */
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 150ms ease-in;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+}
+
+/* Calm and clinical: no bounce, no slide. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

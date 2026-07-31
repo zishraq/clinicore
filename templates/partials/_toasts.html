@@ -1,0 +1,11 @@
+{# Alpine dismisses each toast after 4s; HTMX responses can push more by re-rendering this partial into #toasts. #}
+{# mb-16 clears the mobile bottom nav; the nav is gone at lg, so the offset is too. #}
+<div id="toasts" class="toast toast-end z-50 mb-16 lg:mb-0">
+  {% for message in messages %}
+    <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 4000)"
+         class="alert {% if message.tags == 'error' %}alert-error{% elif message.tags == 'warning' %}alert-warning{% elif message.tags == 'success' %}alert-success{% else %}alert-info{% endif %} shadow-lg">
+      <span>{{ message }}</span>
+      <button type="button" class="btn btn-ghost btn-xs" @click="show = false">✕</button>
+    </div>
+  {% endfor %}
+</div>

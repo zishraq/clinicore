@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.venv
+.venv_clinicore
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+db.sqlite3
+staticfiles
+media
+docs
+*.md

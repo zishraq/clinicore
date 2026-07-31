@@ -1,0 +1,22 @@
+{# Nav is role-filtered here AND permission-checked in the views; hiding a link is presentation, not access control. #}
+<aside class="w-64 min-h-full bg-[var(--cc-surface)] border-r border-black/5 flex flex-col">
+  <div class="px-5 py-5 border-b border-black/5">
+    <a href="{% url 'core:dashboard' %}" class="block">
+      <span class="text-lg font-semibold text-[var(--cc-primary)]">{{ organization.name }}</span>
+      <span class="block text-xs text-[var(--cc-text-muted)]">Clinicore</span>
+    </a>
+  </div>
+
+  <ul class="menu gap-1 p-3 text-base flex-1">
+    <li><a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.view_name == 'core:dashboard' %}active{% endif %}">Dashboard</a></li>
+    <li><a href="{% url 'patients:list' %}" class="{% if 'patients' in request.resolver_match.namespaces %}active{% endif %}">Patients</a></li>
+    {% if membership.can_view_clinical %}
+      <li><a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active{% endif %}">Encounters</a></li>
+    {% endif %}
+  </ul>
+
+  <div class="p-3 border-t border-black/5 text-xs text-[var(--cc-text-muted)]">
+    {{ user.full_name }}<br>
+    <span class="badge badge-ghost badge-sm mt-1">{{ membership.get_role_display }}</span>
+  </div>
+</aside>
