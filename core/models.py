@@ -1,7 +1,9 @@
-"""Abstract bases every business model inherits.
+"""Abstract bases every business model inherits, plus ``DocumentSequence``.
 
-Nothing concrete lives here, so this module produces no migration. ``AuditLog``
-lands in Phase 1 alongside the models it audits.
+The bases are abstract; ``DocumentSequence`` is the one concrete model here,
+and it lives in ``core`` because document numbering is not billing-specific —
+goods receipts want the same counter when inventory lands. ``AuditLog`` lands in
+Phase 1 alongside the models it audits.
 """
 
 from django.conf import settings
@@ -10,7 +12,12 @@ from django.utils import timezone
 
 from core.managers import OrgScopedManager
 
-__all__ = ['OrgOwnedModel', 'SoftDeleteModel', 'TimeStampedModel']
+__all__ = [
+    'DocumentSequence',
+    'OrgOwnedModel',
+    'SoftDeleteModel',
+    'TimeStampedModel',
+]
 
 
 class TimeStampedModel(models.Model):
@@ -49,6 +56,34 @@ class OrgOwnedModel(TimeStampedModel):
     class Meta:
         abstract = True
         base_manager_name = 'all_objects'
+
+
+class DocumentSequence(OrgOwnedModel):
+    """Counter behind a gap-free, per-organization document number.
+
+    Never incremented directly: ``core.services.next_document_number`` takes a
+    row lock so two clerks billing at once cannot collide. Rationale, and why
+    this is not a Postgres sequence, in
+    docs/adr/0008-invoice-numbering-and-derived-balances.md.
+    """
+
+    kind = models.CharField(max_length=32, help_text='INVOICE, RECEIPT, …')
+    # Numbering restarts each year for financial documents; a kind that wants
+    # one unbroken run leaves this empty.
+    period = models.CharField(max_length=8, blank=True)
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['kind', 'period']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organization', 'kind', 'period'],
+                name='document_sequence_unique_per_org_kind_period',
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.kind} {self.period} @ {self.last_number}'
 
 
 class SoftDeleteModel(models.Model):

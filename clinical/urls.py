@@ -13,6 +13,11 @@ urlpatterns = [
     path('encounters/<int:pk>/', views.encounter_detail, name='encounter_detail'),
     path('encounters/<int:pk>/edit/', views.encounter_update, name='encounter_update'),
     path(
+        'encounters/<int:pk>/history/',
+        views.encounter_history,
+        name='encounter_history',
+    ),
+    path(
         'encounters/<int:pk>/finalize/',
         views.encounter_finalize,
         name='encounter_finalize',

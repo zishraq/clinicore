@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load terminology %}
 
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
@@ -13,14 +14,14 @@
 
   {% if membership.can_view_clinical %}
     <div class="card-surface rounded-xl p-5">
-      <p class="text-sm text-muted">Encounters today</p>
+      <p class="text-sm text-muted">{{ terms.encounter_plural }} today</p>
       <p class="text-3xl font-semibold mt-1">{{ encounters_today }}</p>
-      <a href="{% url 'clinical:encounter_list' %}" class="btn btn-sm btn-brand-ghost mt-4">Open encounters</a>
+      <a href="{% url 'clinical:encounter_list' %}" class="btn btn-sm btn-brand-ghost mt-4">See all {{ terms.encounter_plural|lower }}</a>
     </div>
     <div class="card-surface rounded-xl p-5">
-      <p class="text-sm text-muted">Draft encounters</p>
+      <p class="text-sm text-muted">{{ terms.status_draft }} {{ terms.encounter_plural|lower }}</p>
       <p class="text-3xl font-semibold mt-1">{{ draft_encounters }}</p>
-      <p class="text-xs text-muted mt-4">Unfinalized notes waiting on you.</p>
+      <p class="text-xs text-muted mt-4">Notes still waiting on you.</p>
     </div>
   {% endif %}
 </div>
@@ -37,7 +38,7 @@
             <td><a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ encounter.patient.full_name }}</a></td>
             <td>{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
             <td>{{ encounter.practitioner.full_name }}</td>
-            <td><span class="badge badge-ghost">{{ encounter.get_status_display }}</span></td>
+            <td><span class="badge badge-ghost">{% status_label encounter.status %}</span></td>
           </tr>
         {% endfor %}
       </tbody>

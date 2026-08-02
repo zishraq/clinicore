@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
+{% load terminology %}
 
 {% block title %}{{ patient.full_name }}{% endblock %}
 {% block page_title %}{{ patient.full_name }}{% endblock %}
 {% block page_actions %}
   <a href="{% url 'patients:update' patient.pk %}" class="btn btn-sm btn-brand-ghost">Edit</a>
   {% if show_clinical %}
-    <a href="{% url 'clinical:encounter_create' %}?patient={{ patient.pk }}" class="btn btn-sm btn-brand">New encounter</a>
+    <a href="{% url 'clinical:encounter_create' %}?patient={{ patient.pk }}" class="btn btn-sm btn-brand">New {{ terms.encounter|lower }}</a>
   {% endif %}
 {% endblock %}
 
@@ -49,7 +50,45 @@
       </section>
 
       <section class="card-surface rounded-xl p-6">
-        <h2 class="font-semibold">Encounters</h2>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="font-semibold">{{ terms.invoice_plural }}</h2>
+            {% comment %}
+              The outstanding total leads: at the counter the question is "does
+              this patient owe anything?", not "what did we bill in March".
+            {% endcomment %}
+            <p class="text-sm mt-1">
+              <span class="text-muted">Outstanding:</span>
+              <span class="font-semibold tabular-nums {% if outstanding > 0 %}text-[var(--cc-danger)]{% endif %}">
+                {{ organization.currency }} {{ outstanding }}
+              </span>
+            </p>
+          </div>
+          <a href="{% url 'billing:invoice_create' %}?patient={{ patient.pk }}" class="btn btn-xs btn-brand-ghost">New {{ terms.invoice|lower }}</a>
+        </div>
+
+        {% if invoices %}
+          <ul class="mt-4 divide-y divide-black/5">
+            {% for invoice in invoices %}
+              <li class="py-3 flex items-center justify-between gap-4">
+                <div>
+                  <a class="link font-medium font-mono" href="{% url 'billing:invoice_detail' invoice.pk %}">{{ invoice.number }}</a>
+                  <p class="text-sm text-muted">
+                    {{ invoice.issued_at|date:'d M Y' }} · {{ invoice.currency }} {{ invoice.amount_due }}
+                    {% if invoice.balance > 0 %}· {{ invoice.balance }} due{% endif %}
+                  </p>
+                </div>
+                {% include 'billing/_status_badge.html' with status=invoice.payment_status %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-sm text-muted mt-3">No {{ terms.invoice_plural|lower }} raised.</p>
+        {% endif %}
+      </section>
+
+      <section class="card-surface rounded-xl p-6">
+        <h2 class="font-semibold">{{ terms.encounter_plural }}</h2>
         {% if encounters %}
           <ul class="mt-4 divide-y divide-black/5">
             {% for encounter in encounters %}
@@ -60,12 +99,12 @@
                   </a>
                   <p class="text-sm text-muted">{{ encounter.chief_complaint|truncatechars:80|default:'No chief complaint recorded' }}</p>
                 </div>
-                <span class="badge badge-ghost">{{ encounter.get_status_display }}</span>
+                <span class="badge badge-ghost">{% status_label encounter.status %}</span>
               </li>
             {% endfor %}
           </ul>
         {% else %}
-          <p class="text-sm text-muted mt-3">No encounters recorded.</p>
+          <p class="text-sm text-muted mt-3">No {{ terms.encounter_plural|lower }} recorded.</p>
         {% endif %}
       </section>
     {% else %}

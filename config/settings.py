@@ -46,11 +46,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'simple_history',
     'core',
     'organizations',
     'accounts',
     'patients',
+    'catalog',
     'clinical',
+    'billing',
 ]
 
 MIDDLEWARE = [

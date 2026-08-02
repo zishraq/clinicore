@@ -90,6 +90,8 @@
       vertical-align: top;
     }
     table.items td.name { font-weight: 600; width: 34%; }
+    /* Advice lines are sentences, not names, so they get the room. */
+    table.items.advice td.name { width: 46%; font-weight: 500; }
     /* Never split a prescribed item across two sheets. */
     table.items tr { break-inside: avoid; page-break-inside: avoid; }
 
@@ -155,7 +157,7 @@
   <button type="button" onclick="window.print()">Print</button>
   <a href="?size=A5" class="{% if page_size == 'A5' %}current{% endif %}">A5</a>
   <a href="?size=A4" class="{% if page_size == 'A4' %}current{% endif %}">A4</a>
-  <a href="{% url 'clinical:encounter_detail' encounter.pk %}">Back to encounter</a>
+  <a href="{% url 'clinical:encounter_detail' encounter.pk %}">Back to {{ terms.encounter|lower }}</a>
 </div>
 
 <article class="sheet">
@@ -189,16 +191,21 @@
   {% endif %}
 
   <section>
-    <p class="rx-mark">℞</p>
-    {% if items %}
+    {% comment %}
+      Two sections, each omitted when empty. Names come from name_snapshot, never
+      from the live catalog row: a medicine renamed next year must not silently
+      rewrite what this patient was handed today.
+    {% endcomment %}
+    {% if medicines %}
+      <p class="rx-mark">℞</p>
       <table class="items">
         <thead>
-          <tr><th>Item</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+          <tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
         </thead>
         <tbody>
-          {% for item in items %}
+          {% for item in medicines %}
             <tr>
-              <td class="name">{{ item.free_text_name }}</td>
+              <td class="name">{{ item.name_snapshot }}</td>
               <td>{{ item.dosage|default:'—' }}</td>
               <td>{{ item.frequency|default:'—' }}</td>
               <td>{{ item.duration|default:'—' }}</td>
@@ -207,7 +214,28 @@
           {% endfor %}
         </tbody>
       </table>
-    {% else %}
+    {% endif %}
+
+    {% if advice_items %}
+      <p class="section-title" {% if medicines %}style="margin-top:6mm"{% endif %}>Advice</p>
+      <table class="items advice">
+        <thead>
+          <tr><th>Advice</th><th>Frequency</th><th>Duration</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for item in advice_items %}
+            <tr>
+              <td class="name">{{ item.name_snapshot }}</td>
+              <td>{{ item.frequency|default:'—' }}</td>
+              <td>{{ item.duration|default:'—' }}</td>
+              <td>{{ item.instructions|default:'—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if not medicines and not advice_items %}
       <p>No items prescribed.</p>
     {% endif %}
 

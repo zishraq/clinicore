@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
+{% load terminology %}
 
-{% block title %}Encounters{% endblock %}
-{% block page_title %}Encounters{% endblock %}
+{% block title %}{{ terms.encounter_plural }}{% endblock %}
+{% block page_title %}{{ terms.encounter_plural }}{% endblock %}
 {% block page_actions %}
-  <a href="{% url 'clinical:encounter_create' %}" class="btn btn-brand btn-sm">New encounter</a>
+  <a href="{% url 'clinical:encounter_create' %}" class="btn btn-brand btn-sm">New {{ terms.encounter|lower }}</a>
 {% endblock %}
 
 {% block content %}
@@ -27,7 +28,7 @@
             <td>{{ encounter.branch.name }}</td>
             <td>
               <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
-                {{ encounter.get_status_display }}
+                {% status_label encounter.status %}
               </span>
             </td>
           </tr>
@@ -49,6 +50,13 @@
   {% endif %}
 {% else %}
   {% url 'clinical:encounter_create' as create_url %}
-  {% include 'partials/_empty_state.html' with title='No encounters yet' body='Consultations you record will appear here.' action_url=create_url action_label='New encounter' %}
+  {% comment %}
+    The partial takes plain strings, so the labels are stitched together with
+    `add` rather than hardcoded — this copy has to follow the terminology map
+    like every other user-facing word.
+  {% endcomment %}
+  {% with one=terms.encounter|lower many=terms.encounter_plural|lower %}
+    {% include 'partials/_empty_state.html' with title='No '|add:many|add:' yet' body='Consultations you record will appear here.' action_url=create_url action_label='New '|add:one %}
+  {% endwith %}
 {% endif %}
 {% endblock %}

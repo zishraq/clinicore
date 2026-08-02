@@ -70,7 +70,12 @@ def patient_detail(request, pk: int):
     show_clinical = membership.can_view_clinical
     profile = getattr(patient, 'clinical_profile', None) if show_clinical else None
     encounters = []
+    invoices = []
+    outstanding = None
     if show_clinical:
+        # Deferred imports keep patients free of a hard dependency on the
+        # feature apps that point at it.
+        from billing.services import outstanding_balance, patient_invoices
         from clinical.models import Encounter
 
         encounters = list(
@@ -78,6 +83,10 @@ def patient_detail(request, pk: int):
                 :20
             ]
         )
+        # What a returning patient still owes, visible without opening a bill
+        # (SPEC §6.2).
+        outstanding = outstanding_balance(request.organization, patient)
+        invoices = list(patient_invoices(request.organization, patient)[:10])
     return render(
         request,
         'patients/detail.html',
@@ -86,6 +95,8 @@ def patient_detail(request, pk: int):
             'clinical_profile': profile,
             'show_clinical': show_clinical,
             'encounters': encounters,
+            'invoices': invoices,
+            'outstanding': outstanding,
         },
     )
 

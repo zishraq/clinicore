@@ -20,12 +20,23 @@ These were cut by the brief itself, not by me:
   Every one is marked `# MVP: replace with permission layer` and they are
   concentrated in `accounts/permissions.py`; `grep -rn 'MVP: replace with
   permission layer'` finds all of them.
-- **Catalog / `Product` FK on prescription items** — items are free text
-  (`free_text_name`). SPEC §5 wants a nullable `product` FK with a check
-  constraint that exactly one of the two is set; that lands with the catalog app
-  and is an additive migration.
+- **Inventory** — the `catalog` app now exists (medicines and advice), but stock
+  does not: no `StockBatch`, no `StockMovement`, no goods receipt.
+  `Product.is_stock_tracked` and `is_sellable` are placeholders so Phase 4
+  attaches without a schema change.
 - **Scheduling, queue, inventory, billing, reporting, PWA** — whole apps, not
   started.
+
+## Where the spec itself was wrong, and was corrected
+
+- **SPEC §5 modelled only `Product`.** A prescription has two sections —
+  medicines and advice — and only the first was in the domain model. §5 now
+  carries `AdviceTemplate` and the two-section `PrescriptionItem`, and §6.4
+  carries the unified autocomplete, quick-add, and the two-section print layout.
+  Reasoning in [ADR 0007](adr/0007-catalogs-and-name-snapshots.md).
+- **`name_snapshot` is not optional polish.** Resolving a printed item's name
+  through the live catalog FK means a later rename rewrites prescriptions that
+  were already handed to patients. Every display path reads the snapshot.
 
 ## Deviations I chose, with reasons
 
@@ -36,16 +47,15 @@ These were cut by the brief itself, not by me:
 - **Django 6.0, not 5.x** (SPEC §3). 6.0.7 is what was already installed in the
   virtualenv. Nothing in the code depends on a 6.0-only API, but
   `CheckConstraint(condition=…)` is 5.1+ syntax (`check=` was removed in 6.0).
-- **No `django-simple-history`** (SPEC §3, §6.4). Not installed, and adding a
-  dependency needed asking. Consequence: **a finalized encounter is read-only**
-  rather than amendable-with-history. `Encounter.is_editable` is the gate, and
-  the edit view redirects with an error instead of silently overwriting. This is
-  the most significant clinical-safety deviation in the MVP — the spec wants
-  corrections recorded as history entries, and the MVP simply forbids them.
 - **No `django-crispy-forms`, no `django-axes`** (SPEC §3, §6.1). Forms are
   rendered field-by-field in templates with daisyUI classes. **Login is not rate
   limited** — that is a real security gap against the spec and should be the
   first dependency added.
+- **History is on clinical models only** — `Encounter`, `Prescription`,
+  `PrescriptionItem`. SPEC §3 also lists `Patient`; the surface was kept small
+  deliberately. See [ADR 0006](adr/0006-encounter-amendments.md), including the
+  tenancy caveat: historical tables are **not** organization-scoped and every
+  history query must filter on `organization_id` by hand.
 - **No soft delete on `Encounter`.** SPEC §4 lists clinical records as
   soft-delete; the MVP has no encounter-delete path at all, so the mixin would
   have been unused columns. `Patient` and `PatientClinicalProfile` do soft
@@ -66,8 +76,9 @@ These were cut by the brief itself, not by me:
   `--cc-*` tokens for the handful of brand-coloured classes. Rebranding is still
   a settings change, which is what SPEC §7 asks for.
 - **Tests are minimal by instruction.** The tenant-isolation suite, the STAFF
-  403s, login, and an encounter create→finalize round trip. No factory-boy (not
-  installed) — fixtures build models directly.
+  403s, login, an encounter create→finalize round trip, and the amendment and
+  history-isolation suites. No factory-boy (not installed) — fixtures build
+  models directly.
 
 ## Things worth knowing before the next session
 
@@ -86,13 +97,29 @@ These were cut by the brief itself, not by me:
 - **The admin reads through `all_objects`** (`core/admin.py`). Registering an
   org-owned model with a plain `ModelAdmin` will raise on the changelist —
   subclass `OrgOwnedAdmin`.
-- **Three bugs found by opening a browser, not by tests**, all invisible to the
+- **`dosage` is nullable, deliberately.** Advice has no dose, and empty string
+  would read as "none recorded" rather than "not applicable". This is the single
+  `# noqa: DJ001` in the codebase.
+- **The prescription autocomplete is the most JS-dependent thing in the repo**,
+  and every one of its bugs was invisible to the test suite. Three worth
+  remembering: `hx-vals="js:{q: event.target.value}"` throws once a `delay:` is
+  on the trigger (`event` is gone) and silently sends `"undefined"` if you
+  switch to `this` — htmx 2.0.4 binds neither, so the view reads the row's own
+  `display_name` parameter instead; Alpine's `$el` is the *evaluating* element,
+  not the component root, so `$el.querySelector` inside an event handler
+  searches the input rather than the row (use `$root`); and a formset row
+  removed from the DOM posts nothing, which Django's default `has_changed()`
+  reads as a filled-in row, so `PrescriptionItemForm` judges emptiness by
+  content instead.
+- **Four bugs found by opening a browser, not by tests**, all invisible to the
   test suite because they were about rendering rather than status codes:
   multi-line `{# … #}` is not a Django comment and rendered as visible text on
   the print page; `{% block %}` does not cross an `{% include %}`, so the
   topbar's page title and action buttons never rendered; and the HTMX search
-  pushed a partial-only URL into the address bar that broke on reload. Keep
-  looking at the actual pages.
+  pushed a partial-only URL into the address bar that broke on reload; and the
+  encounter history labelled an amendment as "Created". Keep looking at the
+  actual pages — and note that a **multi-line `{# … #}` is not a Django
+  comment**, which has now caused two of those four.
 - **Docker maps Postgres to host port 5433**, not 5432, because 5432 was already
   in use on the dev machine. Inside the compose network it is still `db:5432`.
 

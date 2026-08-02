@@ -1,32 +1,68 @@
 {% extends 'base.html' %}
+{% load static terminology %}
 
-{% block title %}{% if is_create %}New encounter{% else %}Edit encounter{% endif %}{% endblock %}
-{% block page_title %}{% if is_create %}New encounter{% else %}Edit encounter{% endif %}{% endblock %}
+{% block alpine_components %}
+  <script src="{% static 'js/item-autocomplete.js' %}" defer></script>
+{% endblock %}
+
+{% comment %}
+  A locked record takes the amendment path — reason required, history row
+  written — but the user sees the same word as an ordinary edit either way.
+{% endcomment %}
+{% block title %}{% if is_create %}New {{ terms.encounter|lower }}{% elif is_amendment %}{{ terms.amend }} {{ terms.encounter|lower }}{% else %}Edit {{ terms.encounter|lower }}{% endif %}{% endblock %}
+{% block page_title %}{% if is_create %}New {{ terms.encounter|lower }}{% elif is_amendment %}{{ terms.amend }} {{ terms.encounter|lower }}{% else %}Edit {{ terms.encounter|lower }}{% endif %}{% endblock %}
 
 {% block content %}
 <form method="post" class="space-y-4 max-w-5xl">
   {% csrf_token %}
 
+  {% if is_amendment %}
+    <section class="card-surface rounded-xl p-6 border-l-4 border-l-[var(--cc-warning)]">
+      {% status_label encounter.status as status %}
+      <h2 class="font-semibold">This {{ terms.encounter|lower }} is {{ status|lower }}</h2>
+      <p class="text-sm text-muted mt-1">
+        The old version is kept along with your reason. Nothing is lost.
+        <a class="link" href="{% url 'clinical:encounter_history' encounter.pk %}">View history</a>
+      </p>
+      <div class="mt-4">
+        <label class="label" for="{{ form.change_reason.id_for_label }}">
+          <span class="label-text">{{ form.change_reason.label }}</span>
+        </label>
+        {{ form.change_reason }}
+        <p class="text-xs text-muted mt-1">{{ form.change_reason.help_text }}</p>
+        {% for error in form.change_reason.errors %}
+          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
   <section class="card-surface rounded-xl p-6">
     <h2 class="font-semibold mb-4">Consultation</h2>
     <div class="grid gap-4 sm:grid-cols-2">
       {% for field in form %}
-        <div class="{% if field.name in 'chief_complaint examination assessment plan' %}sm:col-span-2{% endif %}">
-          <label class="label" for="{{ field.id_for_label }}">
-            <span class="label-text">{{ field.label }}</span>
-          </label>
-          {{ field }}
-          {% for error in field.errors %}
-            <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
-          {% endfor %}
-        </div>
+        {% if field.name != 'change_reason' %}
+          <div class="{% if field.name in 'chief_complaint examination assessment plan' %}sm:col-span-2{% endif %}">
+            <label class="label" for="{{ field.id_for_label }}">
+              <span class="label-text">{{ field.label }}</span>
+            </label>
+            {{ field }}
+            {% for error in field.errors %}
+              <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
       {% endfor %}
     </div>
   </section>
 
   <section class="card-surface rounded-xl p-6">
-    <h2 class="font-semibold mb-4">Prescription</h2>
+    <h2 class="font-semibold">Prescription</h2>
+    <p class="text-sm text-muted mb-4">
+      Search once for both medicines and advice. Arrow keys move, Enter selects.
+    </p>
 
+    {{ item_formset.non_form_errors }}
     {{ item_formset.management_form }}
     <div id="item-rows" class="space-y-3">
       {% for item_form in item_formset %}
@@ -62,7 +98,9 @@
   </section>
 
   <div class="flex gap-3">
-    <button type="submit" class="btn btn-brand">Save encounter</button>
+    <button type="submit" class="btn btn-brand">
+      {% if is_amendment %}Save changes{% else %}Save {{ terms.encounter|lower }}{% endif %}
+    </button>
     <a href="{% if encounter %}{% url 'clinical:encounter_detail' encounter.pk %}{% else %}{% url 'clinical:encounter_list' %}{% endif %}"
        class="btn btn-ghost">Cancel</a>
   </div>

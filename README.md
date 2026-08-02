@@ -9,7 +9,7 @@ configuration and seed data, never a code change.
 Django 6 · HTMX · Alpine · Tailwind + daisyUI · PostgreSQL. MIT licensed.
 
 > **Status: MVP.** A working slice — organizations, auth and roles, patients,
-> encounters, prescriptions, and printing. Scheduling, inventory, billing, and
+> encounters, prescriptions, printing, and billing. Scheduling, inventory, and
 > reporting are not built. `docs/SPEC.md` is the full specification;
 > `docs/MVP-NOTES.md` records exactly what the MVP cut and why.
 
@@ -47,11 +47,32 @@ install; inside the compose network it is `db:5432`.
 - **Patients.** Debounced HTMX live search by name, phone, or code; duplicate
   warning on create; soft delete.
 - **Encounters and prescriptions.** One-page consultation form with add-as-you-go
-  prescription rows, finalize-to-lock, and per-item dosage/frequency/duration
-  plus a JSON `attributes` field for specialty-specific values.
+  prescription rows, and per-item dosage/frequency/duration plus a JSON
+  `attributes` field for specialty-specific values.
+- **Two catalogs, one search box.** Medicines *and* reusable advice, searched
+  together from the prescription row with arrow-key navigation, defaults
+  prefilled on selection, and inline quick-add when something is missing — so
+  the catalogs stay current instead of going stale. Prescriptions freeze the
+  name they were written with, so renaming a catalog entry never rewrites a
+  document a patient already holds
+  ([ADR 0007](docs/adr/0007-catalogs-and-name-snapshots.md)).
+- **Amendments, never silent overwrites.** Finalizing locks an encounter;
+  correcting it afterwards is an amendment that requires a reason and writes a
+  revision, viewable as a per-field diff of who changed what, when, and why.
+  See [ADR 0006](docs/adr/0006-encounter-amendments.md) — including why the
+  history tables need explicit tenant filtering.
+- **Billing that survives instalments.** Bills raised from a completed visit or
+  standalone, the consultation fee as its own prefilled line, product lines from
+  the same catalog search, and as many part-payments as a patient needs. The
+  balance is derived from the ledger rather than stored, overpayment is refused
+  with the figure to type instead, invoice numbers are gap-free per clinic under
+  concurrent creation, and a mistake is voided with a reason rather than deleted
+  ([ADR 0008](docs/adr/0008-invoice-numbering-and-derived-balances.md)).
 - **Printing.** A standalone print view with real `@page` A5/A4 geometry, clinic
   letterhead from the organization's branding, and no app chrome — no CDN, no
-  framework, so it renders the same on a machine with no internet.
+  framework, so it renders the same on a machine with no internet. Medicines and
+  advice print as separate sections, each omitted when empty, and the receipt
+  reuses the same sheet so a bill and a prescription look like one clinic.
 
 ## Repository layout
 
@@ -61,7 +82,9 @@ core/            abstract bases, org-scoping machinery, dashboard, bootstrap_dem
 organizations/   Organization, Branch
 accounts/        custom User (phone login), Membership, roles, auth views
 patients/        Patient, PatientClinicalProfile
+catalog/         Product, AdviceTemplate, autocomplete, quick-add
 clinical/        Encounter, Prescription, PrescriptionItem, print view
+billing/         Invoice, InvoiceItem, Payment, receipt print view
 templates/       app shell (daisyUI) + the standalone print sheet
 docs/            SPEC.md, MVP-NOTES.md, phase-0-proposal.md, adr/
 ```

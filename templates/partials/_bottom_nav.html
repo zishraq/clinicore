@@ -8,7 +8,10 @@
   </a>
   {% if membership.can_view_clinical %}
     <a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
-      <span class="btm-nav-label">Encounters</span>
+      <span class="btm-nav-label">{{ terms.encounter_plural }}</span>
+    </a>
+    <a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+      <span class="btm-nav-label">{{ terms.invoice_plural }}</span>
     </a>
   {% endif %}
 </nav>

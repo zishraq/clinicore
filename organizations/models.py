@@ -1,13 +1,21 @@
 """Tenant root and its physical locations."""
 
 import re
+from decimal import Decimal
 
 from django.db import models
 from django.utils.text import slugify
 
 from core.models import OrgOwnedModel, TimeStampedModel
 
-__all__ = ['Branch', 'Organization', 'default_branding', 'hex_color_or']
+__all__ = [
+    'DEFAULT_TERMINOLOGY',
+    'Branch',
+    'Organization',
+    'default_branding',
+    'default_terminology',
+    'hex_color_or',
+]
 
 # Branding is org-editable JSON that ends up inside a <style> block, so colours
 # are validated rather than escaped — escaping does not protect inside CSS.
@@ -42,6 +50,45 @@ def default_branding() -> dict:
     return {'palette': dict(SEED_PALETTE), 'logo_text': '', 'letterhead': ''}
 
 
+# SPEC §5 terminology map. Every user-facing word for a domain concept comes
+# from here, so a clinic that says "Consultation" or "Appointment" is relabelled
+# by editing data — stored values, field names, and URLs never move.
+# ``status_*`` keys are looked up as ``status_<stored value lowercased>``.
+DEFAULT_TERMINOLOGY = {
+    'encounter': 'Visit',
+    'encounter_plural': 'Visits',
+    'status_draft': 'Open',
+    'status_finalized': 'Completed',
+    # A locked record that was later corrected. Deliberately the same label as
+    # FINALIZED: staff see two states, and "last edited" on the detail page
+    # carries the fact that a correction happened.
+    'status_amended': 'Completed',
+    'amend': 'Edit',
+    # Billing. "Bill" by default because that is what a patient is handed and
+    # what a practitioner says; an organization that invoices corporate clients
+    # maps these back to "Invoice" without a migration.
+    'invoice': 'Bill',
+    'invoice_plural': 'Bills',
+    'payment': 'Payment',
+    'payment_plural': 'Payments',
+    'consultation_fee': 'Consultation fee',
+    # Payment states are derived from the payments received, never stored, but
+    # they still reach the UI as labels and so still go through the map.
+    'status_unpaid': 'Unpaid',
+    'status_partially_paid': 'Part paid',
+    'status_paid': 'Paid',
+    'status_void': 'Void',
+}
+
+#: Longest an override may be. These are chrome — a nav item, a badge, a button.
+_TERM_MAX_LENGTH = 40
+
+
+def default_terminology() -> dict:
+    """Default value for ``Organization.terminology`` (callable, so it migrates)."""
+    return dict(DEFAULT_TERMINOLOGY)
+
+
 class Organization(TimeStampedModel):
     """The tenant. Not org-owned itself, so it keeps a plain manager."""
 
@@ -49,7 +96,16 @@ class Organization(TimeStampedModel):
     slug = models.SlugField(max_length=60, unique=True)
     currency = models.CharField(max_length=3, default='BDT')
     timezone = models.CharField(max_length=64, default='UTC')
+    # Prefills the consultation line on a new bill. Money is Decimal everywhere,
+    # never float (SPEC §4).
+    default_consultation_fee = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='Prefilled on the consultation line of a new bill.',
+    )
     branding = models.JSONField(default=default_branding, blank=True)
+    terminology = models.JSONField(default=default_terminology, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -66,6 +122,20 @@ class Organization(TimeStampedModel):
     @property
     def palette(self) -> dict:
         return {**SEED_PALETTE, **(self.branding or {}).get('palette', {})}
+
+    @property
+    def terms(self) -> dict:
+        """User-facing labels: the defaults, overlaid with this org's overrides.
+
+        Unknown keys are dropped and values are trimmed, so a typo in the JSON
+        cannot leave a template rendering nothing.
+        """
+        overrides = {
+            key: str(value).strip()[:_TERM_MAX_LENGTH]
+            for key, value in (self.terminology or {}).items()
+            if key in DEFAULT_TERMINOLOGY and str(value).strip()
+        }
+        return {**DEFAULT_TERMINOLOGY, **overrides}
 
     @property
     def primary_color(self) -> str:

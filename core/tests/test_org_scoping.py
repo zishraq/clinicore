@@ -6,15 +6,20 @@ the coverage cannot silently rot — that mechanism is the point of this file
 (docs/adr/0005-org-scoped-default-manager.md).
 """
 
+from decimal import Decimal
+
 import pytest
 from django.apps import apps
 from django.utils import timezone
 
 from accounts.models import Membership, Role, User
+from billing.models import Invoice, InvoiceItem, LineType, Payment
+from billing.services import next_invoice_number
+from catalog.models import AdviceTemplate, Product
 from clinical.models import Encounter, Prescription, PrescriptionItem
 from core.context import organization_context
 from core.exceptions import ActiveOrganizationRequired
-from core.models import OrgOwnedModel
+from core.models import DocumentSequence, OrgOwnedModel
 from organizations.models import Branch
 from patients.models import Patient, PatientClinicalProfile
 
@@ -38,6 +43,16 @@ def _build_clinical_profile(organization):
         organization=organization,
         patient=_build_patient(organization),
         medical_history='none',
+    )
+
+
+def _build_product(organization):
+    return Product.objects.create(organization=organization, name='Paracetamol 500mg')
+
+
+def _build_advice_template(organization):
+    return AdviceTemplate.objects.create(
+        organization=organization, text='Drink more water.'
     )
 
 
@@ -65,6 +80,41 @@ def _build_prescription_item(organization):
     )
 
 
+def _build_document_sequence(organization):
+    return DocumentSequence.objects.create(
+        organization=organization, kind='INVOICE', period='2026'
+    )
+
+
+def _build_invoice(organization):
+    return Invoice.objects.create(
+        organization=organization,
+        patient=_build_patient(organization),
+        currency=organization.currency,
+        number=next_invoice_number(organization),
+    )
+
+
+def _build_invoice_item(organization):
+    return InvoiceItem.objects.create(
+        organization=organization,
+        invoice=_build_invoice(organization),
+        line_type=LineType.OTHER,
+        name_snapshot='Consultation fee',
+        quantity=1,
+        unit_price=Decimal('500.00'),
+    )
+
+
+def _build_payment(organization):
+    return Payment.objects.create(
+        organization=organization,
+        invoice=_build_invoice(organization),
+        amount=Decimal('100.00'),
+        received_by=_practitioner_for(organization),
+    )
+
+
 def _practitioner_for(organization):
     user = User.objects.create_user(
         phone=f'0199{organization.pk:07d}', full_name='Dr Test'
@@ -77,9 +127,15 @@ def _practitioner_for(organization):
 
 #: One builder per concrete org-owned model, keyed by ``app_label.ModelName``.
 BUILDERS = {
+    'billing.Invoice': _build_invoice,
+    'billing.InvoiceItem': _build_invoice_item,
+    'billing.Payment': _build_payment,
+    'catalog.AdviceTemplate': _build_advice_template,
+    'catalog.Product': _build_product,
     'clinical.Encounter': _build_encounter,
     'clinical.Prescription': _build_prescription,
     'clinical.PrescriptionItem': _build_prescription_item,
+    'core.DocumentSequence': _build_document_sequence,
     'organizations.Branch': _build_branch,
     'patients.Patient': _build_patient,
     'patients.PatientClinicalProfile': _build_clinical_profile,

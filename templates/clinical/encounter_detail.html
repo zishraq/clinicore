@@ -1,12 +1,25 @@
 {% extends 'base.html' %}
+{% load terminology %}
 
-{% block title %}Encounter — {{ encounter.patient.full_name }}{% endblock %}
+{% block title %}{{ terms.encounter }} — {{ encounter.patient.full_name }}{% endblock %}
 {% block page_title %}{{ encounter.patient.full_name }}{% endblock %}
 {% block page_actions %}
-  <a href="{% url 'clinical:prescription_print' encounter.pk %}" class="btn btn-sm btn-brand" target="_blank">Print prescription</a>
-  {% if encounter.is_editable %}
-    <a href="{% url 'clinical:encounter_update' encounter.pk %}" class="btn btn-sm btn-brand-ghost">Edit</a>
+  {% comment %}
+    Billing follows the consultation, so the action lives here. It appears once
+    the record is {{ terms.status_finalized|lower }} — billing a visit still
+    being written up is how a half-finished line ends up on a receipt.
+  {% endcomment %}
+  {% if invoice %}
+    <a href="{% url 'billing:invoice_detail' invoice.pk %}" class="btn btn-sm btn-brand-ghost">{{ invoice.number }} · {{ invoice.currency }} {{ invoice.balance }} due</a>
+  {% elif encounter.is_locked %}
+    <a href="{% url 'billing:invoice_create' %}?encounter={{ encounter.pk }}" class="btn btn-sm btn-brand">Create {{ terms.invoice|lower }}</a>
   {% endif %}
+  <a href="{% url 'clinical:prescription_print' encounter.pk %}" class="btn btn-sm btn-brand" target="_blank">Print prescription</a>
+  <a href="{% url 'clinical:encounter_history' encounter.pk %}" class="btn btn-sm btn-ghost">History</a>
+  {# Locked records take the amendment path — same word to the user, different machinery underneath. #}
+  <a href="{% url 'clinical:encounter_update' encounter.pk %}" class="btn btn-sm btn-brand-ghost">
+    {% if encounter.is_locked %}{{ terms.amend }}{% else %}Edit{% endif %}
+  </a>
 {% endblock %}
 
 {% block content %}
@@ -15,7 +28,7 @@
     <div class="flex items-center justify-between">
       <h2 class="font-semibold">Consultation notes</h2>
       <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
-        {{ encounter.get_status_display }}
+        {% status_label encounter.status %}
       </span>
     </div>
 
@@ -46,39 +59,45 @@
     <div><p class="text-muted">Branch</p><p>{{ encounter.branch.name }}</p></div>
     <div><p class="text-muted">Follow-up</p><p>{{ encounter.follow_up_date|date:'d M Y'|default:'—' }}</p></div>
 
-    {% if encounter.is_editable %}
+    {% if not encounter.is_locked %}
       {# Destructive-ish and irreversible, so it goes through a confirm dialog. #}
-      <button class="btn btn-brand btn-sm w-full mt-4" onclick="finalize_modal.showModal()">Finalize</button>
+      <button class="btn btn-brand btn-sm w-full mt-4" onclick="finalize_modal.showModal()">Mark {{ terms.status_finalized|lower }}</button>
       <dialog id="finalize_modal" class="modal">
         <div class="modal-box">
-          <h3 class="font-semibold text-lg">Finalize this encounter?</h3>
-          <p class="py-3 text-sm">Finalized notes become read-only. Corrections after this need an amendment.</p>
+          <h3 class="font-semibold text-lg">Mark this {{ terms.encounter|lower }} {{ terms.status_finalized|lower }}?</h3>
+          <p class="py-3 text-sm">You can still {{ terms.amend|lower }} it later. Every change is saved with a reason, and nothing is lost.</p>
           <div class="modal-action">
             <form method="dialog"><button class="btn btn-ghost">Cancel</button></form>
             <form method="post" action="{% url 'clinical:encounter_finalize' encounter.pk %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-brand">Finalize</button>
+              <button type="submit" class="btn btn-brand">Mark {{ terms.status_finalized|lower }}</button>
             </form>
           </div>
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
       </dialog>
     {% else %}
-      <p class="text-xs text-muted mt-4">Finalized {{ encounter.finalized_at|date:'d M Y, H:i' }}.</p>
+      <p class="text-xs text-muted mt-4">
+        {{ terms.status_finalized }} {{ encounter.finalized_at|date:'d M Y, H:i' }}.
+        {# Noun form, so the label works whatever verb an org maps `amend` to. #}
+        {% if encounter.amended_at %}<br>Last {{ terms.amend|lower }}: {{ encounter.amended_at|date:'d M Y, H:i' }}{% endif %}
+      </p>
     {% endif %}
   </aside>
 </div>
 
 <section class="card-surface rounded-xl p-6 mt-4">
   <h2 class="font-semibold">Prescription</h2>
-  {% if items %}
-    <div class="overflow-x-auto mt-4">
+
+  {% if medicines %}
+    <p class="text-xs uppercase tracking-wide text-muted mt-4">Medicines</p>
+    <div class="overflow-x-auto">
       <table class="table">
-        <thead><tr><th>Item</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+        <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
         <tbody>
-          {% for item in items %}
+          {% for item in medicines %}
             <tr>
-              <td class="font-medium">{{ item.free_text_name }}</td>
+              <td class="font-medium">{{ item.name_snapshot }}</td>
               <td>{{ item.dosage|default:'—' }}</td>
               <td>{{ item.frequency|default:'—' }}</td>
               <td>{{ item.duration|default:'—' }}</td>
@@ -88,10 +107,32 @@
         </tbody>
       </table>
     </div>
-    {% if prescription.general_instructions %}
-      <p class="mt-4 text-sm"><span class="text-muted">General instructions:</span> {{ prescription.general_instructions }}</p>
-    {% endif %}
-  {% else %}
+  {% endif %}
+
+  {% if advice_items %}
+    <p class="text-xs uppercase tracking-wide text-muted mt-4">Advice</p>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead><tr><th>Advice</th><th>Frequency</th><th>Duration</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for item in advice_items %}
+            <tr>
+              <td class="font-medium">{{ item.name_snapshot }}</td>
+              <td>{{ item.frequency|default:'—' }}</td>
+              <td>{{ item.duration|default:'—' }}</td>
+              <td>{{ item.instructions|default:'—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {% if prescription.general_instructions %}
+    <p class="mt-4 text-sm"><span class="text-muted">General instructions:</span> {{ prescription.general_instructions }}</p>
+  {% endif %}
+
+  {% if not medicines and not advice_items %}
     <p class="text-sm text-muted mt-3">No items prescribed.</p>
   {% endif %}
 </section>

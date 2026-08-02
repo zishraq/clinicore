@@ -2,6 +2,8 @@
 # proposed in docs/phase-0-proposal.md §3(l) lands with the deployment work.
 Django==6.0.7
 psycopg[binary]==3.2.3
+# Revision history on clinical models; see docs/adr/0006-encounter-amendments.md
+django-simple-history==3.13.0
 
 # Development and CI
 pytest==9.1.1

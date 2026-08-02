@@ -24,6 +24,7 @@ __all__ = [
     'encounter_create',
     'encounter_detail',
     'encounter_finalize',
+    'encounter_history',
     'encounter_list',
     'encounter_update',
     'prescription_item_row',
@@ -53,13 +54,20 @@ def encounter_detail(request, pk: int):
         Encounter.objects.select_related('patient', 'practitioner', 'branch'), pk=pk
     )
     prescription = getattr(encounter, 'prescription', None)
+    items = list(prescription.items.all()) if prescription else []
+    # Deferred import: billing depends on clinical, and the encounter page only
+    # needs to know whether a bill was already raised for this visit.
+    from billing.services import invoice_for_encounter
+
     return render(
         request,
         'clinical/encounter_detail.html',
         {
             'encounter': encounter,
             'prescription': prescription,
-            'items': prescription.items.all() if prescription else [],
+            'medicines': [item for item in items if not item.is_advice],
+            'advice_items': [item for item in items if item.is_advice],
+            'invoice': invoice_for_encounter(request.organization, encounter),
         },
     )
 
@@ -69,9 +77,16 @@ def _encounter_form_context(request, encounter=None):
     organization = request.organization
     prescription = services.prescription_for(encounter) if encounter else None
     data = request.POST or None
-    form = EncounterForm(data, instance=encounter, organization=organization)
+    form = EncounterForm(
+        data,
+        instance=encounter,
+        organization=organization,
+        requires_reason=bool(encounter and encounter.is_locked),
+    )
     prescription_form = PrescriptionForm(data, instance=prescription)
-    item_formset = PrescriptionItemFormSet(data, instance=prescription)
+    item_formset = PrescriptionItemFormSet(
+        data, instance=prescription, organization=organization
+    )
     return form, prescription_form, item_formset
 
 
@@ -100,7 +115,8 @@ def encounter_create(request):
             prescription_form=prescription_form,
             item_formset=item_formset,
         )
-        messages.success(request, 'Encounter saved.')
+        label = request.organization.terms['encounter']
+        messages.success(request, f'{label} saved.')
         return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
@@ -117,11 +133,10 @@ def encounter_create(request):
 @login_required
 @clinical_access_required
 def encounter_update(request, pk: int):
+    """Edit a draft, or amend a locked encounter with a recorded reason."""
     membership = require_membership(request)
     encounter = get_object_or_404(Encounter, pk=pk)
-    if not encounter.is_editable:
-        messages.error(request, 'Finalized encounters cannot be edited.')
-        return redirect('clinical:encounter_detail', pk=encounter.pk)
+    is_amendment = encounter.is_locked
 
     form, prescription_form, item_formset = _encounter_form_context(request, encounter)
     if (
@@ -136,8 +151,12 @@ def encounter_update(request, pk: int):
             form=form,
             prescription_form=prescription_form,
             item_formset=item_formset,
+            reason=form.cleaned_data.get('change_reason', ''),
         )
-        messages.success(request, 'Encounter updated.')
+        label = request.organization.terms['encounter']
+        messages.success(
+            request, 'Changes saved.' if is_amendment else f'{label} updated.'
+        )
         return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
@@ -148,6 +167,23 @@ def encounter_update(request, pk: int):
             'item_formset': item_formset,
             'encounter': encounter,
             'is_create': False,
+            'is_amendment': is_amendment,
+        },
+    )
+
+
+@login_required
+@clinical_access_required
+def encounter_history(request, pk: int):
+    """Who changed what, when, and why (SPEC §6.4)."""
+    encounter = get_object_or_404(Encounter.objects.select_related('patient'), pk=pk)
+    return render(
+        request,
+        'clinical/encounter_history.html',
+        {
+            'encounter': encounter,
+            # Explicitly organization-filtered: historical models are not scoped.
+            'timeline': services.revision_timeline(request.organization, encounter),
         },
     )
 
@@ -155,10 +191,13 @@ def encounter_update(request, pk: int):
 @login_required
 @clinical_access_required
 def encounter_finalize(request, pk: int):
+    membership = require_membership(request)
     encounter = get_object_or_404(Encounter, pk=pk)
-    if request.method == 'POST' and encounter.is_editable:
-        services.finalize_encounter(encounter)
-        messages.success(request, 'Encounter finalized.')
+    if request.method == 'POST' and not encounter.is_locked:
+        services.finalize_encounter(encounter, actor=membership.user)
+        terms = request.organization.terms
+        label, state = terms['encounter'], terms['status_finalized'].lower()
+        messages.success(request, f'{label} marked {state}.')
     return redirect('clinical:encounter_detail', pk=encounter.pk)
 
 
@@ -173,10 +212,9 @@ def prescription_item_row(request):
     """
     raw = request.GET.get('items-TOTAL_FORMS', '0')
     index = int(raw) if raw.isdigit() else 0
+    formset = PrescriptionItemFormSet(organization=request.organization)
     html = render_to_string(
-        'clinical/_item_row.html',
-        {'form': PrescriptionItemFormSet().empty_form},
-        request=request,
+        'clinical/_item_row.html', {'form': formset.empty_form}, request=request
     )
     # empty_form names its inputs items-__prefix__-…; the row is only usable
     # once that placeholder becomes the row's real index.
@@ -194,13 +232,17 @@ def prescription_print(request, pk: int):
     size = request.GET.get('size', prescription.print_size).upper()
     if size not in PrintSize.values:
         size = PrintSize.A5
+    items = list(prescription.items.all())
     return render(
         request,
         'print/prescription.html',
         {
             'encounter': encounter,
             'prescription': prescription,
-            'items': prescription.items.all(),
+            # Two sections: medicines carry a dose, advice does not. Each is
+            # omitted entirely when empty rather than printing a bare header.
+            'medicines': [item for item in items if not item.is_advice],
+            'advice_items': [item for item in items if item.is_advice],
             'page_size': size,
             # Interpolated into CSS, so it comes from the validated accessor.
             'letterhead_color': request.organization.primary_color,

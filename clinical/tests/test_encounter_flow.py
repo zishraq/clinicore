@@ -35,7 +35,7 @@ def _payload(patient, branch, practitioner, **overrides):
         'items-INITIAL_FORMS': '0',
         'items-MIN_NUM_FORMS': '0',
         'items-MAX_NUM_FORMS': '1000',
-        'items-0-free_text_name': 'Ambroxol syrup',
+        'items-0-display_name': 'Ambroxol syrup',
         'items-0-dosage': '10 ml',
         'items-0-frequency': 'Twice daily',
         'items-0-duration': '5 days',
@@ -84,9 +84,11 @@ def test_finalizing_locks_the_encounter(
         assert encounter.finalized_at is not None
         assert encounter.prescription.issued_at is not None
 
-    # A finalized encounter is not editable: the edit view bounces to detail.
+    # A finalized encounter stays editable, but the form now demands a reason;
+    # the amendment rules themselves are covered in test_amendments.py.
     response = client.get(reverse('clinical:encounter_update', args=[encounter.pk]))
-    assert response.status_code == 302
+    assert response.status_code == 200
+    assert response.context['is_amendment'] is True
 
 
 def test_add_item_row_renumbers_the_formset_prefix(client, practitioner):

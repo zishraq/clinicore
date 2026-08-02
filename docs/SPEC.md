@@ -116,13 +116,29 @@ neutral naming — no specialty terms:
 - **Encounter** — one consultation. Patient, practitioner, branch, datetime,
   chief complaint, examination notes, assessment, plan, follow-up date.
   Full history tracking, append-only corrections.
-- **Prescription** + **PrescriptionItem** — an item references a catalog
-  Product (or free text), plus dosage, frequency, duration, instructions, and a
-  flexible `attributes` JSON field for specialty-specific data (e.g. potency
-  and dilution for homeopathy) driven by an org-level field-definition config.
+- **Prescription** + **PrescriptionItem** — a prescription has **two sections,
+  medicines and advice**, and an item belongs to exactly one of them
+  (`item_type` = `MEDICATION` / `ADVICE`). An item's source is exactly one of a
+  catalog Product, a catalog AdviceTemplate, or free text — enforced by a check
+  constraint, and consistent with `item_type`. Medicines use dosage, frequency,
+  duration, instructions; advice has no dosage (the column is null for advice).
+  Every item also carries a flexible `attributes` JSON field for
+  specialty-specific data (e.g. potency and dilution for homeopathy) driven by
+  an org-level field-definition config, and a **`name_snapshot`** frozen at save
+  time. Printed and historical prescriptions render the snapshot, never a name
+  resolved through the live catalog row: renaming or deactivating a catalog
+  entry must not rewrite what a patient was handed.
+- **AdviceTemplate** — a reusable non-substance instruction ("walk 30 minutes
+  daily"): text, category (`DIET` / `EXERCISE` / `SLEEP` / `LIFESTYLE` /
+  `OTHER`), default frequency and duration, `is_active`. Advice is half of what
+  a practitioner prescribes and is repeated near-verbatim across patients, so it
+  is catalogued rather than retyped. Deliberately small — no dosage, no stock,
+  no price.
 - **Attachment** — files/images on a patient or encounter, with an access level.
 - **Product** — generic catalog item (medicine, consumable, retail good).
-  SKU, name, category, unit, `is_stock_tracked`, `is_sellable`, tax rate.
+  SKU, name, category, unit, `is_stock_tracked`, `is_sellable`, tax rate,
+  `default_attributes` (specialty defaults copied onto each prescribed item).
+  `is_sellable = False` covers things a clinic recommends but does not dispense.
 - **StockBatch** — product, branch, batch/lot number, expiry date, cost price.
 - **StockMovement** — immutable ledger: batch, type (`PURCHASE` / `SALE` /
   `DISPENSE` / `ADJUSTMENT` / `RETURN` / `WASTAGE`), quantity signed, reference
@@ -160,6 +176,12 @@ can sanity-check the schema.
     queue and appointment management, billing operations, follow-up calls.
     Explicitly denied: clinical narrative fields, private attachments, encounter
     notes, organization-wide revenue.
+    **Amended 2026-08-03:** billing is *not* a STAFF surface in this build. The
+    confirmed clinic workflow has the practitioner raise the bill and collect
+    payment with no handoff, so every billing screen sits behind the same
+    PRACTITIONER/OWNER check as the clinical app, and a STAFF user gets a 403.
+    Restoring the original matrix for a clinic that does have a cashier is a
+    `role_required` change plus a test, not a redesign.
 - Rate-limited login (django-axes), session expiry, secure cookie settings,
   password validators.
 
@@ -180,12 +202,26 @@ can sanity-check the schema.
 - Follow-up tracking: patients due for follow-up, with call outcome logging.
 
 ### 6.4 Clinical and prescriptions
-- Encounter form optimized for speed of entry: keyboard-navigable, autocomplete
-  on products, "repeat last prescription" action, templates for common regimens.
-- Prescription print view: a dedicated print stylesheet, `@page` sized A5 and A4
-  (user-selectable), clinic letterhead from Organization branding, and a clean
-  browser print with no app chrome. Verify the print CSS actually renders — this
-  is the single most-used feature in the building.
+- Encounter form optimized for speed of entry: keyboard-navigable, "repeat last
+  prescription" action, templates for common regimens.
+- **One unified autocomplete over both catalogs.** A practitioner prescribing
+  does not think "now I will add a medicine, now I will add advice" — they think
+  of the thing and type it. The prescription row therefore has a single search
+  box returning medicines and advice together, grouped and labelled by type;
+  selecting an entry sets `item_type` and prefills its defaults. Debounced, and
+  navigable with arrows plus enter, because this is used at speed with a patient
+  in the room.
+- **Quick-add from the encounter form.** If the typed text matches nothing,
+  offer to create it as a medicine or as advice inline, without leaving the page
+  or losing form state. A catalog that can only be maintained in a settings
+  screen goes stale within a month.
+- Prescription print view: **two sections — medicines (with a dosage column) and
+  advice (without)** — each omitted entirely when it has no items, so an
+  advice-only prescription never prints an empty medicines table. A dedicated
+  print stylesheet, `@page` sized A5 and A4 (user-selectable), clinic letterhead
+  from Organization branding, and a clean browser print with no app chrome.
+  Verify the print CSS actually renders — this is the single most-used feature
+  in the building.
 - Optional PDF generation via WeasyPrint for attachment/archive.
 - Corrections to a finalized encounter create a history entry, never a silent
   overwrite. The edit history must be viewable by authorized roles.
@@ -206,6 +242,33 @@ can sanity-check the schema.
 - Discounts, partial payments, outstanding balance, payment methods.
 - Printable/downloadable receipt using the same print system as prescriptions.
 
+Built, and the shape it settled on (see
+`docs/adr/0008-invoice-numbering-and-derived-balances.md`):
+
+- **The practitioner bills and collects.** No receptionist handoff, so every
+  billing screen is PRACTITIONER/OWNER — see the amendment in §6.1.
+- **The consultation fee is its own line**, prefilled from a per-organization
+  default that is editable in settings, never folded into a total. Product lines
+  use the same catalog autocomplete as the prescription form.
+- **Partial payment is the normal case.** Several payments per invoice, each
+  with a method and an actor, and the remaining balance shown prominently on the
+  invoice, on the patient record, and on the printed receipt.
+- **Balance and payment status are derived, never stored.** Amount due is the
+  sum of the line snapshots; amount paid is the sum of the payments that were
+  not voided. `UNPAID` / `PARTIALLY_PAID` / `PAID` are computed from those.
+  Overpayment is rejected with the figure the practitioner should type instead.
+- **Invoice numbers are gap-free per organization**, allocated from a locked
+  `core.DocumentSequence` row inside the transaction that writes the invoice.
+  Gaps read as deleted transactions.
+- **Nothing financial is deleted or silently edited.** A payment or an invoice
+  raised in error is voided with a reason and an actor; an invoice with payments
+  against it cannot be edited, only voided and re-issued.
+- **Money is `Decimal`, rounded half-up at two places in exactly two places:**
+  when a line total is saved and when a payment is recorded. Everything else is
+  a sum of rounded columns, so a receipt always adds up.
+- Not built here: stock movements from invoice lines, tax rates, and refunds
+  (a refund today is a voided payment). Inventory is the next change.
+
 ### 6.7 Reporting
 - Dashboards per role: today's queue, upcoming appointments, low stock,
   revenue summary (owner/practitioner only).
@@ -217,6 +280,8 @@ can sanity-check the schema.
 ### 6.8 Settings
 - Organization profile, branding (name, logo, color tokens), terminology map,
   branches, users, service catalog, tax rates, prescription field definitions.
+- Medicine and advice catalogs: search, create, edit, and **deactivate — never
+  delete**, since issued prescriptions reference these rows.
 - Everything a new customer would need to change on day one must be editable
   here. If I have to touch code to onboard a second clinic, the design failed.
 

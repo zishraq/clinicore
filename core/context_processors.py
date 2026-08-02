@@ -4,7 +4,7 @@ import re
 
 from django.utils.safestring import mark_safe
 
-from organizations.models import SEED_PALETTE, hex_color_or
+from organizations.models import DEFAULT_TERMINOLOGY, SEED_PALETTE, hex_color_or
 
 __all__ = ['organization']
 
@@ -30,11 +30,17 @@ def _palette_css(palette: dict) -> str:
 
 
 def organization(request) -> dict:
-    """Expose the request's organization, membership, and colour tokens."""
+    """Expose the request's organization, membership, labels, and colour tokens.
+
+    ``terms`` is the SPEC §5 terminology map: templates read every user-facing
+    word for a domain concept from it, never hardcoded, so relabelling a clinic
+    is configuration. Anonymous and pre-membership requests get the defaults.
+    """
     active = getattr(request, 'organization', None)
     palette = active.palette if active else dict(SEED_PALETTE)
     return {
         'organization': active,
         'membership': getattr(request, 'membership', None),
         'palette_css': _palette_css(palette),
+        'terms': active.terms if active else dict(DEFAULT_TERMINOLOGY),
     }
