@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block title %}History — {{ encounter.patient.full_name }}{% endblock %}
+{% block page_title %}{{ terms.encounter }} history{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'clinical:encounter_detail' encounter.pk %}" class="btn btn-sm btn-brand-ghost">Back to {{ terms.encounter|lower }}</a>
+{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-6 max-w-4xl">
+  <p class="text-sm text-muted">
+    {{ encounter.patient.full_name }} · {{ encounter.occurred_at|date:'d M Y, H:i' }}
+  </p>
+
+  <ol class="mt-6 space-y-6">
+    {% for entry in timeline %}
+      <li class="border-l-2 border-black/10 pl-4">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span class="font-medium">{{ entry.revision.history_date|date:'d M Y, H:i' }}</span>
+          <span class="text-sm text-muted">
+            {% if entry.revision.history_user %}{{ entry.revision.history_user.full_name }}{% else %}System{% endif %}
+          </span>
+          <span class="badge badge-ghost badge-sm">
+            {% if entry.is_creation %}Created{% else %}{{ entry.revision.get_history_type_display }}{% endif %}
+          </span>
+        </div>
+
+        {% if entry.revision.history_change_reason %}
+          <p class="text-sm mt-2">
+            <span class="text-muted">Reason:</span> {{ entry.revision.history_change_reason }}
+          </p>
+        {% endif %}
+
+        {% if entry.changes %}
+          <div class="overflow-x-auto mt-3">
+            <table class="table table-sm">
+              <thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
+              <tbody>
+                {% for change in entry.changes %}
+                  <tr>
+                    <td class="font-medium">{{ change.label }}</td>
+                    <td class="text-muted">{{ change.old|default:'—'|truncatechars:120 }}</td>
+                    <td>{{ change.new|default:'—'|truncatechars:120 }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% elif not entry.is_creation %}
+          <p class="text-sm text-muted mt-2">
+            {% if entry.has_previous %}
+              No field values changed.
+            {% else %}
+              No earlier revision was recorded, so there is nothing to compare against.
+            {% endif %}
+          </p>
+        {% endif %}
+      </li>
+    {% empty %}
+      {% with one=terms.encounter|lower %}
+        {% include 'partials/_empty_state.html' with title='No history yet' body='Changes appear here once this '|add:one|add:' is edited.' %}
+      {% endwith %}
+    {% endfor %}
+  </ol>
+</div>
+{% endblock %}
