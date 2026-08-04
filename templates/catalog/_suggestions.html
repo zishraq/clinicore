@@ -1,0 +1,69 @@
+{% comment %}
+Suggestions for one prescription row: both catalogs in one list, grouped and
+labelled by type. Each option carries its defaults as data attributes so
+selecting it needs no further request (static/js/item-autocomplete.js).
+{% endcomment %}
+{% if products %}
+  <p class="px-3 pt-2 pb-1 text-xs uppercase tracking-wide text-muted">Medicines</p>
+  {% for product in products %}
+    <button type="button" data-result
+            data-type="MEDICATION"
+            data-id="{{ product.pk }}"
+            data-name="{{ product.name }}"
+            {# The asking price rides along so a bill line fills itself in. #}
+            data-price="{{ product.sale_price }}"
+            @click="select($el)"
+            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] flex items-baseline gap-2">
+      <span class="font-medium">{{ product.name }}</span>
+      {% if product.unit %}<span class="text-xs text-muted">{{ product.unit }}</span>{% endif %}
+      {% if product.category %}<span class="badge badge-ghost badge-xs">{{ product.category }}</span>{% endif %}
+    </button>
+  {% endfor %}
+{% endif %}
+
+{% if advice %}
+  <p class="px-3 pt-2 pb-1 text-xs uppercase tracking-wide text-muted">Advice</p>
+  {% for item in advice %}
+    <button type="button" data-result
+            data-type="ADVICE"
+            data-id="{{ item.pk }}"
+            data-name="{{ item.prescribing_name }}"
+            data-frequency="{{ item.default_frequency }}"
+            data-duration="{{ item.default_duration }}"
+            @click="select($el)"
+            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] flex items-baseline gap-2">
+      <span class="font-medium">{{ item.prescribing_name }}</span>
+      <span class="badge badge-ghost badge-xs">{{ item.get_category_display }}</span>
+    </button>
+  {% endfor %}
+{% endif %}
+
+{% if query and not exact_match and allow_quick_add %}
+  {% comment %} Quick-add: nothing matched well enough, so offer to create it here rather
+     than sending the practitioner off to maintain a list mid-consultation. {% endcomment %}
+  <div class="border-t border-black/10 mt-1 pt-1">
+    {% if not has_results %}
+      <p class="px-3 py-1 text-xs text-muted">Nothing found for “{{ query }}”.</p>
+    {% endif %}
+    <button type="button" data-quick-add
+            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] text-[var(--cc-primary)]"
+            hx-post="{% url 'catalog:quick_add' %}"
+            hx-vals='{"q": "{{ query|escapejs }}", "item_type": "MEDICATION"}'
+            hx-target="closest [data-results]"
+            hx-swap="innerHTML">
+      Add “{{ query|truncatechars:40 }}” as a medicine
+    </button>
+    <button type="button" data-quick-add
+            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] text-[var(--cc-primary)]"
+            hx-post="{% url 'catalog:quick_add' %}"
+            hx-vals='{"q": "{{ query|escapejs }}", "item_type": "ADVICE"}'
+            hx-target="closest [data-results]"
+            hx-swap="innerHTML">
+      Add “{{ query|truncatechars:40 }}” as advice
+    </button>
+  </div>
+{% endif %}
+
+{% if not query and not has_results %}
+  <p class="px-3 py-2 text-sm text-muted">Start typing to search the catalogs.</p>
+{% endif %}

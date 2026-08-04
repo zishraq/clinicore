@@ -1,0 +1,17 @@
+{% comment %}
+A freshly created catalog entry, marked for immediate selection: the row's
+component sees data-autoselect after the swap and fills the row in, so the
+practitioner never leaves the encounter form or loses what they typed.
+{% endcomment %}
+<button type="button" data-result data-autoselect
+        data-type="{{ item_type }}"
+        data-id="{{ entry.pk }}"
+        data-name="{{ entry.prescribing_name }}"
+        {% if item_type == 'ADVICE' %}
+          data-frequency="{{ entry.default_frequency }}"
+          data-duration="{{ entry.default_duration }}"
+        {% endif %}
+        @click="select($el)"
+        class="w-full text-left px-3 py-2">
+  {{ entry.prescribing_name }}
+</button>
