@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}Billing settings{% endblock %}
+{% block page_title %}Billing settings{% endblock %}
+
+{% block content %}
+<form method="post" class="card-surface rounded-xl p-6 max-w-lg space-y-4">
+  {% csrf_token %}
+  {% for field in form %}
+    <div>
+      <label class="label" for="{{ field.id_for_label }}">
+        <span class="label-text">{{ field.label }}</span>
+      </label>
+      {{ field }}
+      {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
+      {% for error in field.errors %}
+        <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+      {% endfor %}
+    </div>
+  {% endfor %}
+  <button type="submit" class="btn btn-brand">Save</button>
+</form>
+{% endblock %}
