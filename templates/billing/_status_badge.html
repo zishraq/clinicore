@@ -1,0 +1,7 @@
+{% load terminology %}
+{% comment %}
+The colour keys off the stored value; the words come from the terminology map.
+Unpaid is deliberately not red-alarming — an unpaid bill is a normal state at
+the moment it is raised.
+{% endcomment %}
+<span class="badge {% if status == 'PAID' %}badge-success badge-outline{% elif status == 'PARTIALLY_PAID' %}badge-warning badge-outline{% elif status == 'VOID' %}badge-ghost line-through{% else %}badge-ghost{% endif %}">{% status_label status %}</span>

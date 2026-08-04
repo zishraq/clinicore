@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% load terminology %}
+
+{% block title %}{{ terms.invoice_plural }}{% endblock %}
+{% block page_title %}{{ terms.invoice_plural }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'billing:invoice_create' %}" class="btn btn-brand btn-sm">New {{ terms.invoice|lower }}</a>
+{% endblock %}
+
+{% block content %}
+<form method="get" class="card-surface rounded-xl p-4 mb-4 grid gap-3 sm:grid-cols-4">
+  <div>
+    <label class="label py-1" for="q"><span class="label-text text-xs">Search</span></label>
+    <input id="q" type="search" name="q" value="{{ query }}" placeholder="Number or patient"
+           class="input input-bordered w-full">
+  </div>
+  <div>
+    <label class="label py-1" for="status"><span class="label-text text-xs">Status</span></label>
+    <select id="status" name="status" class="select select-bordered w-full">
+      <option value="">All</option>
+      {% for value, label in statuses %}
+        {# Stored values never reach the UI as words: the label comes from the map. #}
+        {% status_label value as status_text %}
+        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ status_text }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label py-1" for="from"><span class="label-text text-xs">From</span></label>
+    <input id="from" type="date" name="from" value="{{ date_from }}" class="input input-bordered w-full">
+  </div>
+  <div class="flex gap-2 items-end">
+    <div class="flex-1">
+      <label class="label py-1" for="to"><span class="label-text text-xs">To</span></label>
+      <input id="to" type="date" name="to" value="{{ date_to }}" class="input input-bordered w-full">
+    </div>
+    <button type="submit" class="btn btn-brand">Filter</button>
+  </div>
+</form>
+
+{% if invoices %}
+  <div class="card-surface rounded-xl overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Number</th><th>Date</th><th>Patient</th>
+          <th class="text-right">Total</th><th class="text-right">Paid</th>
+          <th class="text-right">Balance</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for invoice in invoices %}
+          <tr class="hover cursor-pointer" onclick="window.location='{% url 'billing:invoice_detail' invoice.pk %}'">
+            <td class="font-mono">{{ invoice.number }}</td>
+            <td>{{ invoice.issued_at|date:'d M Y' }}</td>
+            <td class="font-medium">{{ invoice.patient.full_name }}</td>
+            <td class="text-right tabular-nums">{{ invoice.amount_due }}</td>
+            <td class="text-right tabular-nums">{{ invoice.amount_paid }}</td>
+            <td class="text-right tabular-nums font-semibold">{{ invoice.balance }}</td>
+            <td>
+              {% include 'billing/_status_badge.html' with status=invoice.payment_status %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if invoices.has_other_pages %}
+    <div class="join mt-4 flex justify-center">
+      {% if invoices.has_previous %}
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status }}&from={{ date_from }}&to={{ date_to }}&page={{ invoices.previous_page_number }}">«</a>
+      {% endif %}
+      <span class="join-item btn btn-sm btn-disabled">Page {{ invoices.number }} of {{ invoices.paginator.num_pages }}</span>
+      {% if invoices.has_next %}
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status }}&from={{ date_from }}&to={{ date_to }}&page={{ invoices.next_page_number }}">»</a>
+      {% endif %}
+    </div>
+  {% endif %}
+{% else %}
+  {% url 'billing:invoice_create' as create_url %}
+  {% with one=terms.invoice|lower many=terms.invoice_plural|lower %}
+    {% include 'partials/_empty_state.html' with title='No '|add:many|add:' yet' body='Bills you raise will appear here.' action_url=create_url action_label='New '|add:one %}
+  {% endwith %}
+{% endif %}
+{% endblock %}

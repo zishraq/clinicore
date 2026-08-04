@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block alpine_components %}
+  <script src="{% static 'js/invoice-line.js' %}" defer></script>
+{% endblock %}
+
+{% block title %}{% if is_create %}New {{ terms.invoice|lower }}{% else %}Edit {{ invoice.number }}{% endif %}{% endblock %}
+{% block page_title %}{% if is_create %}New {{ terms.invoice|lower }}{% else %}Edit {{ invoice.number }}{% endif %}{% endblock %}
+
+{% block content %}
+<form method="post" class="space-y-4 max-w-5xl" x-data="invoiceTotals()" @bill-changed.window="recalc()">
+  {% csrf_token %}
+
+  {% if encounter %}
+    <section class="card-surface rounded-xl p-4 text-sm">
+      Billing the {{ terms.encounter|lower }} of
+      <a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ encounter.patient.full_name }}</a>
+      on {{ encounter.occurred_at|date:'d M Y' }}.
+    </section>
+  {% endif %}
+
+  <section class="card-surface rounded-xl p-6">
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% for field in form %}
+        {% if not field.is_hidden %}
+          <div class="{% if field.name == 'notes' %}sm:col-span-2{% endif %}">
+            <label class="label" for="{{ field.id_for_label }}">
+              <span class="label-text">{{ field.label }}</span>
+            </label>
+            {{ field }}
+            {% for error in field.errors %}
+              <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% for error in form.non_field_errors %}
+      <p class="text-sm text-[var(--cc-danger)] mt-2">{{ error }}</p>
+    {% endfor %}
+  </section>
+
+  <section class="card-surface rounded-xl p-6">
+    <h2 class="font-semibold">Lines</h2>
+    <p class="text-sm text-muted mb-4">
+      The {{ terms.consultation_fee|lower }} is its own line. Search products by name, or just type.
+    </p>
+
+    {{ item_formset.non_form_errors }}
+    {{ item_formset.management_form }}
+    <div id="line-rows" class="space-y-3">
+      {% for line_form in item_formset %}
+        {% include 'billing/_line_row.html' with form=line_form %}
+      {% endfor %}
+    </div>
+
+    {% comment %}
+      Add-row without a page reload, exactly as the prescription form does it:
+      hx-include sends the management form's TOTAL_FORMS so the server names the
+      new inputs for the right index, and hx-on bumps that counter afterwards —
+      Django ignores any row beyond TOTAL_FORMS on submit.
+    {% endcomment %}
+    <button type="button" class="btn btn-sm btn-brand-ghost mt-4"
+            hx-get="{% url 'billing:line_row' %}"
+            hx-include="[name='items-TOTAL_FORMS']"
+            hx-target="#line-rows"
+            hx-swap="beforeend"
+            hx-on::after-request="const total = document.getElementById('id_items-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
+      Add another line
+    </button>
+
+    <div class="flex justify-end items-baseline gap-3 mt-6 border-t border-black/5 pt-4">
+      <span class="text-muted">Total</span>
+      <span class="text-2xl font-semibold tabular-nums">{{ organization.currency }} <span x-text="formatted"></span></span>
+    </div>
+  </section>
+
+  <div class="flex gap-3">
+    <button type="submit" class="btn btn-brand">
+      {% if is_create %}Create {{ terms.invoice|lower }}{% else %}Save changes{% endif %}
+    </button>
+    <a href="{% if invoice %}{% url 'billing:invoice_detail' invoice.pk %}{% else %}{% url 'billing:invoice_list' %}{% endif %}"
+       class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

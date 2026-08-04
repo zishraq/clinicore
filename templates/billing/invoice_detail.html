@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ invoice.number }}{% endblock %}
+{% block page_title %}{{ invoice.number }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'billing:receipt_print' invoice.pk %}" class="btn btn-sm btn-brand" target="_blank">Print receipt</a>
+  {% if invoice.is_editable %}
+    <a href="{% url 'billing:invoice_update' invoice.pk %}" class="btn btn-sm btn-brand-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+  <section class="card-surface rounded-xl p-6 lg:col-span-2">
+    <div class="flex items-center justify-between">
+      <h2 class="font-semibold">Lines</h2>
+      {% include 'billing/_status_badge.html' with status=invoice.payment_status %}
+    </div>
+
+    <div class="overflow-x-auto mt-4">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Item</th><th class="text-right">Qty</th><th class="text-right">Unit price</th>
+            <th class="text-right">Discount</th><th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              {# name_snapshot, never the live catalog row: a renamed product must not rewrite this bill. #}
+              <td class="font-medium">{{ item.name_snapshot }}</td>
+              <td class="text-right tabular-nums">{{ item.quantity }}</td>
+              <td class="text-right tabular-nums">{{ item.unit_price }}</td>
+              <td class="text-right tabular-nums">{{ item.discount }}</td>
+              <td class="text-right tabular-nums">{{ item.line_total }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="4" class="text-right">Total</th>
+            <th class="text-right tabular-nums">{{ invoice.currency }} {{ invoice.amount_due }}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    {% if invoice.notes %}
+      <p class="mt-4 text-sm"><span class="text-muted">Notes:</span> {{ invoice.notes }}</p>
+    {% endif %}
+  </section>
+
+  <aside class="space-y-4">
+    <section class="card-surface rounded-xl p-6">
+      {# The number a patient paying in instalments is here to ask about. #}
+      <p class="text-sm text-muted">Balance</p>
+      <p class="text-4xl font-semibold tabular-nums mt-1 {% if invoice.balance > 0 %}text-[var(--cc-danger)]{% else %}text-[var(--cc-success)]{% endif %}">
+        {{ invoice.currency }} {{ invoice.balance }}
+      </p>
+      <dl class="mt-4 space-y-2 text-sm">
+        <div class="flex justify-between"><dt class="text-muted">Total</dt><dd class="tabular-nums">{{ invoice.amount_due }}</dd></div>
+        <div class="flex justify-between"><dt class="text-muted">Received</dt><dd class="tabular-nums">{{ invoice.amount_paid }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="card-surface rounded-xl p-6 space-y-3 text-sm">
+      <div><p class="text-muted">Patient</p>
+        <a class="link" href="{% url 'patients:detail' invoice.patient.pk %}">{{ invoice.patient.full_name }} ({{ invoice.patient.code }})</a>
+      </div>
+      <div><p class="text-muted">Issued</p><p>{{ invoice.issued_at|date:'d M Y, H:i' }}</p></div>
+      {% if invoice.encounter %}
+        <div><p class="text-muted">{{ terms.encounter }}</p>
+          <a class="link" href="{% url 'clinical:encounter_detail' invoice.encounter.pk %}">{{ invoice.encounter.occurred_at|date:'d M Y' }}</a>
+        </div>
+      {% endif %}
+      {% if invoice.is_void %}
+        <div class="border-t border-black/5 pt-3">
+          <p class="text-muted">Voided {{ invoice.voided_at|date:'d M Y, H:i' }}</p>
+          <p>{{ invoice.void_reason }}</p>
+          <p class="text-xs text-muted">by {{ invoice.voided_by.full_name|default:'—' }}</p>
+        </div>
+      {% endif %}
+    </section>
+  </aside>
+</div>
+
+<section class="card-surface rounded-xl p-6 mt-4">
+  <h2 class="font-semibold">{{ terms.payment_plural }}</h2>
+
+  {% if payments %}
+    <div class="overflow-x-auto mt-4">
+      <table class="table">
+        <thead>
+          <tr><th>When</th><th class="text-right">Amount</th><th>Method</th><th>Taken by</th><th>Note</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for payment in payments %}
+            <tr class="{% if payment.is_void %}opacity-50{% endif %}">
+              <td>{{ payment.received_at|date:'d M Y, H:i' }}</td>
+              <td class="text-right tabular-nums {% if payment.is_void %}line-through{% endif %}">{{ payment.amount }}</td>
+              <td>{{ payment.get_method_display }}</td>
+              <td>{{ payment.received_by.full_name }}</td>
+              <td>
+                {{ payment.note|default:'—' }}
+                {% if payment.is_void %}
+                  <span class="block text-xs text-muted">Voided: {{ payment.void_reason }} ({{ payment.voided_by.full_name|default:'—' }})</span>
+                {% endif %}
+              </td>
+              <td class="text-right">
+                {% if not payment.is_void and not invoice.is_void %}
+                  {# Correction is a reversal with a reason, never a delete. #}
+                  <button type="button" class="btn btn-ghost btn-xs text-[var(--cc-danger)]"
+                          onclick="void_payment_{{ payment.pk }}.showModal()">Void</button>
+                  <dialog id="void_payment_{{ payment.pk }}" class="modal">
+                    <div class="modal-box text-left">
+                      <h3 class="font-semibold text-lg">Void this {{ terms.payment|lower }}?</h3>
+                      <p class="py-2 text-sm">
+                        {{ invoice.currency }} {{ payment.amount }} taken on {{ payment.received_at|date:'d M Y' }}.
+                        The record stays, marked void with your reason, and stops counting towards the balance.
+                      </p>
+                      <form method="post" action="{% url 'billing:payment_void' invoice.pk payment.pk %}">
+                        {% csrf_token %}
+                        {{ void_form.reason }}
+                        <div class="modal-action">
+                          <button type="button" class="btn btn-ghost" onclick="void_payment_{{ payment.pk }}.close()">Cancel</button>
+                          <button type="submit" class="btn btn-brand">Void {{ terms.payment|lower }}</button>
+                        </div>
+                      </form>
+                    </div>
+                    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+                  </dialog>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-sm text-muted mt-3">Nothing received yet.</p>
+  {% endif %}
+
+  {% if not invoice.is_void and invoice.balance > 0 %}
+    <form method="post" action="{% url 'billing:payment_create' invoice.pk %}"
+          class="grid gap-3 sm:grid-cols-4 items-end mt-6 border-t border-black/5 pt-6">
+      {% csrf_token %}
+      {% for field in payment_form %}
+        <div>
+          <label class="label py-1" for="{{ field.id_for_label }}">
+            <span class="label-text text-xs">{{ field.label }}</span>
+          </label>
+          {{ field }}
+          {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-brand">Record {{ terms.payment|lower }}</button>
+    </form>
+  {% endif %}
+</section>
+
+{% if not invoice.is_void %}
+  <div class="mt-6">
+    <button type="button" class="btn btn-ghost btn-sm text-[var(--cc-danger)]" onclick="void_invoice_modal.showModal()">
+      Void this {{ terms.invoice|lower }}
+    </button>
+    <dialog id="void_invoice_modal" class="modal">
+      <div class="modal-box">
+        <h3 class="font-semibold text-lg">Void {{ invoice.number }}?</h3>
+        <p class="py-2 text-sm">
+          The {{ terms.invoice|lower }} stays on the record, marked void with your reason, and stops
+          counting towards what this patient owes. Void its {{ terms.payment_plural|lower }} first if any were taken.
+        </p>
+        <form method="post" action="{% url 'billing:invoice_void' invoice.pk %}">
+          {% csrf_token %}
+          {{ void_form.reason }}
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" onclick="void_invoice_modal.close()">Cancel</button>
+            <button type="submit" class="btn btn-brand">Void {{ terms.invoice|lower }}</button>
+          </div>
+        </form>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,86 @@
+{% comment %}
+One bill line: the consultation, a catalog product, or anything typed.
+
+The visible box is display_name. Selecting a suggestion fills the hidden
+product/line_type inputs and the price (static/js/invoice-line.js); typing and
+selecting nothing leaves it as a typed line, which the form snapshots as
+name_snapshot server-side. Also served standalone to the HTMX add-row button,
+which substitutes __prefix__ for the new index.
+{% endcomment %}
+{% comment %} after-swap is caught on the row, not the input: htmx fires it on the
+   results div and it bubbles to this ancestor, never to a sibling. {% endcomment %}
+<div class="border border-black/5 rounded-lg p-3" x-data="invoiceLine()" data-line-row
+     x-show="!removed" @htmx:after-swap="onResults()">
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% if form.DELETE %}{{ form.DELETE }}{% endif %}
+
+  <div class="flex items-start gap-2">
+    <div class="grid gap-2 sm:grid-cols-12 items-end flex-1">
+      <div class="sm:col-span-5 relative">
+        <label class="label py-1">
+          <span class="label-text text-xs">Item</span>
+        </label>
+        {% comment %}
+          Rendered by hand so the HTMX wiring sits next to the URL it calls.
+          only=products keeps advice out of a bill, and quick-add off it.
+          No hx-vals: htmx already sends this input under its formset name and
+          catalog/views.py _typed_query reads it from there.
+        {% endcomment %}
+        <input type="text"
+               name="{{ form.display_name.html_name }}"
+               id="{{ form.display_name.id_for_label }}"
+               value="{{ form.display_name.value|default_if_none:'' }}"
+               placeholder="Search products, or type anything…"
+               autocomplete="off"
+               data-role="line-search"
+               class="input input-bordered w-full"
+               hx-get="{% url 'catalog:suggestions' %}?only=products"
+               hx-trigger="keyup[key!=='Enter'&&key!=='Escape'&&key!=='ArrowUp'&&key!=='ArrowDown'&&key!=='Tab'] changed delay:250ms"
+               hx-target="next [data-results]"
+               hx-swap="innerHTML"
+               @input="onInput()"
+               @keydown.arrow-down.prevent="move(1)"
+               @keydown.arrow-up.prevent="move(-1)"
+               @keydown.enter.prevent="choose()"
+               @keydown.escape="close()">
+        {% for error in form.display_name.errors %}
+          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+        {% endfor %}
+
+        <div x-ref="results"
+             x-show="open"
+             @click.outside="close()"
+             class="absolute z-40 left-0 right-0 mt-1 bg-[var(--cc-surface)] rounded-box shadow-lg border border-black/10 max-h-72 overflow-y-auto"
+             data-results></div>
+      </div>
+
+      <div class="sm:col-span-2">
+        <label class="label py-1"><span class="label-text text-xs">Qty</span></label>
+        <div @input="changed()">{{ form.quantity }}</div>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label py-1"><span class="label-text text-xs">Unit price</span></label>
+        <div @input="changed()">{{ form.unit_price }}</div>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label py-1"><span class="label-text text-xs">Discount</span></label>
+        <div @input="changed()">{{ form.discount }}</div>
+      </div>
+      <div class="sm:col-span-1 text-right">
+        <label class="label py-1"><span class="label-text text-xs">Total</span></label>
+        {# Display only. The server recomputes it on save; this is so the number is not a surprise. #}
+        <p class="font-medium tabular-nums py-2" x-text="lineTotal.toFixed(2)"></p>
+      </div>
+    </div>
+
+    <button type="button"
+            class="btn btn-ghost btn-sm text-[var(--cc-danger)] mt-7"
+            @click="remove()"
+            aria-label="Remove this line"
+            title="Remove this line">✕</button>
+  </div>
+
+  {% for error in form.non_field_errors %}
+    <p class="text-sm text-[var(--cc-danger)] mt-2">{{ error }}</p>
+  {% endfor %}
+</div>
