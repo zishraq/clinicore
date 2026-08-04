@@ -20,6 +20,13 @@ from clinical.models import Encounter, Prescription, PrescriptionItem
 from core.context import organization_context
 from core.exceptions import ActiveOrganizationRequired
 from core.models import DocumentSequence, OrgOwnedModel
+from inventory.models import (
+    GoodsReceipt,
+    GoodsReceiptItem,
+    MovementType,
+    StockBatch,
+    StockMovement,
+)
 from organizations.models import Branch
 from patients.models import Patient, PatientClinicalProfile
 
@@ -115,6 +122,55 @@ def _build_payment(organization):
     )
 
 
+def _build_stock_batch(organization):
+    return StockBatch.objects.create(
+        organization=organization,
+        product=_build_product(organization),
+        branch=_build_branch(organization),
+        lot_number=f'LOT-{organization.pk}',
+    )
+
+
+def _build_stock_movement(organization):
+    return StockMovement.objects.create(
+        organization=organization,
+        batch=_build_stock_batch(organization),
+        movement_type=MovementType.PURCHASE,
+        quantity=Decimal('10.00'),
+    )
+
+
+def _build_goods_receipt(organization):
+    return GoodsReceipt.objects.create(
+        organization=organization,
+        branch=_build_branch(organization),
+        number=f'GRN-2026-{organization.pk:04d}',
+    )
+
+
+def _build_goods_receipt_item(organization):
+    # One branch, shared: the receipt and the batch it feeds are by definition
+    # at the same place, and Branch.code is unique per organization.
+    branch = _build_branch(organization)
+    product = _build_product(organization)
+    return GoodsReceiptItem.objects.create(
+        organization=organization,
+        receipt=GoodsReceipt.objects.create(
+            organization=organization,
+            branch=branch,
+            number=f'GRN-2026-{organization.pk:04d}',
+        ),
+        product=product,
+        batch=StockBatch.objects.create(
+            organization=organization,
+            product=product,
+            branch=branch,
+            lot_number=f'LOT-{organization.pk}',
+        ),
+        quantity=Decimal('10.00'),
+    )
+
+
 def _practitioner_for(organization):
     user = User.objects.create_user(
         phone=f'0199{organization.pk:07d}', full_name='Dr Test'
@@ -136,6 +192,10 @@ BUILDERS = {
     'clinical.Prescription': _build_prescription,
     'clinical.PrescriptionItem': _build_prescription_item,
     'core.DocumentSequence': _build_document_sequence,
+    'inventory.GoodsReceipt': _build_goods_receipt,
+    'inventory.GoodsReceiptItem': _build_goods_receipt_item,
+    'inventory.StockBatch': _build_stock_batch,
+    'inventory.StockMovement': _build_stock_movement,
     'organizations.Branch': _build_branch,
     'patients.Patient': _build_patient,
     'patients.PatientClinicalProfile': _build_clinical_profile,

@@ -39,9 +39,34 @@ callers: line total on save, payment amount on record. `config/settings_test.py`
 now hands the database back to `config.settings` when `POSTGRES_DB` is set, so
 `docker compose up -d db` plus the env vars runs the suite on real Postgres.
 
-Next: inventory (SPEC §6.5) — stock models, batches, movements, and the
-`DISPENSE`/`SALE` hooks off prescriptions and invoice lines. Phases in SPEC §11
-otherwise remain suspended. Not yet deployed.
+Inventory (SPEC §6.5) is in progress. Increment 1 — the `inventory` app's
+models, the ledger service, and its tests — is done; there is **no UI yet**, so
+nothing here has been browser-verified and nothing is reachable from the app.
+Rules to know before touching it, all in `docs/adr/0009-ledger-based-stock.md`:
+
+- **On-hand is never a column.** `StockBatch` is identity (product, branch, lot,
+  expiry, cost); quantity is `Sum(StockMovement.quantity)` via
+  `StockBatchQuerySet.with_on_hand()` or the `on_hand` property. Same call as
+  the derived invoice balance.
+- **The ledger is append-only, enforced.** `StockMovement.save()` on an existing
+  row and `.delete()` both raise `LedgerIsAppendOnly`. Corrections are an
+  `ADJUSTMENT` with a reason, which a check constraint also requires.
+- **The invoice is the stock event, not the prescription.** Confirmed decision:
+  prescription items carry no quantity, so only invoice lines will decrement.
+  `DISPENSE` and the `prescription_item` FK exist for a later hand-out-without-
+  billing screen, not as a hook.
+- **Stock leaves FEFO, automatically**, splitting across batches with one
+  movement each; expired batches are excluded from allocation but still counted
+  in `on_hand()`. Nobody picks a batch at the counter.
+- **`allocate_fefo` locks then counts, in two statements.** Combining them into
+  one `SELECT … FOR UPDATE` with the on-hand subquery lets every waiting seller
+  read the pre-lock snapshot under READ COMMITTED — a real oversell bug, caught
+  by `inventory/tests/test_concurrency.py` (Postgres only, skips on SQLite).
+
+Next, in order: goods receipt UI; stock views (on-hand per branch, batch detail,
+movement history); the `SALE` hook off invoice lines, which needs a nullable
+`branch` FK on `Invoice`; then alerts, which need `reorder_level` on
+`catalog.Product`. Phases in SPEC §11 otherwise remain suspended. Not deployed.
 
 ## Standing rules
 

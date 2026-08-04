@@ -237,6 +237,16 @@ can sanity-check the schema.
   dispensing).
 - Manual stock adjustments require a reason and are always attributed.
 
+**Amended 2026-08-04**, and in progress — see
+`docs/adr/0009-ledger-based-stock.md`. The bullet above asking for automatic
+`DISPENSE` movements *and* automatic `SALE` movements describes the same
+physical handover twice in this clinic's workflow, where the practitioner writes
+the prescription and raises the bill for the same box. Only invoice lines
+decrement stock: a prescription item carries dosage and duration, not a
+quantity, so it has no number to decrement by. `DISPENSE` survives for a
+hand-out-without-billing screen. Stock also leaves first-expiry-first-out
+without anyone choosing a batch, which the bullets above left open.
+
 ### 6.6 Billing
 - Create an invoice from an encounter or standalone. Services plus products.
 - Discounts, partial payments, outstanding balance, payment methods.
