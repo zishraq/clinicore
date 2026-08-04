@@ -39,10 +39,12 @@ callers: line total on save, payment amount on record. `config/settings_test.py`
 now hands the database back to `config.settings` when `POSTGRES_DB` is set, so
 `docker compose up -d db` plus the env vars runs the suite on real Postgres.
 
-Inventory (SPEC §6.5) is in progress. Increment 1 — the `inventory` app's
-models, the ledger service, and its tests — is done; there is **no UI yet**, so
-nothing here has been browser-verified and nothing is reachable from the app.
-Rules to know before touching it, all in `docs/adr/0009-ledger-based-stock.md`:
+Inventory (SPEC §6.5) is in progress. Increments 1 and 2 are done: the
+`inventory` app's models and ledger service, then the screens — stock on hand
+per branch, batch drill-down with movement history, goods receipts, and manual
+adjustments. PRACTITIONER/OWNER only, like billing. Browser-verified end to end
+(receive → on-hand → adjust). Rules to know before touching it, all in
+`docs/adr/0009-ledger-based-stock.md`:
 
 - **On-hand is never a column.** `StockBatch` is identity (product, branch, lot,
   expiry, cost); quantity is `Sum(StockMovement.quantity)` via
@@ -63,10 +65,26 @@ Rules to know before touching it, all in `docs/adr/0009-ledger-based-stock.md`:
   read the pre-lock snapshot under READ COMMITTED — a real oversell bug, caught
   by `inventory/tests/test_concurrency.py` (Postgres only, skips on SQLite).
 
-Next, in order: goods receipt UI; stock views (on-hand per branch, batch detail,
-movement history); the `SALE` hook off invoice lines, which needs a nullable
-`branch` FK on `Invoice`; then alerts, which need `reorder_level` on
-`catalog.Product`. Phases in SPEC §11 otherwise remain suspended. Not deployed.
+Both deferred schema changes landed with increment 2. `Invoice.branch` is a
+nullable FK resolved by `billing.services.resolve_invoice_branch` — visit's
+branch, then where that practitioner last worked, then the only branch there is
+— and the form field only appears when a multi-branch org gives no signal.
+`Membership` still has no branch FK (SPEC §5 wants per-branch access; not
+built), which is why "the practitioner's branch" is inferred from their last
+encounter. `catalog.Product.reorder_level` exists; zero means no alert.
+
+**`templates/base.html` bottom padding is load-bearing**: `pb-24 sm:pb-24
+lg:pb-6`. Tailwind emits responsive variants after base utilities, so a bare
+`pb-24` loses to `sm:p-6` from 640px up and the fixed 64px bottom nav covers
+the foot of every scrollable page — including submit buttons. This shipped
+unnoticed because no page was tall enough to expose it until the goods receipt
+form. `core/tests/test_layout.py` is a canary, not a proof; check a browser.
+
+Next: increment 3 — the `SALE` hook off invoice lines (post on issue, void
+posts the compensating movement, `is_stock_tracked` only), a batch override on
+the invoice line, the expired-batch block in services, dashboard alerts
+(below reorder / expiring / expired), and `bootstrap_demo` batches. Phases in
+SPEC §11 otherwise remain suspended. Not deployed.
 
 ## Standing rules
 

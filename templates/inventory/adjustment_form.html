@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}Adjust {{ batch.product.name }}{% endblock %}
+{% block page_title %}{{ terms.adjustment }} — {{ batch.product.name }}{% endblock %}
+
+{% block content %}
+<form method="post" class="card-surface rounded-xl p-6 max-w-xl">
+  {% csrf_token %}
+
+  <dl class="grid grid-cols-3 gap-4 mb-6 pb-6 border-b border-black/5">
+    <div>
+      <dt class="text-xs text-muted uppercase tracking-wide">{{ terms.batch }}</dt>
+      <dd class="font-mono mt-1">{{ batch.lot_number|default:'—' }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted uppercase tracking-wide">Branch</dt>
+      <dd class="mt-1">{{ batch.branch.name }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted uppercase tracking-wide">On hand</dt>
+      <dd class="mt-1 font-semibold tabular-nums">{{ batch.on_hand }}</dd>
+    </div>
+  </dl>
+
+  {% for field in form %}
+    <div class="mb-4">
+      <label class="label" for="{{ field.id_for_label }}">
+        <span class="label-text">{{ field.label }}</span>
+      </label>
+      {{ field }}
+      {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
+      {% for error in field.errors %}
+        <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <p class="text-xs text-muted">
+    Nothing is edited away: this posts a correcting entry to the ledger, recorded
+    against you and readable in the movement history.
+  </p>
+
+  <div class="flex gap-3 mt-6">
+    <button type="submit" class="btn btn-brand">Record {{ terms.adjustment|lower }}</button>
+    <a href="{% url 'inventory:product_stock' batch.product_id %}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

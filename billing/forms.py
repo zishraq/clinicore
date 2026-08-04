@@ -22,6 +22,7 @@ from billing.money import ZERO, to_money
 from catalog.models import Product
 from clinical.models import Encounter
 from core.forms import org_scoped_formfield
+from organizations.models import Branch
 from patients.models import Patient
 
 __all__ = [
@@ -52,9 +53,10 @@ class InvoiceForm(forms.ModelForm):
         # patient and encounter are org-scoped relations; see core/forms.py.
         formfield_callback = staticmethod(org_scoped_formfield)
         model = Invoice
-        fields = ['patient', 'encounter', 'notes']
+        fields = ['patient', 'encounter', 'branch', 'notes']
         widgets = {
             'patient': forms.Select(attrs=_SELECT),
+            'branch': forms.Select(attrs=_SELECT),
             # Set from the visit the bill was started from, never picked in a
             # dropdown — but still a real field, so a tampered post cannot
             # attach another tenant's visit.
@@ -71,6 +73,12 @@ class InvoiceForm(forms.ModelForm):
         self.fields['encounter'].queryset = Encounter.objects.for_organization(
             organization
         )
+        branches = Branch.objects.for_organization(organization).filter(is_active=True)
+        self.fields['branch'].queryset = branches
+        # A single-branch clinic is never asked which shelf: the service fills
+        # it in. The field only appears where the answer is genuinely open.
+        if branches.count() < 2:
+            del self.fields['branch']
 
 
 class InvoiceItemForm(forms.ModelForm):

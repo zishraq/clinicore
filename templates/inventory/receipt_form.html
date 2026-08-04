@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block title %}Receive {{ terms.stock|lower }}{% endblock %}
+{% block page_title %}Receive {{ terms.stock|lower }}{% endblock %}
+
+{% block content %}
+<form method="post" class="space-y-6 max-w-4xl">
+  {% csrf_token %}
+
+  <section class="card-surface rounded-xl p-6">
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% for field in form.visible_fields %}
+        <div class="{% if field.name == 'notes' %}sm:col-span-2{% endif %}">
+          <label class="label" for="{{ field.id_for_label }}">
+            <span class="label-text">{{ field.label }}</span>
+          </label>
+          {{ field }}
+          {% for error in field.errors %}
+            <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% for error in form.non_field_errors %}
+      <p class="text-sm text-[var(--cc-danger)] mt-2">{{ error }}</p>
+    {% endfor %}
+  </section>
+
+  <section class="card-surface rounded-xl p-6">
+    <h2 class="font-semibold">What arrived</h2>
+    <p class="text-sm text-muted mb-4">
+      Only stock-tracked products can be received. Expiry is required, so expired
+      stock can be blocked later.
+    </p>
+
+    {{ item_formset.non_form_errors }}
+    {{ item_formset.management_form }}
+    <div id="receipt-rows" class="space-y-3">
+      {% for line_form in item_formset %}
+        {% include 'inventory/_receipt_row.html' with form=line_form %}
+      {% endfor %}
+    </div>
+
+    {% comment %}
+      Add-row without a page reload, the same contract as the prescription and
+      bill forms: the server names the new inputs for the index the management
+      form currently reports, then the counter is bumped. Django ignores any
+      row past TOTAL_FORMS on submit.
+    {% endcomment %}
+    <button type="button" class="btn btn-sm btn-brand-ghost mt-4"
+            hx-get="{% url 'inventory:receipt_row' %}"
+            hx-include="[name='items-TOTAL_FORMS']"
+            hx-target="#receipt-rows"
+            hx-swap="beforeend"
+            hx-on::after-request="const total = document.getElementById('id_items-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
+      Add another line
+    </button>
+  </section>
+
+  <div class="flex gap-3">
+    <button type="submit" class="btn btn-brand">Record {{ terms.goods_receipt|lower }}</button>
+    <a href="{% url 'inventory:stock_list' %}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

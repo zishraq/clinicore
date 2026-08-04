@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ terms.goods_receipt_plural }}{% endblock %}
+{% block page_title %}{{ terms.goods_receipt_plural }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'inventory:stock_list' %}" class="btn btn-sm btn-ghost">{{ terms.stock }}</a>
+  <a href="{% url 'inventory:receipt_create' %}" class="btn btn-brand btn-sm">Receive {{ terms.stock|lower }}</a>
+{% endblock %}
+
+{% block content %}
+{% if receipts %}
+  <div class="card-surface rounded-xl overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr><th>Number</th><th>Received</th><th>Branch</th><th>Supplier</th><th class="text-right">Lines</th></tr>
+      </thead>
+      <tbody>
+        {% for receipt in receipts %}
+          <tr class="hover cursor-pointer" onclick="window.location='{% url 'inventory:receipt_detail' receipt.pk %}'">
+            <td class="font-mono">{{ receipt.number }}</td>
+            <td>{{ receipt.received_at|date:'d M Y' }}</td>
+            <td>{{ receipt.branch.name }}</td>
+            <td>{{ receipt.supplier|default:'—' }}</td>
+            <td class="text-right tabular-nums">{{ receipt.items.count }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if receipts.has_other_pages %}
+    <div class="join mt-4 flex justify-center">
+      {% if receipts.has_previous %}
+        <a class="join-item btn btn-sm" href="?page={{ receipts.previous_page_number }}">«</a>
+      {% endif %}
+      <span class="join-item btn btn-sm btn-disabled">Page {{ receipts.number }} of {{ receipts.paginator.num_pages }}</span>
+      {% if receipts.has_next %}
+        <a class="join-item btn btn-sm" href="?page={{ receipts.next_page_number }}">»</a>
+      {% endif %}
+    </div>
+  {% endif %}
+{% else %}
+  {% url 'inventory:receipt_create' as create_url %}
+  {% with many=terms.goods_receipt_plural|lower %}
+    {% include 'partials/_empty_state.html' with title='No '|add:many|add:' yet' body='Deliveries you book in will appear here.' action_url=create_url action_label='Receive stock' %}
+  {% endwith %}
+{% endif %}
+{% endblock %}

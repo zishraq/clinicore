@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ receipt.number }}{% endblock %}
+{% block page_title %}{{ terms.goods_receipt }} {{ receipt.number }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'inventory:receipt_list' %}" class="btn btn-sm btn-ghost">All {{ terms.goods_receipt_plural|lower }}</a>
+{% endblock %}
+
+{% block content %}
+<section class="card-surface rounded-xl p-6 mb-6 grid gap-4 sm:grid-cols-4">
+  <div>
+    <p class="text-xs text-muted uppercase tracking-wide">Received</p>
+    <p class="font-medium mt-1">{{ receipt.received_at|date:'d M Y H:i' }}</p>
+  </div>
+  <div>
+    <p class="text-xs text-muted uppercase tracking-wide">Branch</p>
+    <p class="font-medium mt-1">{{ receipt.branch.name }}</p>
+  </div>
+  <div>
+    <p class="text-xs text-muted uppercase tracking-wide">Supplier</p>
+    <p class="font-medium mt-1">{{ receipt.supplier|default:'—' }}</p>
+  </div>
+  <div>
+    <p class="text-xs text-muted uppercase tracking-wide">Their reference</p>
+    <p class="font-medium mt-1">{{ receipt.reference|default:'—' }}</p>
+  </div>
+  {% if receipt.notes %}
+    <div class="sm:col-span-4">
+      <p class="text-xs text-muted uppercase tracking-wide">Notes</p>
+      <p class="mt-1">{{ receipt.notes|linebreaksbr }}</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="card-surface rounded-xl p-6">
+  <h2 class="font-semibold mb-4">Lines</h2>
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr><th>Product</th><th>Lot</th><th>Expires</th><th class="text-right">Quantity</th><th class="text-right">Unit cost</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr class="hover">
+            <td class="font-medium">{{ item.product.name }}</td>
+            <td class="font-mono text-sm">{{ item.batch.lot_number|default:'—' }}</td>
+            <td>{{ item.batch.expiry_date|date:'d M Y'|default:'—' }}</td>
+            <td class="text-right tabular-nums">{{ item.quantity }}</td>
+            <td class="text-right tabular-nums">{{ item.cost_price }}</td>
+            <td class="text-right">
+              <a href="{% url 'inventory:product_stock' item.product_id %}" class="btn btn-xs btn-brand-ghost">{{ terms.stock }}</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-muted mt-4">
+    Recorded by {{ receipt.created_by.full_name|default:'—' }}. A delivery booked
+    in error is corrected with an {{ terms.adjustment|lower }} against the
+    {{ terms.batch|lower }}, which leaves both entries on the record.
+  </p>
+</section>
+{% endblock %}

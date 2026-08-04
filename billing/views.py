@@ -122,6 +122,10 @@ def invoice_create(request):
         item_formset = invoice_item_formset_class(extra=len(lines) + 1)(
             initial=lines, organization=organization
         )
+        if 'branch' in form.fields:
+            form.initial['branch'] = services.resolve_invoice_branch(
+                organization, actor=membership.user, encounter=encounter
+            )
         if encounter is not None:
             form.initial['encounter'] = encounter.pk
             form.initial['patient'] = encounter.patient_id

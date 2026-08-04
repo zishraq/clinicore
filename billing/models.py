@@ -180,6 +180,17 @@ class Invoice(OrgOwnedModel, VoidableModel):
         blank=True,
         related_name='invoices',
     )
+    # Where the money was taken and, more to the point, which shelf a product
+    # line comes off: stock is held per branch. Nullable because every invoice
+    # raised before inventory existed has none, and because a single-branch
+    # clinic should never be asked. Resolved in services.resolve_invoice_branch.
+    branch = models.ForeignKey(
+        'organizations.Branch',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='invoices',
+    )
     number = models.CharField(max_length=32, editable=False)
     issued_at = models.DateTimeField(default=timezone.now)
     status = models.CharField(

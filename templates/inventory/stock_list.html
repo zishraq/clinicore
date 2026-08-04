@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ terms.stock }}{% endblock %}
+{% block page_title %}{{ terms.stock }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'inventory:receipt_list' %}" class="btn btn-sm btn-ghost">{{ terms.goods_receipt_plural }}</a>
+  <a href="{% url 'inventory:receipt_create' %}" class="btn btn-brand btn-sm">Receive {{ terms.stock|lower }}</a>
+{% endblock %}
+
+{% block content %}
+<form method="get" class="card-surface rounded-xl p-4 mb-4 grid gap-3 sm:grid-cols-3">
+  <div class="sm:col-span-2">
+    <label class="label py-1" for="q"><span class="label-text text-xs">Search</span></label>
+    <input id="q" type="search" name="q" value="{{ query }}" placeholder="Product name or code"
+           class="input input-bordered w-full">
+  </div>
+  <div class="flex gap-2 items-end">
+    <div class="flex-1">
+      <label class="label py-1" for="branch"><span class="label-text text-xs">Branch</span></label>
+      <select id="branch" name="branch" class="select select-bordered w-full">
+        <option value="">All branches</option>
+        {% for option in branches %}
+          <option value="{{ option.pk }}" {% if branch and branch.pk == option.pk %}selected{% endif %}>{{ option.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-brand">Filter</button>
+  </div>
+</form>
+
+{% if products %}
+  <div class="card-surface rounded-xl overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Product</th><th>Unit</th><th>Code</th>
+          <th class="text-right">On hand</th><th class="text-right">Reorder at</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+          <tr class="hover cursor-pointer" onclick="window.location='{% url 'inventory:product_stock' product.pk %}{% if branch %}?branch={{ branch.pk }}{% endif %}'">
+            <td class="font-medium">{{ product.name }}</td>
+            <td>{{ product.unit|default:'—' }}</td>
+            <td class="font-mono text-sm">{{ product.sku|default:'—' }}</td>
+            <td class="text-right tabular-nums font-semibold">{{ product.annotated_on_hand }}</td>
+            <td class="text-right tabular-nums text-muted">
+              {% if product.reorder_level %}{{ product.reorder_level }}{% else %}—{% endif %}
+            </td>
+            <td class="text-right">
+              <a href="{% url 'inventory:product_stock' product.pk %}" class="btn btn-xs btn-brand-ghost">{{ terms.batch_plural }}</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if products.has_other_pages %}
+    <div class="join mt-4 flex justify-center">
+      {% if products.has_previous %}
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&branch={{ branch.pk|default:'' }}&page={{ products.previous_page_number }}">«</a>
+      {% endif %}
+      <span class="join-item btn btn-sm btn-disabled">Page {{ products.number }} of {{ products.paginator.num_pages }}</span>
+      {% if products.has_next %}
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&branch={{ branch.pk|default:'' }}&page={{ products.next_page_number }}">»</a>
+      {% endif %}
+    </div>
+  {% endif %}
+{% else %}
+  {% url 'inventory:receipt_create' as create_url %}
+  {% include 'partials/_empty_state.html' with title='Nothing in stock yet' body='Only products marked as stock tracked appear here. Book a delivery in to get started.' action_url=create_url action_label='Receive stock' %}
+{% endif %}
+{% endblock %}

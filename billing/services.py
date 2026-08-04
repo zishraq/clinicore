@@ -21,7 +21,9 @@ from billing.models import (
     PaymentStatus,
 )
 from billing.money import ZERO, to_money
+from clinical.models import Encounter
 from core.services import current_period, next_document_number
+from organizations.models import Branch
 
 __all__ = [
     'BillingError',
@@ -35,6 +37,7 @@ __all__ = [
     'outstanding_balance',
     'patient_invoices',
     'record_payment',
+    'resolve_invoice_branch',
     'save_invoice_items',
     'update_invoice',
     'void_invoice',
@@ -83,6 +86,39 @@ def consultation_line_defaults(organization) -> dict:
     }
 
 
+def resolve_invoice_branch(organization, *, actor=None, encounter=None):
+    """Which branch a bill belongs to, without asking when it is obvious.
+
+    A product line comes off a particular shelf, so the branch has to be right;
+    it also must not become a dropdown a practitioner clears every day. In
+    order: the visit's branch, then where this practitioner last worked, then
+    the only branch there is.
+
+    ``Membership`` carries no branch — SPEC §5 wants per-branch access and it is
+    not built — so "the practitioner's branch" is read off their most recent
+    encounter. Returns ``None`` when a multi-branch organization gives no
+    signal, and the form asks.
+    """
+    if encounter is not None and encounter.branch_id:
+        return encounter.branch
+
+    active = Branch.objects.for_organization(organization).filter(is_active=True)
+    if actor is not None:
+        recent_id = (
+            Encounter.objects.for_organization(organization)
+            .filter(practitioner=actor)
+            .order_by('-occurred_at')
+            .values_list('branch_id', flat=True)
+            .first()
+        )
+        if recent_id is not None:
+            recent = active.filter(pk=recent_id).first()
+            if recent is not None:
+                return recent
+
+    return active.first() if active.count() == 1 else None
+
+
 def save_invoice_items(invoice: Invoice, *, actor, item_formset) -> None:
     """Persist the line formset against ``invoice``, tenant and order intact."""
     items = item_formset.save(commit=False)
@@ -108,6 +144,10 @@ def create_invoice(organization, *, actor, form, item_formset) -> Invoice:
     invoice.organization = organization
     invoice.created_by = actor
     invoice.currency = organization.currency
+    if invoice.branch_id is None:
+        invoice.branch = resolve_invoice_branch(
+            organization, actor=actor, encounter=invoice.encounter
+        )
     invoice.number = next_invoice_number(organization)
     invoice.save()
     save_invoice_items(invoice, actor=actor, item_formset=item_formset)

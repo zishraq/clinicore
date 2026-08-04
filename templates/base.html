@@ -60,7 +60,12 @@
           </div>
         </div>
       </header>
-      <main class="flex-1 p-4 sm:p-6 pb-24 lg:pb-6">
+      {% comment %}
+        sm:pb-24 is not redundant. Tailwind emits responsive variants after base
+        utilities, so a bare pb-24 loses to sm:p-6 from 640px up and the fixed
+        bottom nav then covers the foot of any scrollable page.
+      {% endcomment %}
+      <main class="flex-1 p-4 sm:p-6 pb-24 sm:pb-24 lg:pb-6">
         {% block content %}{% endblock %}
       </main>
       {% include 'partials/_bottom_nav.html' %}

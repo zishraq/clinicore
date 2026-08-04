@@ -21,6 +21,7 @@ class ProductForm(forms.ModelForm):
             'category',
             'unit',
             'sale_price',
+            'reorder_level',
             'is_stock_tracked',
             'is_sellable',
             'is_active',
@@ -35,6 +36,9 @@ class ProductForm(forms.ModelForm):
                 attrs={**_INPUT, 'placeholder': 'Tablet, ml, drops'}
             ),
             'sale_price': forms.NumberInput(
+                attrs={**_INPUT, 'type': 'number', 'step': '0.01', 'min': '0'}
+            ),
+            'reorder_level': forms.NumberInput(
                 attrs={**_INPUT, 'type': 'number', 'step': '0.01', 'min': '0'}
             ),
             'is_stock_tracked': forms.CheckboxInput(attrs=_CHECKBOX),

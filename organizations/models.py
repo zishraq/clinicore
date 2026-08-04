@@ -78,6 +78,22 @@ DEFAULT_TERMINOLOGY = {
     'status_partially_paid': 'Part paid',
     'status_paid': 'Paid',
     'status_void': 'Void',
+    # Inventory. A clinic that calls a delivery a "purchase order" or a lot a
+    # "batch number" relabels here rather than in a template.
+    'stock': 'Stock',
+    'batch': 'Batch',
+    'batch_plural': 'Batches',
+    'goods_receipt': 'Goods receipt',
+    'goods_receipt_plural': 'Goods receipts',
+    'adjustment': 'Adjustment',
+    # Stored movement types, rendered through {% status_label %} like any other
+    # stored value.
+    'status_purchase': 'Received',
+    'status_sale': 'Sold',
+    'status_dispense': 'Dispensed',
+    'status_adjustment': 'Adjusted',
+    'status_return': 'Returned',
+    'status_wastage': 'Written off',
 }
 
 #: Longest an override may be. These are chrome — a nav item, a badge, a button.

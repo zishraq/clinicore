@@ -17,9 +17,11 @@ negates it, because an outflow has only one possible direction.
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import DecimalField, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from catalog.models import Product
 from core.services import current_period, next_document_number
 from inventory.models import (
     DECREASING_TYPES,
@@ -37,10 +39,14 @@ __all__ = [
     'InsufficientStock',
     'InventoryError',
     'allocate_fefo',
+    'batches_for',
     'consume_stock',
+    'movement_history',
     'on_hand',
     'receive_stock',
+    'record_adjustment',
     'record_movement',
+    'stock_levels',
 ]
 
 #: ``DocumentSequence.kind`` for the goods receipt run.
@@ -49,6 +55,9 @@ RECEIPT_PREFIX = 'GRN'
 
 #: Quantities carry two places, like the invoice line they often come from.
 _QUANTITY_EXPONENT = Decimal('0.01')
+
+#: Output field for the ledger sums annotated onto catalog rows.
+_SUM_FIELD = DecimalField(max_digits=14, decimal_places=2)
 
 
 class InventoryError(ValueError):
@@ -328,3 +337,93 @@ def on_hand(organization, *, product, branch=None, usable_only: bool = False):
         batch__in=batches
     )
     return totals.aggregate(total=Sum('quantity'))['total'] or ZERO
+
+
+@transaction.atomic
+def record_adjustment(organization, *, batch, actor, quantity, reason: str):
+    """Correct one batch against what is actually on the shelf.
+
+    Signed: negative for a shortfall, positive for stock found. Refused if it
+    would take the batch below zero, which is a typo rather than a count.
+    """
+    locked = (
+        StockBatch.objects.for_organization(organization)
+        .select_for_update()
+        .get(pk=batch.pk)
+    )
+    # Counted after the lock, in its own statement — see allocate_fefo.
+    current = on_hand(organization, product=locked.product, branch=locked.branch)
+    quantity = _to_quantity(quantity)
+    if current + quantity < ZERO:
+        raise InsufficientStock(
+            f'That would leave {current + quantity} in stock. There is {current}.'
+        )
+    return record_movement(
+        organization,
+        batch=locked,
+        movement_type=MovementType.ADJUSTMENT,
+        quantity=quantity,
+        actor=actor,
+        reason=reason,
+    )
+
+
+def _product_on_hand(*, branch=None):
+    """Correlated on-hand subquery for a ``Product`` row.
+
+    Counts everything physically on the shelf, expired batches included: the
+    stock list reports what is there, not what may leave.
+    """
+    movements = StockMovement.all_objects.filter(batch__product=OuterRef('pk'))
+    if branch is not None:
+        movements = movements.filter(batch__branch=branch)
+    return Coalesce(
+        Subquery(
+            movements.values('batch__product')
+            .annotate(sum=Sum('quantity'))
+            .values('sum'),
+            output_field=_SUM_FIELD,
+        ),
+        Value(ZERO),
+        output_field=_SUM_FIELD,
+    )
+
+
+def stock_levels(organization, *, branch=None, query: str = ''):
+    """Stock-tracked products with their on-hand total, for the stock page.
+
+    Annotates rather than looping, so the page is one query however long the
+    catalog gets. Lives here rather than on ``Product`` because catalog knows
+    nothing about inventory and should keep it that way.
+    """
+    products = Product.objects.for_organization(organization).filter(
+        is_stock_tracked=True
+    )
+    query = (query or '').strip()
+    if query:
+        products = products.filter(Q(name__icontains=query) | Q(sku__icontains=query))
+    return products.annotate(
+        annotated_on_hand=_product_on_hand(branch=branch)
+    ).order_by('name')
+
+
+def batches_for(organization, *, product, branch=None):
+    """One product's batches with what is left on each, earliest expiry first."""
+    batches = (
+        StockBatch.objects.for_organization(organization)
+        .filter(product=product)
+        .select_related('branch')
+        .with_on_hand()
+        .fefo()
+    )
+    return batches.filter(branch=branch) if branch is not None else batches
+
+
+def movement_history(organization, *, product, branch=None):
+    """Every movement for one product, newest first (SPEC §6.5)."""
+    movements = (
+        StockMovement.objects.for_organization(organization)
+        .filter(batch__product=product)
+        .select_related('batch', 'batch__branch', 'created_by')
+    )
+    return movements.filter(batch__branch=branch) if branch is not None else movements

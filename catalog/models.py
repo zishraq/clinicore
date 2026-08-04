@@ -50,7 +50,16 @@ class Product(OrgOwnedModel):
         help_text='Prefilled when this is added to a bill.',
     )
     is_stock_tracked = models.BooleanField(
-        default=False, help_text='Reserved for inventory; no stock is tracked yet.'
+        default=False, help_text='Count this product in and out of stock.'
+    )
+    # Only meaningful when the product is stock tracked. Zero disables the
+    # alert rather than meaning "warn at nothing", which is what a clinic that
+    # has not thought about a level yet actually wants.
+    reorder_level = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text='Warn when stock falls to or below this. Zero means no alert.',
     )
     is_sellable = models.BooleanField(
         default=False,

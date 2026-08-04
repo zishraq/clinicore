@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% load terminology %}
+
+{% block title %}{{ product.name }} — {{ terms.stock|lower }}{% endblock %}
+{% block page_title %}{{ product.name }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'inventory:stock_list' %}" class="btn btn-sm btn-ghost">Back to {{ terms.stock|lower }}</a>
+  <a href="{% url 'inventory:receipt_create' %}" class="btn btn-brand btn-sm">Receive {{ terms.stock|lower }}</a>
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 sm:grid-cols-3 mb-6">
+  <div class="card-surface rounded-xl p-5">
+    <p class="text-xs text-muted uppercase tracking-wide">On hand</p>
+    <p class="text-3xl font-semibold tabular-nums mt-1">{{ on_hand }}</p>
+    <p class="text-xs text-muted mt-1">{{ product.unit|default:'units' }}</p>
+  </div>
+  <div class="card-surface rounded-xl p-5">
+    <p class="text-xs text-muted uppercase tracking-wide">Usable</p>
+    <p class="text-3xl font-semibold tabular-nums mt-1">{{ usable }}</p>
+    <p class="text-xs text-muted mt-1">Expired stock excluded</p>
+  </div>
+  <div class="card-surface rounded-xl p-5">
+    <p class="text-xs text-muted uppercase tracking-wide">Reorder at</p>
+    <p class="text-3xl font-semibold tabular-nums mt-1">
+      {% if product.reorder_level %}{{ product.reorder_level }}{% else %}—{% endif %}
+    </p>
+    <p class="text-xs text-muted mt-1">
+      <a href="{% url 'catalog:product_update' product.pk %}" class="link">Change in catalog</a>
+    </p>
+  </div>
+</div>
+
+{% if branches|length > 1 %}
+  <form method="get" class="card-surface rounded-xl p-4 mb-4 flex gap-2 items-end max-w-sm">
+    <div class="flex-1">
+      <label class="label py-1" for="branch"><span class="label-text text-xs">Branch</span></label>
+      <select id="branch" name="branch" class="select select-bordered w-full">
+        <option value="">All branches</option>
+        {% for option in branches %}
+          <option value="{{ option.pk }}" {% if branch and branch.pk == option.pk %}selected{% endif %}>{{ option.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-brand">Filter</button>
+  </form>
+{% endif %}
+
+<section class="card-surface rounded-xl p-6 mb-6">
+  <h2 class="font-semibold mb-4">{{ terms.batch_plural }}</h2>
+  {% if batches %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Lot</th><th>Branch</th><th>Expires</th>
+            <th class="text-right">Cost</th><th class="text-right">On hand</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for batch in batches %}
+            <tr class="hover {% if batch.is_expired %}opacity-60{% endif %}">
+              <td class="font-mono text-sm">{{ batch.lot_number|default:'—' }}</td>
+              <td>{{ batch.branch.name }}</td>
+              <td>
+                {% if batch.expiry_date %}
+                  {{ batch.expiry_date|date:'d M Y' }}
+                  {% if batch.is_expired %}
+                    <span class="badge badge-sm ml-1" style="background:var(--cc-danger);color:#fff;border:none">Expired</span>
+                  {% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="text-right tabular-nums">{{ batch.cost_price }}</td>
+              <td class="text-right tabular-nums font-semibold">{{ batch.on_hand }}</td>
+              <td class="text-right">
+                <a href="{% url 'inventory:adjustment_create' batch.pk %}" class="btn btn-xs btn-brand-ghost">Adjust</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-sm text-muted">No {{ terms.batch_plural|lower }} of this product yet.</p>
+  {% endif %}
+</section>
+
+<section class="card-surface rounded-xl p-6">
+  <h2 class="font-semibold mb-4">Movement history</h2>
+  {% if movements %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>When</th><th>Type</th><th>Lot</th><th class="text-right">Change</th><th>Reason</th><th>By</th></tr>
+        </thead>
+        <tbody>
+          {% for movement in movements %}
+            <tr>
+              <td class="whitespace-nowrap">{{ movement.occurred_at|date:'d M Y H:i' }}</td>
+              {# Stored values never reach the UI as words: the label comes from the map. #}
+              <td>{% status_label movement.movement_type %}</td>
+              <td class="font-mono text-sm">{{ movement.batch.lot_number|default:'—' }}</td>
+              <td class="text-right tabular-nums font-semibold {% if movement.quantity < 0 %}text-[var(--cc-danger)]{% endif %}">
+                {{ movement.quantity }}
+              </td>
+              <td class="text-sm">{{ movement.reason|default:'—' }}</td>
+              <td class="text-sm">{{ movement.created_by.full_name|default:'—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if movements.has_other_pages %}
+      <div class="join mt-4 flex justify-center">
+        {% if movements.has_previous %}
+          <a class="join-item btn btn-sm" href="?branch={{ branch.pk|default:'' }}&page={{ movements.previous_page_number }}">«</a>
+        {% endif %}
+        <span class="join-item btn btn-sm btn-disabled">Page {{ movements.number }} of {{ movements.paginator.num_pages }}</span>
+        {% if movements.has_next %}
+          <a class="join-item btn btn-sm" href="?branch={{ branch.pk|default:'' }}&page={{ movements.next_page_number }}">»</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="text-sm text-muted">Nothing has moved yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

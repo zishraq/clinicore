@@ -13,6 +13,7 @@
     {% if membership.can_view_clinical %}
       <li><a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.encounter_plural }}</a></li>
       <li><a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.invoice_plural }}</a></li>
+      <li><a href="{% url 'inventory:stock_list' %}" class="{% if 'inventory' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.stock }}</a></li>
       <li>
         <details {% if 'catalog' in request.resolver_match.namespaces %}open{% endif %}>
           <summary>Catalogs</summary>
