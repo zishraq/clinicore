@@ -14,6 +14,10 @@ def dashboard(request):
     return render(request, 'core/dashboard.html', _dashboard_context(request))
 
 
+#: How many rows of each stock alert the dashboard shows before linking away.
+ALERT_ROWS = 5
+
+
 def _dashboard_context(request) -> dict:
     """Deferred import keeps core free of a hard dependency on the feature apps."""
     from django.utils import timezone
@@ -36,6 +40,26 @@ def _dashboard_context(request) -> dict:
                 'recent_encounters': list(
                     Encounter.objects.select_related('patient', 'practitioner')[:8]
                 ),
+                **_stock_alerts(request.organization),
             }
         )
     return context
+
+
+def _stock_alerts(organization) -> dict:
+    """Below reorder, expiring, expired — SPEC §6.5's three alerts.
+
+    Counted in full and listed in part: a practitioner needs to know that six
+    things are short, not read all six on the landing page. Stock is a
+    PRACTITIONER/OWNER surface, so this only runs behind the clinical check.
+    """
+    from inventory.services import stock_alerts
+
+    alerts = stock_alerts(organization)
+    return {
+        'stock_alerts': {
+            key: {'rows': list(alerts[key][:ALERT_ROWS]), 'total': alerts[key].count()}
+            for key in ('below_reorder', 'expiring', 'expired')
+        },
+        'expiry_horizon_days': alerts['within_days'],
+    }

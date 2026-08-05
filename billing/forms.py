@@ -22,6 +22,7 @@ from billing.money import ZERO, to_money
 from catalog.models import Product
 from clinical.models import Encounter
 from core.forms import org_scoped_formfield
+from inventory.models import StockBatch
 from organizations.models import Branch
 from patients.models import Patient
 
@@ -103,6 +104,7 @@ class InvoiceItemForm(forms.ModelForm):
         fields = [
             'line_type',
             'product',
+            'batch',
             'quantity',
             'unit_price',
             'discount',
@@ -111,6 +113,10 @@ class InvoiceItemForm(forms.ModelForm):
         widgets = {
             'line_type': forms.HiddenInput(attrs={'data-role': 'line-type'}),
             'product': forms.HiddenInput(attrs={'data-role': 'line-product'}),
+            # Options arrive from inventory:batch_options once a product is
+            # picked; the row renders the empty select by hand. See
+            # templates/billing/_line_row.html.
+            'batch': forms.Select(attrs={**_SELECT, 'data-role': 'line-batch'}),
             'quantity': forms.NumberInput(
                 attrs={**_AMOUNT_INPUT, 'step': '0.01', 'min': '0.01'}
             ),
@@ -121,6 +127,7 @@ class InvoiceItemForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.organization = None
         # clean() derives the type from whichever source won, so a posted value
         # is a hint; a client without JavaScript never sends one.
         self.fields['line_type'].required = False
@@ -133,8 +140,17 @@ class InvoiceItemForm(forms.ModelForm):
             self.fields['display_name'].initial = self.instance.name_snapshot
 
     def bind_organization(self, organization) -> None:
-        """Restrict the catalog relation to one tenant."""
+        """Restrict the catalog and stock relations to one tenant.
+
+        Every batch in the organization, not just this product's: the options
+        the practitioner sees are fetched per row (inventory:batch_options),
+        while this queryset only has to validate whichever pk comes back.
+        """
+        self.organization = organization
         self.fields['product'].queryset = Product.objects.for_organization(organization)
+        self.fields['batch'].queryset = StockBatch.objects.for_organization(
+            organization
+        )
 
     #: Fields whose presence means someone actually entered a line.
     CONTENT_FIELDS = ('display_name', 'product', 'unit_price')
@@ -150,6 +166,21 @@ class InvoiceItemForm(forms.ModelForm):
             return super().has_changed()
         return any(self.data.get(self.add_prefix(name)) for name in self.CONTENT_FIELDS)
 
+    def _check_batch(self, cleaned, product) -> None:
+        """A chosen lot has to be a lot of the product on this line.
+
+        Whether that lot is expired, or held at another branch, is settled in
+        ``inventory.services`` — the row does not know which branch the bill
+        belongs to, and the shelf can move between rendering and posting.
+        """
+        batch = cleaned.get('batch')
+        if batch is None or batch.product_id == product.pk:
+            return
+        label = 'batch'
+        if self.organization is not None:
+            label = self.organization.terms['batch'].lower()
+        raise forms.ValidationError(f'That {label} does not hold {product.name}.')
+
     def clean(self):
         cleaned = super().clean()
         display = (cleaned.get('display_name') or '').strip()
@@ -161,7 +192,11 @@ class InvoiceItemForm(forms.ModelForm):
             # The catalog name at issue time is what gets frozen, not whatever
             # is left in the search box.
             cleaned['name_snapshot'] = product.name[:300]
+            self._check_batch(cleaned, product)
         else:
+            # Retyping over a chosen product drops the lot with it: a typed
+            # line has no shelf to come off, which the database also insists on.
+            cleaned['batch'] = None
             cleaned['line_type'] = (
                 LineType.CONSULTATION
                 if posted_type == LineType.CONSULTATION

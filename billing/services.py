@@ -7,6 +7,12 @@ one way into each of them (a form, a management command, a future API):
   transaction that writes the invoice, so the run has no gaps and no duplicates;
 * a payment can never exceed the balance;
 * nothing financial is deleted — a mistake is voided with a reason and an actor.
+
+Issuing a bill is also the event that takes stock off the shelf
+(docs/adr/0009-ledger-based-stock.md), so ``create_invoice`` posts the ledger
+movements and ``void_invoice`` posts the compensating ones. An outflow the
+branch cannot cover takes the whole invoice down with it: the transaction that
+writes the bill is the transaction that writes the movements.
 """
 
 from django.db import transaction
@@ -23,6 +29,7 @@ from billing.models import (
 from billing.money import ZERO, to_money
 from clinical.models import Encounter
 from core.services import current_period, next_document_number
+from inventory import services as inventory
 from organizations.models import Branch
 
 __all__ = [
@@ -31,6 +38,7 @@ __all__ = [
     'Overpayment',
     'consultation_line_defaults',
     'create_invoice',
+    'editing_blocked_reason',
     'filter_invoices',
     'invoice_for_encounter',
     'next_invoice_number',
@@ -134,11 +142,13 @@ def save_invoice_items(invoice: Invoice, *, actor, item_formset) -> None:
 
 @transaction.atomic
 def create_invoice(organization, *, actor, form, item_formset) -> Invoice:
-    """Issue an invoice and its lines in one transaction.
+    """Issue an invoice, its lines, and the stock movements they cause.
 
     The number is allocated inside this transaction on purpose: the counter row
     stays locked until it commits, so a rollback here returns the number to the
-    run instead of leaving a hole in it.
+    run instead of leaving a hole in it. The same applies to the ledger — a
+    line the shelf cannot cover raises ``InsufficientStock`` and no bill exists
+    at all, rather than one that promised stock nobody has.
     """
     invoice = form.save(commit=False)
     invoice.organization = organization
@@ -151,28 +161,57 @@ def create_invoice(organization, *, actor, form, item_formset) -> Invoice:
     invoice.number = next_invoice_number(organization)
     invoice.save()
     save_invoice_items(invoice, actor=actor, item_formset=item_formset)
+    inventory.post_sale_movements(organization, invoice=invoice, actor=actor)
     return invoice
+
+
+def editing_blocked_reason(invoice: Invoice) -> str:
+    """Why this bill's lines are frozen, in a sentence, or '' if they are not.
+
+    One place, because the view needs it to decide whether to offer the form
+    and the service needs it to refuse a post that got there anyway.
+    """
+    if invoice.is_void:
+        return 'This bill was voided and can no longer be edited.'
+    if invoice.has_payments:
+        return (
+            'This bill has payments recorded against it. Void a payment first, '
+            'or void the bill and issue a new one.'
+        )
+    if invoice.has_stock_movements:
+        return (
+            'This bill has already taken stock off the shelf, and the ledger is '
+            'append-only. Void it and issue a new one — voiding puts the stock '
+            'back.'
+        )
+    return ''
 
 
 @transaction.atomic
 def update_invoice(organization, *, actor, invoice: Invoice, form, item_formset):
-    """Edit an invoice that has not been paid against.
+    """Edit an invoice that has not been paid against or dispensed from.
 
     Once money has been received the lines are frozen: the patient is holding a
-    receipt that has to keep matching this row. Voiding and re-issuing is the
-    correction path, and it leaves both documents on the record.
+    receipt that has to keep matching this row. The same freeze applies once
+    the bill has moved stock, because a quantity that was already counted out
+    of a batch cannot change without restating the ledger. Voiding and
+    re-issuing is the correction path either way, and it leaves both documents
+    on the record — with the stock returned by the void.
+
+    An edit may still be the first thing that sells stock: a fee-only bill that
+    grows a product line has moved nothing yet, so the posting call belongs
+    here as well as in ``create_invoice``. It is the same call, and it is safe
+    on both sides of that boundary because it skips any line that already
+    carries a movement.
     """
-    if invoice.is_void:
-        raise InvoiceLocked('This bill was voided and can no longer be edited.')
-    if invoice.has_payments:
-        raise InvoiceLocked(
-            'This bill has payments recorded against it. Void a payment first, '
-            'or void the bill and issue a new one.'
-        )
+    blocked = editing_blocked_reason(invoice)
+    if blocked:
+        raise InvoiceLocked(blocked)
     invoice = form.save(commit=False)
     invoice.organization = organization
     invoice.save()
     save_invoice_items(invoice, actor=actor, item_formset=item_formset)
+    inventory.post_sale_movements(organization, invoice=invoice, actor=actor)
     return invoice
 
 
@@ -239,26 +278,34 @@ def void_payment(payment: Payment, *, actor, reason: str) -> Payment:
 
 @transaction.atomic
 def void_invoice(invoice: Invoice, *, actor, reason: str) -> Invoice:
-    """Void a whole invoice issued in error.
+    """Void a whole invoice issued in error, and put its stock back.
 
     Refused while live payments hang off it: money that was actually collected
     has to be dealt with first, one payment at a time, so the reversal of each
     is recorded rather than swept up by a single click.
+
+    The row is locked before anything is read off it. Two clicks on the void
+    button used to be harmless — the second wrote the same values again — but
+    now that voiding returns stock, a double post would return it twice.
     """
     reason = (reason or '').strip()
     if not reason:
         raise BillingError('Voiding a bill requires a reason.')
-    if invoice.is_void:
-        return invoice
-    if invoice.has_payments:
+
+    locked = Invoice.all_objects.select_for_update().get(
+        pk=invoice.pk, organization_id=invoice.organization_id
+    )
+    if locked.is_void:
+        return locked
+    if locked.has_payments:
         raise InvoiceLocked(
             'Void the payments recorded against this bill before voiding the bill.'
         )
-    invoice.status = InvoiceState.VOID
-    invoice.voided_at = timezone.now()
-    invoice.voided_by = actor
-    invoice.void_reason = reason[:300]
-    invoice.save(
+    locked.status = InvoiceState.VOID
+    locked.voided_at = timezone.now()
+    locked.voided_by = actor
+    locked.void_reason = reason[:300]
+    locked.save(
         update_fields=[
             'status',
             'voided_at',
@@ -267,7 +314,15 @@ def void_invoice(invoice: Invoice, *, actor, reason: str) -> Invoice:
             'updated_at',
         ]
     )
-    return invoice
+    # Compensating movements, never a delete: the sale happened and the ledger
+    # keeps saying so, with the return alongside it.
+    inventory.reverse_sale_movements(
+        locked.organization,
+        invoice=locked,
+        actor=actor,
+        reason=f'{locked.number} voided: {reason}'[:300],
+    )
+    return locked
 
 
 def filter_invoices(organization, *, status='', date_from=None, date_to=None, query=''):

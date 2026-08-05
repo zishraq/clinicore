@@ -270,13 +270,27 @@ class Invoice(OrgOwnedModel, VoidableModel):
         return self.payments.filter(voided_at__isnull=True).exists()
 
     @property
+    def has_stock_movements(self) -> bool:
+        """Whether issuing this bill has already taken stock off a shelf.
+
+        Read through the line's reverse relation rather than by importing the
+        ledger, so billing keeps knowing nothing about inventory's models.
+        """
+        return self.items.filter(stock_movements__isnull=False).exists()
+
+    @property
     def is_editable(self) -> bool:
-        """Money already changed hands, so the lines stop being editable.
+        """Money changed hands, or stock left the shelf: the lines freeze.
 
         Void it and issue a replacement instead; a receipt in a patient's hand
-        must keep matching the row it was printed from.
+        must keep matching the row it was printed from, and a quantity that has
+        already been counted out of a batch cannot be edited without either
+        restating the ledger or deleting a movement, and the ledger does
+        neither (docs/adr/0009-ledger-based-stock.md).
         """
-        return not self.is_void and not self.has_payments
+        return (
+            not self.is_void and not self.has_payments and not self.has_stock_movements
+        )
 
 
 class InvoiceItem(OrgOwnedModel):
@@ -288,6 +302,18 @@ class InvoiceItem(OrgOwnedModel):
     )
     product = models.ForeignKey(
         'catalog.Product',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='invoice_items',
+    )
+    # Which lot this line comes off, when someone overrode the automatic
+    # choice. Empty is the normal case and means first-expiry-first-out: nobody
+    # picks a batch at the counter (docs/adr/0009-ledger-based-stock.md). Set
+    # only to hand over a specific box — a later expiry for a patient going
+    # abroad, or the one the shelf label actually matches.
+    batch = models.ForeignKey(
+        'inventory.StockBatch',
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -314,6 +340,11 @@ class InvoiceItem(OrgOwnedModel):
             models.CheckConstraint(
                 condition=(Q(line_type=LineType.PRODUCT) | Q(product__isnull=True)),
                 name='invoice_item_product_only_on_product_line',
+            ),
+            # A lot belongs to a product. A typed line has no shelf to come off.
+            models.CheckConstraint(
+                condition=(Q(batch__isnull=True) | Q(product__isnull=False)),
+                name='invoice_item_batch_only_with_product',
             ),
             models.CheckConstraint(
                 condition=Q(quantity__gt=0), name='invoice_item_quantity_positive'

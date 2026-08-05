@@ -80,11 +80,42 @@ the foot of every scrollable page — including submit buttons. This shipped
 unnoticed because no page was tall enough to expose it until the goods receipt
 form. `core/tests/test_layout.py` is a canary, not a proof; check a browser.
 
-Next: increment 3 — the `SALE` hook off invoice lines (post on issue, void
-posts the compensating movement, `is_stock_tracked` only), a batch override on
-the invoice line, the expired-batch block in services, dashboard alerts
-(below reorder / expiring / expired), and `bootstrap_demo` batches. Phases in
-SPEC §11 otherwise remain suspended. Not deployed.
+Increment 3 is done: the `SALE` hook off invoice lines, the batch override, the
+expired-batch block, dashboard alerts, and `bootstrap_demo` batches. Browser-
+verified end to end (override → expired refusal → edit freeze → void restores).
+Rules to know before touching it:
+
+- **Both invoice paths post stock, and the guarantee is per line.**
+  `post_sale_movements` runs from `create_invoice` *and* `update_invoice`,
+  because a fee-only bill edited to add a product is the first thing that sells
+  its stock. It skips any line that already carries a movement, which is what
+  makes calling it from both sides safe. `billing/tests/test_stock_posting.py`
+  tests both directions across that boundary.
+- **A bill that moved stock is frozen, like a paid one.**
+  `billing.services.editing_blocked_reason` is the single answer for the view
+  and the service; `Invoice.is_editable` now also consults
+  `has_stock_movements`. The correction path is void-and-reissue, and voiding
+  posts a `RETURN` per batch rather than deleting anything.
+- **Expired lots are shown and then refused, never hidden.** `sellable_batches`
+  offers everything with stock left so the practitioner can see the box in
+  their hand; `consume_from_batch` raises `BatchExpired` on submit and takes
+  the whole bill down with it (no invoice, and the number is not burned).
+  Only `WASTAGE` may leave a past-date batch.
+- **Alert cover is usable-only, the stock list is everything.**
+  `stock_alerts` counts `usable_only=True` for below-reorder — forty expired
+  boxes are not cover for the two good ones — while `stock_levels` still
+  reports what is physically there. `reorder_level` of zero means no alert.
+- **`bootstrap_demo` teardown order is load-bearing.** `InvoiceItem.batch`
+  PROTECTs `StockBatch`, so batches must be deleted *after* invoice lines, not
+  with the rest of the ledger. Nothing the loader generates uses the override,
+  so only a hand-staged row catches it —
+  `core/tests/test_bootstrap_demo.py` stages one.
+
+Not browser-verified: the batch override in a **multi-branch** org. The demo is
+single-branch, so the `hx-include="[name='branch']"` half of the options lookup
+(`_line_branch`) has only been exercised through tests.
+
+Next: SPEC §11 phases remain suspended. Not deployed.
 
 ## Standing rules
 

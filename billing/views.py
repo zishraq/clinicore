@@ -30,6 +30,7 @@ from billing.models import Invoice, Payment, PaymentStatus
 # The receipt prints on the same paper as the prescription, so it takes the
 # same sizes rather than declaring a second, drifting copy of them.
 from clinical.models import Encounter, PrintSize
+from inventory import services as inventory_services
 from patients.models import Patient
 
 __all__ = [
@@ -106,15 +107,23 @@ def invoice_create(request):
     if request.method == 'POST':
         item_formset = InvoiceItemFormSet(data, organization=organization)
         if form.is_valid() and item_formset.is_valid():
-            invoice = services.create_invoice(
-                organization,
-                actor=membership.user,
-                form=form,
-                item_formset=item_formset,
-            )
-            label = organization.terms['invoice']
-            messages.success(request, f'{label} {invoice.number} created.')
-            return redirect('billing:invoice_detail', pk=invoice.pk)
+            try:
+                invoice = services.create_invoice(
+                    organization,
+                    actor=membership.user,
+                    form=form,
+                    item_formset=item_formset,
+                )
+            except inventory_services.InventoryError as error:
+                # The shelf could not cover a line, or a chosen lot has expired.
+                # Nothing was written — the whole bill rolled back — so the form
+                # comes straight back with the sentence naming the product,
+                # rather than a redirect to a bill that does not exist.
+                messages.error(request, str(error))
+            else:
+                label = organization.terms['invoice']
+                messages.success(request, f'{label} {invoice.number} created.')
+                return redirect('billing:invoice_detail', pk=invoice.pk)
     else:
         lines = _prefill_lines(organization, encounter)
         # One blank row after whatever is prefilled, so a product can be added
@@ -152,12 +161,9 @@ def invoice_update(request, pk: int):
     """Edit a bill that has not been paid against; the service enforces that."""
     membership = require_membership(request)
     invoice = _invoice(pk)
-    if not invoice.is_editable:
-        messages.error(
-            request,
-            'This bill has payments recorded against it and can no longer be '
-            'edited. Void a payment first, or void the bill and issue a new one.',
-        )
+    blocked = services.editing_blocked_reason(invoice)
+    if blocked:
+        messages.error(request, blocked)
         return redirect('billing:invoice_detail', pk=invoice.pk)
 
     data = request.POST or None
@@ -174,11 +180,18 @@ def invoice_update(request, pk: int):
                 form=form,
                 item_formset=item_formset,
             )
+        except inventory_services.InventoryError as error:
+            # An edit can be the first thing that sells stock, so it can be the
+            # first thing the shelf refuses. The whole edit rolled back; fall
+            # through to re-render rather than redirect, so the lines the user
+            # just typed are still in front of them.
+            messages.error(request, str(error))
         except services.BillingError as error:
             messages.error(request, str(error))
+            return redirect('billing:invoice_detail', pk=invoice.pk)
         else:
             messages.success(request, f'{invoice.number} updated.')
-        return redirect('billing:invoice_detail', pk=invoice.pk)
+            return redirect('billing:invoice_detail', pk=invoice.pk)
 
     return render(
         request,

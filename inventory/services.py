@@ -14,10 +14,11 @@ mirroring the column. ``consume_stock`` takes a **positive** magnitude and
 negates it, because an outflow has only one possible direction.
 """
 
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
-from django.db.models import DecimalField, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import DecimalField, F, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -36,22 +37,33 @@ from inventory.models import (
 )
 
 __all__ = [
+    'BatchExpired',
     'InsufficientStock',
     'InventoryError',
     'allocate_fefo',
     'batches_for',
+    'consume_from_batch',
     'consume_stock',
     'movement_history',
     'on_hand',
+    'post_sale_movements',
     'receive_stock',
     'record_adjustment',
     'record_movement',
+    'reverse_sale_movements',
+    'sellable_batches',
+    'stock_alerts',
     'stock_levels',
 ]
 
 #: ``DocumentSequence.kind`` for the goods receipt run.
 RECEIPT_SEQUENCE = 'GOODS_RECEIPT'
 RECEIPT_PREFIX = 'GRN'
+
+#: How far ahead the "expiring soon" alert looks (SPEC §6.5's "within N days").
+#: A month is one ordering cycle for a small clinic — long enough to use the
+#: stock or send it back, short enough that the list stays worth reading.
+EXPIRY_HORIZON_DAYS = 30
 
 #: Quantities carry two places, like the invoice line they often come from.
 _QUANTITY_EXPONENT = Decimal('0.01')
@@ -66,6 +78,15 @@ class InventoryError(ValueError):
 
 class InsufficientStock(InventoryError):
     """Raised when an outflow is larger than what the branch actually holds."""
+
+
+class BatchExpired(InventoryError):
+    """Raised when a past-date batch is chosen by hand for a sale (SPEC §6.5).
+
+    Automatic allocation never reaches this: ``allocate_fefo`` leaves expired
+    batches out entirely. It exists for the override, where a human named the
+    lot.
+    """
 
 
 def _to_quantity(value) -> Decimal:
@@ -322,6 +343,184 @@ def consume_stock(
     ]
 
 
+def _lot_label(batch: StockBatch) -> str:
+    """How a batch is named in a refusal the practitioner has to act on."""
+    return f'lot {batch.lot_number}' if batch.lot_number else 'the unnumbered lot'
+
+
+@transaction.atomic
+def consume_from_batch(
+    organization,
+    *,
+    batch: StockBatch,
+    quantity,
+    movement_type: str,
+    actor,
+    reason: str = '',
+    occurred_at=None,
+    invoice_item=None,
+    prescription_item=None,
+):
+    """Take ``quantity`` (positive) off one named batch, bypassing FEFO.
+
+    The override behind the batch column on a bill line. Expired stock is
+    refused here rather than quietly skipped: automatic allocation leaves
+    expired batches out, but someone who named this lot by hand is owed the
+    reason. Only a write-off may take stock off a past-date batch.
+    """
+    if movement_type not in DECREASING_TYPES:
+        raise InventoryError(f'{movement_type} does not take stock out.')
+    quantity = _to_quantity(quantity)
+    if quantity <= ZERO:
+        raise InventoryError('The quantity to take out must be greater than zero.')
+
+    locked = (
+        StockBatch.objects.for_organization(organization)
+        .select_related('product', 'branch')
+        .select_for_update()
+        .get(pk=batch.pk)
+    )
+    if locked.is_expired and movement_type != MovementType.WASTAGE:
+        raise BatchExpired(
+            f'{locked.product.name} — {_lot_label(locked)} expired on '
+            f'{locked.expiry_date:%d %b %Y} and cannot go out. Clear the batch '
+            f'to take the earliest usable one instead.'
+        )
+    # Counted after the lock, in its own statement — see allocate_fefo.
+    available = _to_quantity(
+        StockMovement.objects.for_organization(organization)
+        .filter(batch=locked)
+        .aggregate(total=Sum('quantity'))['total']
+        or ZERO
+    )
+    if available < quantity:
+        raise InsufficientStock(
+            f'{locked.product.name} — {_lot_label(locked)} has {available} left '
+            f'at {locked.branch.name}, and {quantity} was asked for.'
+        )
+    return [
+        record_movement(
+            organization,
+            batch=locked,
+            movement_type=movement_type,
+            quantity=-quantity,
+            actor=actor,
+            reason=reason,
+            occurred_at=occurred_at,
+            invoice_item=invoice_item,
+            prescription_item=prescription_item,
+        )
+    ]
+
+
+def _stock_lines(invoice) -> list:
+    """The bill lines that move stock: tracked catalog products, nothing else.
+
+    Takes the invoice by duck typing rather than importing ``billing`` — the
+    ledger has no business knowing how a bill is shaped beyond its lines, its
+    branch, and the quantity on each row.
+    """
+    return [
+        item
+        for item in invoice.items.select_related('product', 'batch', 'batch__branch')
+        if item.product_id is not None and item.product.is_stock_tracked
+    ]
+
+
+@transaction.atomic
+def post_sale_movements(organization, *, invoice, actor):
+    """Take what a bill sold off the shelf. Exactly once per line, ever.
+
+    The invoice is the stock event (ADR 0009), so this runs when one is issued.
+    Idempotent by construction: a line that already carries a movement is
+    skipped, so a double-submit, a retry, or a second call posts nothing.
+    Reversal is ``reverse_sale_movements``, and nothing re-posts a reversed
+    line — a voided bill is the end of that document.
+
+    Call inside the transaction that writes the invoice: an outflow it cannot
+    cover must take the bill down with it rather than leave a half-billed sale.
+    """
+    lines = _stock_lines(invoice)
+    if not lines:
+        return []
+    if invoice.branch_id is None:
+        raise InventoryError(
+            'This bill sells stock-tracked products, so it needs a branch to '
+            'take them off. Choose one and try again.'
+        )
+
+    posted = []
+    for item in lines:
+        # The one idempotency guard: a line posts its stock once and never
+        # again, whatever calls this or how often.
+        if item.stock_movements.exists():
+            continue
+        common = {
+            'movement_type': MovementType.SALE,
+            'actor': actor,
+            'occurred_at': invoice.issued_at,
+            'invoice_item': item,
+        }
+        if item.batch_id is None:
+            posted += consume_stock(
+                organization,
+                product=item.product,
+                branch=invoice.branch,
+                quantity=item.quantity,
+                **common,
+            )
+            continue
+        if item.batch.branch_id != invoice.branch_id:
+            raise InventoryError(
+                f'{item.product.name} — {_lot_label(item.batch)} is held at '
+                f'{item.batch.branch.name}, not at {invoice.branch.name}.'
+            )
+        posted += consume_from_batch(
+            organization, batch=item.batch, quantity=item.quantity, **common
+        )
+    return posted
+
+
+@transaction.atomic
+def reverse_sale_movements(organization, *, invoice, actor, reason: str):
+    """Put back what a bill took, one ``RETURN`` per batch it came off.
+
+    A compensating movement, never a delete: the sale happened, and the ledger
+    keeps saying so. Idempotent, because what goes back is whatever is still
+    out — run it twice and the second pass finds nothing outstanding.
+    """
+    outstanding = (
+        StockMovement.objects.for_organization(organization)
+        .filter(invoice_item__invoice=invoice)
+        .values('invoice_item', 'batch')
+        .annotate(net=Sum('quantity'))
+        .order_by('invoice_item', 'batch')
+    )
+    rows = [row for row in outstanding if row['net'] < ZERO]
+    if not rows:
+        return []
+
+    items = {item.pk: item for item in invoice.items.all()}
+    batches = {
+        batch.pk: batch
+        for batch in StockBatch.objects.for_organization(organization).filter(
+            pk__in={row['batch'] for row in rows}
+        )
+    }
+    return [
+        record_movement(
+            organization,
+            batch=batches[row['batch']],
+            movement_type=MovementType.RETURN,
+            quantity=-_to_quantity(row['net']),
+            actor=actor,
+            reason=reason,
+            invoice_item=items[row['invoice_item']],
+        )
+        for row in rows
+    ]
+
+
 def on_hand(organization, *, product, branch=None, usable_only: bool = False):
     """Units of ``product`` in stock, optionally at one branch.
 
@@ -368,15 +567,21 @@ def record_adjustment(organization, *, batch, actor, quantity, reason: str):
     )
 
 
-def _product_on_hand(*, branch=None):
+def _product_on_hand(*, branch=None, usable_only: bool = False, on_date=None):
     """Correlated on-hand subquery for a ``Product`` row.
 
-    Counts everything physically on the shelf, expired batches included: the
-    stock list reports what is there, not what may leave.
+    ``usable_only`` leaves expired batches out of the total. The reorder alert
+    wants that — a box that is past date is not cover for the one about to run
+    out — while the stock list wants everything that is physically there.
     """
     movements = StockMovement.all_objects.filter(batch__product=OuterRef('pk'))
     if branch is not None:
         movements = movements.filter(batch__branch=branch)
+    if usable_only:
+        on_date = on_date or timezone.localdate()
+        movements = movements.filter(
+            Q(batch__expiry_date__isnull=True) | Q(batch__expiry_date__gte=on_date)
+        )
     return Coalesce(
         Subquery(
             movements.values('batch__product')
@@ -405,6 +610,57 @@ def stock_levels(organization, *, branch=None, query: str = ''):
     return products.annotate(
         annotated_on_hand=_product_on_hand(branch=branch)
     ).order_by('name')
+
+
+def stock_alerts(organization, *, branch=None, within_days: int = EXPIRY_HORIZON_DAYS):
+    """The three things a clinic has to be told about its shelf (SPEC §6.5).
+
+    Below reorder level, expiring inside ``within_days``, and already expired.
+    Querysets, not lists: the dashboard slices them and the caller counts them.
+
+    A reorder level of zero means "no alert" rather than "warn at nothing",
+    which is what a clinic that has not thought about a level yet actually
+    wants (``catalog.Product.reorder_level``).
+    """
+    today = timezone.localdate()
+    below_reorder = (
+        Product.objects.for_organization(organization)
+        .filter(is_stock_tracked=True, is_active=True, reorder_level__gt=ZERO)
+        .annotate(annotated_on_hand=_product_on_hand(branch=branch, usable_only=True))
+        .filter(annotated_on_hand__lte=F('reorder_level'))
+        .order_by('annotated_on_hand', 'name')
+    )
+    batches = StockBatch.objects.for_organization(organization).select_related(
+        'product', 'branch'
+    )
+    if branch is not None:
+        batches = batches.filter(branch=branch)
+    # Only batches with something left on them: an empty past-date batch is
+    # history, not a job for someone.
+    batches = batches.in_stock()
+    return {
+        'below_reorder': below_reorder,
+        'expiring': batches.filter(
+            expiry_date__gte=today, expiry_date__lte=today + timedelta(days=within_days)
+        ).fefo(),
+        'expired': batches.filter(expiry_date__lt=today).fefo(),
+        'within_days': within_days,
+    }
+
+
+def sellable_batches(organization, *, product, branch):
+    """Batches offered as the batch override on a bill line.
+
+    Everything with stock left, expired lots included: the practitioner has to
+    be able to see the box that is sitting there and be told why it cannot go
+    out, rather than have it silently missing from the list.
+    """
+    return (
+        StockBatch.objects.for_organization(organization)
+        .filter(product=product, branch=branch)
+        .in_stock()
+        .fefo()
+    )
 
 
 def batches_for(organization, *, product, branch=None):

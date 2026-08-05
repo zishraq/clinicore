@@ -10,7 +10,8 @@ which substitutes __prefix__ for the new index.
 {% comment %} after-swap is caught on the row, not the input: htmx fires it on the
    results div and it bubbles to this ancestor, never to a sibling. {% endcomment %}
 <div class="border border-black/5 rounded-lg p-3" x-data="invoiceLine()" data-line-row
-     x-show="!removed" @htmx:after-swap="onResults()">
+     x-show="!removed" @htmx:after-swap="onSwap($event)"
+     @change.window="onBranchChange($event)">
   {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
   {% if form.DELETE %}{{ form.DELETE }}{% endif %}
 
@@ -79,6 +80,38 @@ which substitutes __prefix__ for the new index.
             aria-label="Remove this line"
             title="Remove this line">✕</button>
   </div>
+
+  {% comment %}
+    The batch override. Hidden until the row holds a stock-tracked product with
+    batches on the shelf, because the answer is "automatic" on every other line
+    and an empty select on a consultation fee is just noise.
+
+    Options are fetched rather than rendered: the product is chosen client-side
+    after this markup was built. hx-include sends the row (the hidden product
+    input among it) plus the bill's branch select, which is what decides the
+    shelf; the row dispatches refresh-batches when the product changes.
+
+    display:none is set inline as well as by x-show so the row does not flash
+    open before Alpine initializes.
+  {% endcomment %}
+  <div class="mt-2 flex flex-wrap items-center gap-2" style="display: none"
+       x-show="hasBatches">
+    <label class="text-xs text-muted" for="{{ form.batch.id_for_label }}">{{ terms.batch }}</label>
+    <select name="{{ form.batch.html_name }}"
+            id="{{ form.batch.id_for_label }}"
+            class="select select-bordered select-sm max-w-sm"
+            data-role="line-batch"
+            hx-get="{% url 'inventory:batch_options' %}"
+            hx-trigger="load, refresh-batches from:closest [data-line-row]"
+            hx-include="closest [data-line-row], [name='branch']"
+            hx-vals='{"selected": "{{ form.batch.value|default_if_none:'' }}"}'
+            hx-target="this"
+            hx-swap="innerHTML"></select>
+    <span class="text-xs text-muted">Leave automatic unless you are handing over a particular box.</span>
+  </div>
+  {% for error in form.batch.errors %}
+    <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+  {% endfor %}
 
   {% for error in form.non_field_errors %}
     <p class="text-sm text-[var(--cc-danger)] mt-2">{{ error }}</p>

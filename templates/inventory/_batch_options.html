@@ -1,0 +1,18 @@
+{% comment %}
+Batch choices for one bill line, swapped into the row's select by htmx
+(inventory:batch_options, called from templates/billing/_line_row.html).
+
+Automatic is first and is the default: nobody picks a batch at the counter, and
+stock leaves first-expiry-first-out on its own. Expired lots are listed and
+labelled rather than hidden — the box is on the shelf, and a practitioner who
+reaches for it is owed the refusal, which the service gives on submit.
+{% endcomment %}
+<option value="">Automatic — earliest expiry first</option>
+{% for batch in batches %}
+  <option value="{{ batch.pk }}"{% if selected == batch.pk|stringformat:'s' %} selected{% endif %}>
+    {% if batch.lot_number %}{{ batch.lot_number }}{% else %}No lot{% endif %}
+    · {{ batch.on_hand|floatformat:'-2' }} left
+    {% if batch.expiry_date %}· exp {{ batch.expiry_date|date:'d M Y' }}{% endif %}
+    {% if batch.is_expired %}· EXPIRED{% endif %}
+  </option>
+{% endfor %}

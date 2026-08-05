@@ -26,6 +26,13 @@ from clinical.models import (
 )
 from core.context import organization_context
 from core.models import DocumentSequence
+from inventory import services as inventory
+from inventory.models import (
+    GoodsReceipt,
+    GoodsReceiptItem,
+    StockBatch,
+    StockMovement,
+)
 from organizations.models import Branch as BranchModel
 from organizations.models import Organization
 from patients.models import Patient, PatientClinicalProfile, Sex
@@ -196,6 +203,17 @@ class Command(BaseCommand):
                 address='12 Example Road, Dhaka 1207',
                 phone='09-600-000000',
             )
+            # A second branch, with its own shelf and nothing else. Two of them
+            # is what makes the branch field appear on a bill and what makes
+            # "which shelf does this line come off" a real question rather than
+            # a foregone one — the single-branch demo could not exercise it.
+            second_branch = BranchModel.objects.create(
+                organization=organization,
+                name='Uttara Chamber',
+                code='UTT',
+                address='45 Example Avenue, Uttara, Dhaka 1230',
+                phone='09-600-000001',
+            )
             owner = self._member(
                 organization, Role.OWNER, '01711000001', 'Dr Ayesha Karim'
             )
@@ -209,15 +227,26 @@ class Command(BaseCommand):
             encounters = self._encounters(
                 organization, branch, practitioner, patients, catalog
             )
+            # Before the bills: issuing one is what takes stock off the shelf,
+            # so there has to be a shelf first.
+            receipts = self._stock(organization, branch, owner, catalog['products'])
+            receipts += self._second_shelf(
+                organization, second_branch, owner, catalog['products']
+            )
             invoices = self._invoices(
-                organization, practitioner, patients, encounters, catalog
+                organization, branch, practitioner, patients, encounters, catalog
             )
 
         self.stdout.write(self.style.SUCCESS('\nDemo data ready.'))
         self.stdout.write(f'  Organization : {organization.name}')
+        self.stdout.write('  Branches     : 2 (Main Chamber, Uttara Chamber)')
         self.stdout.write(f'  Patients     : {len(patients)}')
         self.stdout.write(f'  Medicines    : {len(catalog["products"])}')
         self.stdout.write(f'  Advice       : {len(catalog["advice"])}')
+        self.stdout.write(
+            f'  Deliveries   : {len(receipts)} '
+            '(some short-dated, so the alerts have something to show)'
+        )
         self.stdout.write(f'  Bills        : {len(invoices)} (unpaid, part paid, paid)')
         self.stdout.write('\n  Sign in with any of these (password below):')
         self.stdout.write('    01711000001  Owner        Dr Ayesha Karim')
@@ -230,10 +259,22 @@ class Command(BaseCommand):
         if organization is None:
             return
         with organization_context(organization):
-            # Payments and lines first: both PROTECT what they point at.
+            # The ledger first: a movement PROTECTs the batch, the receipt line
+            # and the invoice line it points at, so nothing below can go until
+            # the movements have. These are queryset deletes, which do not go
+            # through ``StockMovement.delete`` — the append-only guard is about
+            # the application never rewriting history, not about tearing down a
+            # synthetic organization (docs/adr/0009-ledger-based-stock.md).
+            StockMovement.all_objects.filter(organization=organization).delete()
+            GoodsReceiptItem.all_objects.filter(organization=organization).delete()
+            GoodsReceipt.all_objects.filter(organization=organization).delete()
+            # Payments and lines next: both PROTECT what they point at.
             PaymentModel.all_objects.filter(organization=organization).delete()
             InvoiceItem.all_objects.filter(organization=organization).delete()
             Invoice.all_objects.filter(organization=organization).delete()
+            # Batches only now: a bill line that used the batch override still
+            # PROTECTs the lot it named, long after its movements have gone.
+            StockBatch.all_objects.filter(organization=organization).delete()
             DocumentSequence.all_objects.filter(organization=organization).delete()
             PrescriptionItem.all_objects.filter(organization=organization).delete()
             Prescription.all_objects.filter(organization=organization).delete()
@@ -312,6 +353,15 @@ class Command(BaseCommand):
                 # rebuild produces the same catalog.
                 sale_price=Decimal(f'{8 + (index * 7) % 45}.00'),
                 is_sellable=category != 'Supplement',
+                # A clinic dispenses what it sells, so the sellable half of the
+                # catalog is what the ledger follows. Supplements stay untracked
+                # on purpose: the demo should show both kinds of line on a bill.
+                is_stock_tracked=category != 'Supplement',
+                # Zero means no alert, so a few products deliberately have none
+                # — that is the state a clinic starts in.
+                reorder_level=(
+                    Decimal('0') if index % 4 == 0 else Decimal(f'{10 + index % 3 * 5}')
+                ),
             )
             for index, (name, category, unit) in enumerate(MEDICINES, start=1)
         ]
@@ -327,6 +377,150 @@ class Command(BaseCommand):
             for text, category, frequency, duration in ADVICE
         ]
         return {'products': products, 'advice': advice}
+
+    def _stock(self, organization, branch, actor, products) -> list:
+        """Book the shelf in, deliberately including the three alert states.
+
+        A demo where every batch is healthy never shows the dashboard alerts
+        that SPEC §6.5 asks for, so the deliveries below are shaped to leave
+        some products under their reorder level, some batches expiring inside
+        the horizon, and some already past date. Positions in the catalog list
+        pick which, so a rebuild produces the same shelf.
+
+        Booked through ``receive_stock`` rather than by writing batches
+        directly: the demo should exercise the same path the goods receipt
+        screen does, numbered receipts and PURCHASE movements included.
+        """
+        tracked = [product for product in products if product.is_stock_tracked]
+        today = timezone.localdate()
+        receipts = []
+
+        # The bulk of the shelf: a year of headroom, comfortably stocked.
+        healthy = [
+            {
+                'product': product,
+                'quantity': Decimal(str(40 + (index * 13) % 60)),
+                'cost_price': (product.sale_price * Decimal('0.6')).quantize(
+                    Decimal('0.01')
+                ),
+                'lot_number': f'L{index:03d}A',
+                'expiry_date': today + timedelta(days=300 + (index * 11) % 200),
+            }
+            for index, product in enumerate(tracked, start=1)
+            if index % 5 != 0
+        ]
+        receipts.append(
+            inventory.receive_stock(
+                organization,
+                branch=branch,
+                actor=actor,
+                lines=healthy,
+                supplier='Example Pharma Distributors',
+                reference='INV-2026-0431',
+                received_at=timezone.now() - timedelta(days=45),
+                notes='Opening stock.',
+            )
+        )
+
+        # Every fifth product comes in short, so it sits at or under its
+        # reorder level the moment the shelf is counted.
+        short = [
+            {
+                'product': product,
+                'quantity': max(product.reorder_level - Decimal('2'), Decimal('1')),
+                'cost_price': (product.sale_price * Decimal('0.6')).quantize(
+                    Decimal('0.01')
+                ),
+                'lot_number': f'L{index:03d}B',
+                'expiry_date': today + timedelta(days=250),
+            }
+            for index, product in enumerate(tracked, start=1)
+            if index % 5 == 0
+        ]
+        if short:
+            receipts.append(
+                inventory.receive_stock(
+                    organization,
+                    branch=branch,
+                    actor=actor,
+                    lines=short,
+                    supplier='Example Pharma Distributors',
+                    reference='INV-2026-0508',
+                    received_at=timezone.now() - timedelta(days=20),
+                    notes='Part delivery — the rest was back-ordered.',
+                )
+            )
+
+        # An old delivery that never got used up: two lots on their way out and
+        # two already gone. This is what the dashboard alerts are for.
+        ageing = []
+        for offset, product in enumerate(tracked[:4]):
+            days = (12, 25, -6, -40)[offset]
+            ageing.append(
+                {
+                    'product': product,
+                    'quantity': Decimal(str(6 + offset * 3)),
+                    'cost_price': (product.sale_price * Decimal('0.6')).quantize(
+                        Decimal('0.01')
+                    ),
+                    'lot_number': f'OLD{offset + 1:02d}',
+                    'expiry_date': today + timedelta(days=days),
+                }
+            )
+        if ageing:
+            receipts.append(
+                inventory.receive_stock(
+                    organization,
+                    branch=branch,
+                    actor=actor,
+                    lines=ageing,
+                    supplier='Metro Medical Supply',
+                    reference='INV-2025-1187',
+                    received_at=timezone.now() - timedelta(days=310),
+                    notes='Short-dated stock taken at a discount.',
+                )
+            )
+        return receipts
+
+    def _second_shelf(self, organization, branch, actor, products) -> list:
+        """A smaller, separate shelf at the second branch.
+
+        Deliberately a different subset of the catalog, in its own lot series
+        (``U…``), and at different quantities: the point of a second branch in
+        the demo is that "is this the right shelf?" has a visible answer. A lot
+        held here must never be offered on a bill raised at the other one.
+        """
+        tracked = [product for product in products if product.is_stock_tracked]
+        today = timezone.localdate()
+        lines = [
+            {
+                'product': product,
+                'quantity': Decimal(str(15 + (index * 7) % 25)),
+                'cost_price': (product.sale_price * Decimal('0.6')).quantize(
+                    Decimal('0.01')
+                ),
+                'lot_number': f'U{index:03d}',
+                'expiry_date': today + timedelta(days=280 + (index * 9) % 150),
+            }
+            # Every other tracked product, so the two shelves overlap without
+            # matching — some products are stocked at both, some at one.
+            for index, product in enumerate(tracked, start=1)
+            if index % 2 == 0
+        ]
+        if not lines:
+            return []
+        return [
+            inventory.receive_stock(
+                organization,
+                branch=branch,
+                actor=actor,
+                lines=lines,
+                supplier='Uttara Pharma Supply',
+                reference='UPS-2026-0077',
+                received_at=timezone.now() - timedelta(days=30),
+                notes='Opening stock for the Uttara chamber.',
+            )
+        ]
 
     def _encounters(self, organization, branch, practitioner, patients, catalog):
         encounters = []
@@ -400,11 +594,16 @@ class Command(BaseCommand):
             encounters.append(encounter)
         return encounters
 
-    def _invoices(self, organization, practitioner, patients, encounters, catalog):
+    def _invoices(
+        self, organization, branch, practitioner, patients, encounters, catalog
+    ):
         """A few bills in each state, so unpaid / part paid / paid are all visible.
 
         Payments go through the service rather than the model, so the demo data
-        exercises the same overpayment guard the UI does.
+        exercises the same overpayment guard the UI does. So does the stock:
+        issuing a bill is what takes a product off the shelf, and a demo whose
+        bills sell tracked products without moving any would contradict the
+        feature it exists to show (docs/adr/0009-ledger-based-stock.md).
         """
         billable = [
             encounter
@@ -428,6 +627,7 @@ class Command(BaseCommand):
                 created_by=practitioner,
                 patient=patient,
                 encounter=encounter,
+                branch=branch,
                 currency=organization.currency,
                 number=next_invoice_number(organization),
                 issued_at=encounter.occurred_at if encounter else timezone.now(),
@@ -449,17 +649,37 @@ class Command(BaseCommand):
                 product for product in catalog['products'] if product.is_sellable
             ]
             for product in random.sample(sellable, random.randint(1, 3)):
+                quantity = Decimal(str(random.choice([1, 2, 5, 10])))
+                if product.is_stock_tracked:
+                    # Never bill more than the shelf holds. Some products are
+                    # deliberately short so the reorder alert has something to
+                    # say, and a demo build must not die on one of them.
+                    usable = inventory.on_hand(
+                        organization,
+                        product=product,
+                        branch=branch,
+                        usable_only=True,
+                    )
+                    quantity = min(quantity, usable)
+                    if quantity <= 0:
+                        continue
                 InvoiceItem.objects.create(
                     organization=organization,
                     created_by=practitioner,
                     invoice=invoice,
                     line_type=LineType.PRODUCT,
                     product=product,
-                    quantity=random.choice([1, 2, 5, 10]),
+                    quantity=quantity,
                     unit_price=product.sale_price,
                     sort_order=order,
                 )
                 order += 1
+
+            # The bill is issued, so the stock leaves now — through the same
+            # service the counter uses, FEFO and all.
+            inventory.post_sale_movements(
+                organization, invoice=invoice, actor=practitioner
+            )
 
             invoice.refresh_from_db()
             due = invoice.amount_due

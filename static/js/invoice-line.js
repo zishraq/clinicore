@@ -29,6 +29,10 @@ document.addEventListener('alpine:init', () => {
     activeIndex: -1,
     removed: false,
     justSelected: false,
+    /* Whether this row's product has batches to choose between. False keeps
+     * the batch select out of the way: on most lines the answer is "automatic"
+     * and there is nothing to decide. */
+    hasBatches: false,
     /* Plain state, not a getter over the inputs: Alpine tracks its own
      * reactive properties, and an input's .value changing is invisible to it,
      * so a computed row total would render once and then sit there stale. */
@@ -58,6 +62,22 @@ document.addEventListener('alpine:init', () => {
       return Array.from(this.$refs.results.querySelectorAll('[data-result]'));
     },
 
+    /* Two htmx targets live inside this row — the suggestions dropdown and the
+     * batch select — and after-swap bubbles to the row from both. Dispatch on
+     * what was actually swapped, or picking a batch reopens the search list. */
+    onSwap(event) {
+      const target = event.detail && event.detail.target;
+      if (!target) return;
+      if (target.hasAttribute('data-results')) this.onResults();
+      else if (target.dataset.role === 'line-batch') this.onBatches(target);
+    },
+
+    /* Batch options arrived. One option is the "automatic" placeholder, so
+     * anything more than that means there is a real choice on the shelf. */
+    onBatches(select) {
+      this.hasBatches = select.options.length > 1;
+    },
+
     /* HTMX just swapped new suggestions in. */
     onResults() {
       // A request already in flight when the user picked something must not
@@ -78,7 +98,30 @@ document.addEventListener('alpine:init', () => {
       if (this.field('line-type').value !== 'CONSULTATION') {
         this.field('line-type').value = 'OTHER';
       }
+      this.refreshBatches();
       this.changed();
+    },
+
+    /* Re-fetch the batch options for whatever product the row now holds. htmx
+     * listens for this event on the row itself (templates/billing/_line_row.html).
+     * The current choice is cleared first: a lot chosen for the previous
+     * product must never ride along to this one. */
+    refreshBatches() {
+      const select = this.field('line-batch');
+      if (!select) return;
+      select.value = '';
+      this.hasBatches = false;
+      this.$root.dispatchEvent(new CustomEvent('refresh-batches'));
+    },
+
+    /* The bill's branch decides which shelf every row draws from, so changing
+     * it invalidates every row's batch list at once — and the lot already
+     * chosen on a row, which now belongs to the wrong branch. Caught on the
+     * window because the branch select sits above the rows, not inside one;
+     * without this a practitioner is offered a lot the service then refuses
+     * with "held at Main Chamber, not at Uttara Chamber". */
+    onBranchChange(event) {
+      if (event.target && event.target.name === 'branch') this.refreshBatches();
     },
 
     move(delta) {
@@ -118,6 +161,7 @@ document.addEventListener('alpine:init', () => {
 
       this.justSelected = true;
       this.close();
+      this.refreshBatches();
       this.changed();
     },
 

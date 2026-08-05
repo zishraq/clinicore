@@ -26,6 +26,64 @@
   {% endif %}
 </div>
 
+{% comment %}
+Stock alerts, SPEC §6.5: below reorder level, expiring soon, already expired.
+The whole section is skipped when the shelf is fine — an alert panel that is
+usually empty stops being read.
+{% endcomment %}
+{% if stock_alerts.below_reorder.total or stock_alerts.expiring.total or stock_alerts.expired.total %}
+  <h2 class="font-semibold mt-8 mb-3">{{ terms.stock }} alerts</h2>
+  <div class="grid gap-4 lg:grid-cols-3">
+
+    {% if stock_alerts.below_reorder.total %}
+      <div class="card-surface rounded-xl p-5 border-l-4 border-l-[var(--cc-warning)]">
+        <p class="text-sm text-muted">Below reorder level</p>
+        <p class="text-3xl font-semibold mt-1">{{ stock_alerts.below_reorder.total }}</p>
+        <ul class="mt-3 space-y-1 text-sm">
+          {% for product in stock_alerts.below_reorder.rows %}
+            <li class="flex justify-between gap-3">
+              <a class="link truncate" href="{% url 'inventory:product_stock' product.pk %}">{{ product.name }}</a>
+              <span class="tabular-nums text-muted whitespace-nowrap">{{ product.annotated_on_hand|floatformat:'-2' }} / {{ product.reorder_level|floatformat:'-2' }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if stock_alerts.expiring.total %}
+      <div class="card-surface rounded-xl p-5 border-l-4 border-l-[var(--cc-warning)]">
+        <p class="text-sm text-muted">Expiring within {{ expiry_horizon_days }} days</p>
+        <p class="text-3xl font-semibold mt-1">{{ stock_alerts.expiring.total }}</p>
+        <ul class="mt-3 space-y-1 text-sm">
+          {% for batch in stock_alerts.expiring.rows %}
+            <li class="flex justify-between gap-3">
+              <a class="link truncate" href="{% url 'inventory:product_stock' batch.product_id %}">{{ batch.product.name }}</a>
+              <span class="tabular-nums text-muted whitespace-nowrap">{{ batch.expiry_date|date:'d M Y' }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if stock_alerts.expired.total %}
+      <div class="card-surface rounded-xl p-5 border-l-4 border-l-[var(--cc-danger)]">
+        <p class="text-sm text-muted">Expired, still on the shelf</p>
+        <p class="text-3xl font-semibold mt-1">{{ stock_alerts.expired.total }}</p>
+        <ul class="mt-3 space-y-1 text-sm">
+          {% for batch in stock_alerts.expired.rows %}
+            <li class="flex justify-between gap-3">
+              <a class="link truncate" href="{% url 'inventory:product_stock' batch.product_id %}">{{ batch.product.name }}</a>
+              <span class="tabular-nums text-muted whitespace-nowrap">{{ batch.on_hand|floatformat:'-2' }} left</span>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="text-xs text-muted mt-3">Blocked from going out. Write it off with an {{ terms.adjustment|lower }}.</p>
+      </div>
+    {% endif %}
+
+  </div>
+{% endif %}
+
 {% if recent_encounters %}
   <div class="card-surface rounded-xl mt-6 overflow-x-auto">
     <table class="table">

@@ -27,6 +27,7 @@ from organizations.models import Branch
 
 __all__ = [
     'adjustment_create',
+    'batch_options',
     'product_stock',
     'receipt_create',
     'receipt_detail',
@@ -195,6 +196,60 @@ def receipt_detail(request, pk: int):
             'receipt': receipt,
             'items': list(receipt.items.select_related('product', 'batch')),
         },
+    )
+
+
+def _line_product(request):
+    """The product on the bill line asking for batches.
+
+    Read off whichever key ends in ``-product``, because htmx sends the row's
+    hidden input under its formset name — ``items-3-product``. Same trick, and
+    the same reason, as ``catalog.views._typed_query``.
+    """
+    for key, value in request.GET.items():
+        if key.endswith('-product') and value.isdigit():
+            return Product.objects.filter(pk=int(value)).first()
+    return None
+
+
+def _line_branch(request):
+    """Which shelf the line comes off, mirroring the invoice form's own rule.
+
+    The bill's branch select when the organization has more than one; the only
+    active branch when it has one, because then the form does not ask.
+    """
+    branch = _selected_branch(request)
+    if branch is not None:
+        return branch
+    branches = _branches(request.organization)
+    return branches.first() if branches.count() == 1 else None
+
+
+@login_required
+@clinical_access_required
+def batch_options(request):
+    """``<option>``s for the batch override on one bill line.
+
+    Markup rather than JSON, like the catalog suggestions: it drops straight
+    into the row's select. Everything with stock left is offered, expired lots
+    included and labelled — a practitioner has to be able to see the box that
+    is physically there and be told why it cannot go out, which the service
+    does on submit (``inventory.services.consume_from_batch``).
+    """
+    require_membership(request)
+    product = _line_product(request)
+    branch = _line_branch(request)
+    batches = []
+    if product is not None and product.is_stock_tracked and branch is not None:
+        batches = list(
+            services.sellable_batches(
+                request.organization, product=product, branch=branch
+            )
+        )
+    return render(
+        request,
+        'inventory/_batch_options.html',
+        {'batches': batches, 'selected': request.GET.get('selected', '')},
     )
 
 

@@ -65,16 +65,22 @@ REASON_REQUIRED_TYPES = (MovementType.ADJUSTMENT, MovementType.WASTAGE)
 #: The document behind each automatic movement type. A movement may have no
 #: source at all — opening stock and manual corrections are entered by hand —
 #: but it may never carry a source belonging to a different type.
+#:
+#: RETURN points at the invoice line too: voiding a bill puts the stock back,
+#: and the movement that does it has to say which sale it undoes. ADR 0009 left
+#: room for exactly this ("if either grows a real workflow it gets a source FK").
 SOURCE_FIELDS = {
     MovementType.PURCHASE: 'goods_receipt_item',
     MovementType.SALE: 'invoice_item',
+    MovementType.RETURN: 'invoice_item',
     MovementType.DISPENSE: 'prescription_item',
 }
 
 
 def _source_matches_type() -> Q:
     """At most one source FK, and only on the movement type it belongs to."""
-    fields = list(SOURCE_FIELDS.values())
+    # Deduplicated: SALE and RETURN share a source document.
+    fields = list(dict.fromkeys(SOURCE_FIELDS.values()))
     condition = Q(**{f'{field}__isnull': True for field in fields})
     for movement_type, field in SOURCE_FIELDS.items():
         others = {f'{other}__isnull': True for other in fields if other != field}
