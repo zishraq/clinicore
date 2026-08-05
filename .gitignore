@@ -230,3 +230,4 @@ theme/static/css/dist/
 # Claude Code — personal/local only
 .claude/settings.local.json
 /.venv_clinicore/
+202?-*-*-*.txt
