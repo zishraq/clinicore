@@ -3,6 +3,7 @@
 from django.db import transaction
 from django.db.models import Q
 
+from core.services import next_document_number
 from patients.models import Patient
 
 __all__ = [
@@ -14,24 +15,49 @@ __all__ = [
 
 CODE_PREFIX = 'P'
 
+#: ``DocumentSequence.kind`` for the patient code run. No period: a patient
+#: keeps one code for life, so the run never restarts.
+PATIENT_SEQUENCE = 'PATIENT'
+
+
+def _code_number(code: str) -> int:
+    """The numeric part of ``P-0007``, or 0 for anything else."""
+    prefix = f'{CODE_PREFIX}-'
+    digits = code[len(prefix) :] if code.startswith(prefix) else ''
+    return int(digits) if digits.isdigit() else 0
+
+
+def _highest_code_on_file(organization) -> int:
+    """The largest code already issued, soft-deleted patients included.
+
+    Reads through ``all_objects``: a code must stay unique against a removed row
+    too, or restoring one collides.
+    """
+    codes = Patient.all_objects.filter(organization=organization).values_list(
+        'code', flat=True
+    )
+    return max((_code_number(code) for code in codes), default=0)
+
 
 def generate_patient_code(organization) -> str:
     """Next org-scoped human-readable code, e.g. ``P-0007``.
 
-    Reads through ``all_objects`` because codes must stay unique against soft
-    deleted rows too. The unique constraint is the real guard; a race just means
-    the caller retries.
+    Allocated from a locked counter row, like every other document number
+    (``core.services.next_document_number``). Reading the maximum and adding one
+    is what it replaces: two receptionists registering at the same moment both
+    read the same maximum, and one of them met the unique constraint as a 500.
+
+    Call inside the transaction that writes the patient — ``create_patient``
+    does — so the lock is held until the row exists.
     """
-    last = (
-        Patient.all_objects.filter(organization=organization)
-        .order_by('-id')
-        .values_list('code', flat=True)
-        .first()
+    return next_document_number(
+        organization,
+        kind=PATIENT_SEQUENCE,
+        prefix=CODE_PREFIX,
+        # Codes predate the counter, and the demo loader writes them directly,
+        # so the floor comes off the rows rather than being assumed to be zero.
+        start_after=_highest_code_on_file(organization),
     )
-    next_number = 1
-    if last and last.startswith(f'{CODE_PREFIX}-') and last[2:].isdigit():
-        next_number = int(last[2:]) + 1
-    return f'{CODE_PREFIX}-{next_number:04d}'
 
 
 def search_patients(organization, query: str):

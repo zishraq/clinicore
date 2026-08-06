@@ -46,9 +46,14 @@ def _payload(patient, branch, practitioner, **overrides):
     return payload
 
 
-def test_practitioner_creates_an_encounter_with_a_prescription(
+def test_saving_a_visit_completes_it(
     client, practitioner, patient, branch, organization
 ):
+    """A4: the doctor writes the note at the end, so saving is completing.
+
+    Open/Completed was bookkeeping he had to carry for no benefit. The state
+    machine is unchanged — only which state a plain save lands in.
+    """
     client.force_login(practitioner)
     response = client.post(
         reverse('clinical:encounter_create'),
@@ -60,19 +65,89 @@ def test_practitioner_creates_an_encounter_with_a_prescription(
     with organization_context(organization):
         encounter = Encounter.objects.get()
         assert encounter.organization_id == organization.pk
-        assert encounter.status == EncounterStatus.DRAFT
+        assert encounter.status == EncounterStatus.FINALIZED
+        assert encounter.finalized_at is not None
+        # Finalizing issues the prescription; saving must do the whole thing.
+        assert encounter.prescription.issued_at is not None
         items = list(encounter.prescription.items.all())
         assert [item.free_text_name for item in items] == ['Ambroxol syrup']
         # Child rows inherit the tenant, so nothing lands unscoped.
         assert items[0].organization_id == organization.pk
 
 
-def test_finalizing_locks_the_encounter(
+def test_save_as_draft_leaves_the_visit_open(
     client, practitioner, patient, branch, organization
 ):
+    """The interruption path. Still there, just no longer the default."""
+    client.force_login(practitioner)
+    client.post(
+        reverse('clinical:encounter_create'),
+        _payload(patient, branch, practitioner, save_draft='1'),
+    )
+    with organization_context(organization):
+        encounter = Encounter.objects.get()
+        assert encounter.status == EncounterStatus.DRAFT
+        assert encounter.finalized_at is None
+        assert encounter.prescription.issued_at is None
+
+
+def test_a_completed_visit_edits_as_an_amendment(
+    client, practitioner, patient, branch, organization
+):
+    """The intended consequence of A4: there is no un-reasoned second edit."""
     client.force_login(practitioner)
     client.post(
         reverse('clinical:encounter_create'), _payload(patient, branch, practitioner)
+    )
+    with organization_context(organization):
+        encounter = Encounter.objects.get()
+
+    response = client.get(reverse('clinical:encounter_update', args=[encounter.pk]))
+    assert response.status_code == 200
+    assert response.context['is_amendment'] is True
+
+
+def test_finishing_a_draft_completes_it(
+    client, practitioner, patient, branch, organization
+):
+    """Saving a draft from the edit form takes the same completing path."""
+    client.force_login(practitioner)
+    client.post(
+        reverse('clinical:encounter_create'),
+        _payload(patient, branch, practitioner, save_draft='1'),
+    )
+    with organization_context(organization):
+        encounter = Encounter.objects.get()
+        prescription_pk = encounter.prescription.pk
+        item_pk = encounter.prescription.items.first().pk
+
+    client.post(
+        reverse('clinical:encounter_update', args=[encounter.pk]),
+        _payload(
+            patient,
+            branch,
+            practitioner,
+            **{
+                'items-INITIAL_FORMS': '1',
+                'items-0-id': item_pk,
+                'items-0-prescription': prescription_pk,
+            },
+        ),
+    )
+    with organization_context(organization):
+        encounter.refresh_from_db()
+        assert encounter.status == EncounterStatus.FINALIZED
+        assert encounter.finalized_at is not None
+
+
+def test_finalizing_by_hand_still_works(
+    client, practitioner, patient, branch, organization
+):
+    """The explicit transition is kept — a draft still needs somewhere to go."""
+    client.force_login(practitioner)
+    client.post(
+        reverse('clinical:encounter_create'),
+        _payload(patient, branch, practitioner, save_draft='1'),
     )
     with organization_context(organization):
         encounter = Encounter.objects.get()
@@ -83,12 +158,6 @@ def test_finalizing_locks_the_encounter(
         assert encounter.status == EncounterStatus.FINALIZED
         assert encounter.finalized_at is not None
         assert encounter.prescription.issued_at is not None
-
-    # A finalized encounter stays editable, but the form now demands a reason;
-    # the amendment rules themselves are covered in test_amendments.py.
-    response = client.get(reverse('clinical:encounter_update', args=[encounter.pk]))
-    assert response.status_code == 200
-    assert response.context['is_amendment'] is True
 
 
 def test_add_item_row_renumbers_the_formset_prefix(client, practitioner):

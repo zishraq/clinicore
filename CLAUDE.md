@@ -111,9 +111,50 @@ Rules to know before touching it:
   so only a hand-staged row catches it —
   `core/tests/test_bootstrap_demo.py` stages one.
 
-Not browser-verified: the batch override in a **multi-branch** org. The demo is
-single-branch, so the `hx-include="[name='branch']"` half of the options lookup
-(`_line_branch`) has only been exercised through tests.
+Not browser-verified: the batch override in a **multi-branch** org. (The demo is
+now two-branch, so this is re-testable; the `hx-include="[name='branch']"` half
+of the options lookup in `_line_branch` still has only tests behind it.)
+
+The clinic-feedback pass (A1–A6) and the hardening pass (B7–B11) are done, and
+A1/A4/A5 are browser-verified end to end. What each one settled:
+
+- **The visit form picks its patient, and can create one (A1).**
+  `EncounterForm.patient` is a `HiddenInput` behind a search box
+  (`templates/clinical/_patient_picker.html`); the field itself is unchanged, so
+  validation and org scoping still hold. `itemRow` and `patientPicker` share
+  `autocompleteCore()` in `static/js/item-autocomplete.js` — one keyboard
+  implementation, not two. **The modal lives in base.html's `modals` block, not
+  in the picker**: a `<form>` cannot nest, and the point is that the half-written
+  visit survives registering someone. That is also why the created patient
+  arrives as a bubbling `patient-picked` event rather than a swapped
+  `[data-autoselect]` fragment — the modal is not in the picker's subtree. It
+  renders `PatientForm` itself, so A2's branch default applies without restating,
+  and `possible_duplicates` runs with each match offered as a selectable button.
+- **`advice_enabled` is a column, not a terminology key (A3).** Terminology names
+  things that exist; this decides whether they exist. Off hides the nav link, the
+  autocomplete's advice half, and the quick-add offer, and 403s a direct `ADVICE`
+  quick-add POST. **Detail and print needed no change** — both already gate on
+  `{% if advice_items %}`, i.e. on data rather than the flag, which is exactly
+  what keeps recorded advice readable after the switch goes off. Gating those on
+  the flag would be a data-hiding bug. Owner-settable at
+  `organizations:feature_settings`.
+- **Saving a visit completes it (A4).** `save_draft` is the secondary button,
+  second in the DOM so Enter takes the common path. `finalize_encounter`, the
+  state machine and the amendment trail are untouched — only the default moved.
+  Every edit after the first save being a reasoned amendment is intended. The
+  status column leaves the visit list when nothing is open.
+- **The bill opens with what was prescribed and can be sold (A5).**
+  `billing.services.prescribed_product_lines` + `inventory.services.sellable_now`,
+  which annotates rather than looping. Quantity is 1 because a prescription
+  carries none and none should be invented (ADR 0009). In stock means usable
+  `on_hand > 0` — expired lots excluded, **reorder level ignored**, because that
+  is a purchasing signal and a clinic can still sell its last two boxes. Branch
+  decides what counts. A convenience copy, never a link.
+- **`request.POST or None` is wrong for a checkbox-only form.** An unticked
+  checkbox posts nothing, so the QueryDict is empty and falsy, and the usual
+  idiom silently rebuilds the form unbound and saves nothing — turning a feature
+  off would look like it worked. `organizations/views.py` binds on
+  `request.method` instead. Found by a test, confirmed in a browser.
 
 Next: SPEC §11 phases remain suspended. Not deployed.
 

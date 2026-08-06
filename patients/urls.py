@@ -9,6 +9,9 @@ app_name = 'patients'
 urlpatterns = [
     path('', views.patient_list, name='list'),
     path('search/', views.patient_search, name='search'),
+    # Autocomplete and inline registration for the visit form (A1).
+    path('suggestions/', views.patient_suggestions, name='suggestions'),
+    path('quick-create/', views.patient_quick_create, name='quick_create'),
     path('new/', views.patient_create, name='create'),
     path('<int:pk>/', views.patient_detail, name='detail'),
     path('<int:pk>/edit/', views.patient_update, name='update'),

@@ -52,6 +52,7 @@ __all__ = [
     'record_movement',
     'reverse_sale_movements',
     'sellable_batches',
+    'sellable_now',
     'stock_alerts',
     'stock_levels',
 ]
@@ -610,6 +611,30 @@ def stock_levels(organization, *, branch=None, query: str = ''):
     return products.annotate(
         annotated_on_hand=_product_on_hand(branch=branch)
     ).order_by('name')
+
+
+def sellable_now(organization, products, *, branch=None) -> set[int]:
+    """Which of ``products`` could actually be sold off the shelf right now.
+
+    Sellable, stock tracked, and with usable stock left — expired lots do not
+    count, since only a WASTAGE may move them. Reorder level is deliberately
+    ignored: it is a purchasing signal, not a sellability one, and a clinic can
+    still sell its last two boxes.
+
+    Returns primary keys, and annotates rather than looping, so the caller pays
+    one query however long the prescription is. Used by the bill prefill (A5).
+    """
+    identifiers = [product.pk for product in products]
+    if not identifiers:
+        return set()
+    rows = (
+        Product.objects.for_organization(organization)
+        .filter(pk__in=identifiers, is_sellable=True, is_stock_tracked=True)
+        .annotate(annotated_on_hand=_product_on_hand(branch=branch, usable_only=True))
+        .filter(annotated_on_hand__gt=ZERO)
+        .values_list('pk', flat=True)
+    )
+    return set(rows)
 
 
 def stock_alerts(organization, *, branch=None, within_days: int = EXPIRY_HORIZON_DAYS):

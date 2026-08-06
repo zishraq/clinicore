@@ -68,7 +68,12 @@ class EncounterForm(forms.ModelForm):
             'examination': forms.Textarea(attrs=_TEXTAREA),
             'assessment': forms.Textarea(attrs=_TEXTAREA),
             'plan': forms.Textarea(attrs=_TEXTAREA),
-            'patient': forms.Select(attrs=_SELECT),
+            # Not a dropdown: a clinic's whole patient list is unusable as a
+            # <select>, and the doctor starts here rather than at Patients. The
+            # visible control is a search box in
+            # templates/clinical/_patient_picker.html; this stays the real
+            # field, so validation and org scoping are untouched.
+            'patient': forms.HiddenInput(attrs={'data-role': 'patient-id'}),
             'branch': forms.Select(attrs=_SELECT),
             'practitioner': forms.Select(attrs=_SELECT),
         }

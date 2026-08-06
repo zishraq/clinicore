@@ -40,8 +40,10 @@
   <section class="card-surface rounded-xl p-6">
     <h2 class="font-semibold mb-4">Consultation</h2>
     <div class="grid gap-4 sm:grid-cols-2">
+      {# Rendered ahead of the loop and skipped inside it: it is a search box, not a field. #}
+      {% include 'clinical/_patient_picker.html' %}
       {% for field in form %}
-        {% if field.name != 'change_reason' %}
+        {% if field.name != 'change_reason' and field.name != 'patient' %}
           <div class="{% if field.name in 'chief_complaint examination assessment plan' %}sm:col-span-2{% endif %}">
             <label class="label" for="{{ field.id_for_label }}">
               <span class="label-text">{{ field.label }}</span>
@@ -59,7 +61,11 @@
   <section class="card-surface rounded-xl p-6">
     <h2 class="font-semibold">Prescription</h2>
     <p class="text-sm text-muted mb-4">
-      Search once for both medicines and advice. Arrow keys move, Enter selects.
+      {% if organization.advice_enabled %}
+        Search once for both medicines and advice. Arrow keys move, Enter selects.
+      {% else %}
+        Search the medicine catalog. Arrow keys move, Enter selects.
+      {% endif %}
     </p>
 
     {{ item_formset.non_form_errors }}
@@ -97,12 +103,47 @@
     </div>
   </section>
 
-  <div class="flex gap-3">
+  {% comment %}
+    Saving completes the visit (A4). The draft button is second so that it is
+    the deliberate choice and so Enter — which submits the first submit button —
+    takes the common path. An amendment has no completion decision left, so it
+    keeps a single button.
+  {% endcomment %}
+  <div class="flex flex-wrap gap-3 items-center">
     <button type="submit" class="btn btn-brand">
       {% if is_amendment %}Save changes{% else %}Save {{ terms.encounter|lower }}{% endif %}
     </button>
+    {% if not is_amendment %}
+      <button type="submit" name="save_draft" value="1" class="btn btn-ghost">
+        Save as {{ terms.status_draft|lower }}
+      </button>
+    {% endif %}
     <a href="{% if encounter %}{% url 'clinical:encounter_detail' encounter.pk %}{% else %}{% url 'clinical:encounter_list' %}{% endif %}"
        class="btn btn-ghost">Cancel</a>
+    {% if not is_amendment %}
+      <p class="text-xs text-muted basis-full">
+        Saving marks this {{ terms.encounter|lower }} {{ terms.status_finalized|lower }}.
+        Later changes are kept as {{ terms.amend|lower }}s, with a reason.
+      </p>
+    {% endif %}
   </div>
 </form>
+{% endblock %}
+
+{% comment %}
+  Outside the visit form on purpose: a <form> cannot nest, and the whole value
+  of registering here is that the half-written visit survives it. The body is
+  filled by htmx when the picker's "add a new patient" option is taken.
+{% endcomment %}
+{% block modals %}
+<dialog id="add_patient_modal" class="modal">
+  <div class="modal-box max-w-2xl">
+    <h3 class="font-semibold text-lg">Add a new patient</h3>
+    <p class="text-sm text-muted mt-1 mb-4">
+      They are selected for this {{ terms.encounter|lower }} as soon as they are saved.
+    </p>
+    <div id="add-patient-body"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 {% endblock %}

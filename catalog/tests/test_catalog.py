@@ -202,6 +202,134 @@ def test_quick_add_reuses_an_existing_entry(organization, practitioner):
         assert first.pk == second.pk
 
 
+def test_quick_add_converges_when_both_callers_miss_the_read(
+    organization, practitioner, monkeypatch
+):
+    """The read is a fast path; the constraint is what decides (B8).
+
+    Two practitioners quick-adding in the same instant both find nothing and
+    both try to insert. Forcing the existence check to miss reproduces that
+    deterministically — the loser must come back with the winner's row, not an
+    IntegrityError and not a second copy.
+    """
+    from django.db.models import QuerySet
+
+    with organization_context(organization):
+        winner = services.quick_add_product(
+            organization, actor=practitioner, name='Cetirizine 10mg'
+        )
+        monkeypatch.setattr(QuerySet, 'first', lambda self: None)
+        loser = services.quick_add_product(
+            organization, actor=practitioner, name='Cetirizine 10mg'
+        )
+        assert loser.pk == winner.pk
+        assert Product.all_objects.filter(organization=organization).count() == 1
+
+
+def _product_payload(**overrides) -> dict:
+    payload = {
+        'name': 'Paracetamol 500mg',
+        'sku': '',
+        'category': '',
+        'unit': '',
+        'sale_price': '12.00',
+        'reorder_level': '0',
+        'is_stock_tracked': '',
+        'is_sellable': '',
+        'is_active': 'on',
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_the_database_refuses_a_second_row_for_one_medicine(organization):
+    """Case-insensitively, because that is the lookup quick-add matches on."""
+    with organization_context(organization):
+        Product.objects.create(organization=organization, name='Paracetamol 500mg')
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Product.objects.create(organization=organization, name='paracetamol 500MG')
+
+
+def test_the_database_refuses_a_second_copy_of_one_piece_of_advice(organization):
+    with organization_context(organization):
+        AdviceTemplate.objects.create(
+            organization=organization, text='Walk 30 minutes daily.'
+        )
+        with pytest.raises(IntegrityError), transaction.atomic():
+            AdviceTemplate.objects.create(
+                organization=organization, text='walk 30 MINUTES daily.'
+            )
+
+
+def test_the_same_medicine_name_is_free_in_another_clinic(
+    organization, other_organization
+):
+    """The constraint names the organization; it is not a global namespace."""
+    with organization_context(organization):
+        Product.objects.create(organization=organization, name='Paracetamol 500mg')
+    with organization_context(other_organization):
+        Product.objects.create(
+            organization=other_organization, name='paracetamol 500mg'
+        )
+        assert Product.objects.count() == 1
+
+
+def test_a_duplicate_medicine_is_a_field_error_not_a_500(
+    client, practitioner, organization
+):
+    """The constraint names the organization, which a ModelForm excludes from
+    constraint validation — so without ``clean_name`` this arrives as a 500."""
+    with organization_context(organization):
+        Product.objects.create(organization=organization, name='Paracetamol 500mg')
+
+    client.force_login(practitioner)
+    response = client.post(
+        reverse('catalog:product_create'), _product_payload(name='paracetamol 500mg')
+    )
+    assert response.status_code == 200
+    assert 'name' in response.context['form'].errors
+    with organization_context(organization):
+        assert Product.objects.count() == 1
+
+
+def test_a_duplicate_piece_of_advice_is_a_field_error_not_a_500(
+    client, practitioner, organization
+):
+    with organization_context(organization):
+        AdviceTemplate.objects.create(
+            organization=organization, text='Walk 30 minutes daily.'
+        )
+
+    client.force_login(practitioner)
+    response = client.post(
+        reverse('catalog:advice_create'),
+        {'text': 'walk 30 minutes daily.', 'category': 'EXERCISE', 'is_active': 'on'},
+    )
+    assert response.status_code == 200
+    assert 'text' in response.context['form'].errors
+    with organization_context(organization):
+        assert AdviceTemplate.objects.count() == 1
+
+
+def test_editing_a_medicine_does_not_collide_with_itself(
+    client, practitioner, organization
+):
+    """The duplicate check excludes the row being edited."""
+    with organization_context(organization):
+        product = Product.objects.create(
+            organization=organization, name='Paracetamol 500mg'
+        )
+
+    client.force_login(practitioner)
+    response = client.post(
+        reverse('catalog:product_update', args=[product.pk]),
+        _product_payload(name='Paracetamol 500mg', unit='Tablet'),
+    )
+    assert response.status_code == 302
+    product.refresh_from_db()
+    assert product.unit == 'Tablet'
+
+
 def test_staff_cannot_reach_the_catalog(client, staff):
     client.force_login(staff)
     for url in [

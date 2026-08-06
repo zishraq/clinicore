@@ -72,6 +72,9 @@ DEFAULT_TERMINOLOGY = {
     'payment': 'Payment',
     'payment_plural': 'Payments',
     'consultation_fee': 'Consultation fee',
+    # What a bill is made of. "Lines" is accounting's word for it; the person
+    # reading the bill is looking at what they are being charged for.
+    'invoice_line_plural': 'Charges',
     # Payment states are derived from the payments received, never stored, but
     # they still reach the UI as labels and so still go through the map.
     'status_unpaid': 'Unpaid',
@@ -122,6 +125,14 @@ class Organization(TimeStampedModel):
     )
     branding = models.JSONField(default=default_branding, blank=True)
     terminology = models.JSONField(default=default_terminology, blank=True)
+    # A capability switch, deliberately a column rather than a terminology key:
+    # ``terminology`` names things that exist, this decides whether they exist
+    # at all. Turning it off hides the feature, never the data — advice already
+    # recorded stays readable on the visits that carry it (A3).
+    advice_enabled = models.BooleanField(
+        default=True,
+        help_text='Offer structured advice alongside medicines when prescribing.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:

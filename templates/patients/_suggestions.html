@@ -1,0 +1,49 @@
+{% comment %}
+Patient suggestions for the visit form's picker (static/js/item-autocomplete.js,
+component patientPicker). Name, code and phone ride along as data attributes so
+selecting one needs no second request.
+
+The registration offer is always last and always present, not only on a miss: a
+near-match by name is exactly when the doctor most needs to be able to say "no,
+this is someone else".
+{% endcomment %}
+{% if patients %}
+  {% for patient in patients %}
+    <button type="button" data-result
+            data-id="{{ patient.pk }}"
+            data-name="{{ patient.full_name }}"
+            @click="select($el)"
+            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] flex items-baseline gap-2">
+      <span class="font-medium">{{ patient.full_name }}</span>
+      <span class="text-xs font-mono text-muted">{{ patient.code }}</span>
+      {% if patient.phone %}<span class="text-xs text-muted">{{ patient.phone }}</span>{% endif %}
+      <span class="text-xs text-muted ml-auto">{{ patient.age_display }}</span>
+    </button>
+  {% endfor %}
+  {% if more %}
+    <p class="px-3 py-1 text-xs text-muted">{{ more }} more — keep typing to narrow.</p>
+  {% endif %}
+{% elif query %}
+  <p class="px-3 py-2 text-sm text-muted">No patient matches “{{ query }}”.</p>
+{% endif %}
+
+{% if query %}
+  <div class="border-t border-black/10 mt-1 pt-1">
+    {% comment %}
+      Opens the modal in base.html's modals block. hx-get fills the modal body
+      first, seeded with the typed name; the dialog is only shown once that
+      content has landed, so it never flashes empty.
+    {% endcomment %}
+    <button type="button" data-add-patient
+            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] text-[var(--cc-primary)]"
+            hx-get="{% url 'patients:quick_create' %}"
+            hx-vals='{"full_name": "{{ query|escapejs }}"}'
+            hx-target="#add-patient-body"
+            hx-swap="innerHTML"
+            hx-on::after-request="document.getElementById('add_patient_modal').showModal()">
+      Add “{{ query|truncatechars:40 }}” as a new patient
+    </button>
+  </div>
+{% else %}
+  <p class="px-3 py-2 text-sm text-muted">Search by name or phone.</p>
+{% endif %}

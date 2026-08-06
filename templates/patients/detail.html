@@ -23,7 +23,10 @@
       <div><dt class="text-muted">Address</dt><dd class="whitespace-pre-line">{{ patient.address|default:'—' }}</dd></div>
       <div><dt class="text-muted">Registered</dt><dd>{{ patient.created_at|date:'d M Y' }}</dd></div>
     </dl>
-    <a href="{% url 'patients:delete' patient.pk %}" class="btn btn-ghost btn-sm text-[var(--cc-danger)] mt-6">Remove patient</a>
+    {# Role-filtered here AND enforced by @clinical_access_required on the view. #}
+    {% if show_clinical %}
+      <a href="{% url 'patients:delete' patient.pk %}" class="btn btn-ghost btn-sm text-[var(--cc-danger)] mt-6">Remove patient</a>
+    {% endif %}
   </section>
 
   <div class="lg:col-span-2 space-y-4">

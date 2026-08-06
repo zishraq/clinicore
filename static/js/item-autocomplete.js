@@ -1,11 +1,18 @@
-/* Prescription item autocomplete.
+/* Autocomplete components for the consultation form.
  *
- * HTMX fetches the suggestions fragment; this component owns selection state,
- * keyboard navigation, and writing the chosen entry into the row's hidden
- * inputs. Entry is done at speed during a consultation, so arrows + enter must
- * work without the mouse ever being touched.
+ * HTMX fetches the suggestions fragment; the component owns selection state,
+ * keyboard navigation, and writing the chosen entry into hidden inputs. Entry
+ * is done at speed during a consultation, so arrows + enter must work without
+ * the mouse ever being touched.
  *
- * The markup contract is in templates/clinical/_item_row.html and
+ * Two components share one core. ``itemRow`` picks a catalog entry for a
+ * prescription row; ``patientPicker`` picks the patient the visit is for. They
+ * differ only in what a selection writes and what the trailing action offers —
+ * everything about opening, arrowing, highlighting and closing is
+ * ``autocompleteCore`` below, so there is one keyboard implementation to keep
+ * correct rather than two that drift.
+ *
+ * Markup contract, templates/clinical/_item_row.html +
  * templates/catalog/_suggestions.html:
  *   [data-role="item-search"]   visible text box (display_name)
  *   [data-role="item-type"]     hidden MEDICATION | ADVICE
@@ -13,43 +20,40 @@
  *   [data-role="item-advice"]   hidden advice_template pk
  *   [data-role="item-free-text"] hidden free_text_name
  *   [data-role="item-delete"]   hidden DELETE checkbox
+ *
+ * Markup contract, templates/clinical/_patient_picker.html +
+ * templates/patients/_suggestions.html:
+ *   [data-role="patient-search"] visible text box
+ *   [data-role="patient-id"]     hidden patient pk (the real form field)
+ *
+ * Common to both:
  *   [data-result]               one selectable suggestion
+ *   [data-autoselect]           a suggestion to take immediately on arrival
  */
-document.addEventListener('alpine:init', () => {
-  Alpine.data('itemRow', () => ({
+
+/* The generic half: everything that does not know what is being picked.
+ *
+ * ``actionSelector`` is the trailing offer — quick-add a catalog entry, or
+ * register a patient. It has to be arrow-reachable like any other option,
+ * because it is the only thing on the list when nothing matched, which is
+ * exactly when the user is typing something the system has never seen. */
+function autocompleteCore(actionSelector) {
+  return {
     open: false,
     activeIndex: -1,
-    itemType: 'MEDICATION',
-    removed: false,
     justSelected: false,
-
-    init() {
-      this.itemType = this.field('item-type')?.value || 'MEDICATION';
-    },
 
     /* $root, never $el: Alpine sets $el to whichever element the expression is
      * evaluated on, so inside @input="onInput()" it is the search box itself and
-     * a querySelector under it finds nothing. $root is always the row. */
+     * a querySelector under it finds nothing. $root is always the component. */
     field(role) {
       return this.$root.querySelector(`[data-role="${role}"]`);
     },
 
-    get typeLabel() {
-      return this.itemType === 'ADVICE' ? 'Advice' : '';
-    },
-
-    isAdvice() {
-      return this.itemType === 'ADVICE';
-    },
-
-    /* Everything the arrow keys can land on: catalog entries first, then the
-     * quick-add offers. Quick-add has to be reachable by keyboard too — it is
-     * the only option when nothing matched, which is exactly when a
-     * practitioner is typing something the catalog has never seen. */
     options() {
       if (!this.$refs.results) return [];
       return Array.from(
-        this.$refs.results.querySelectorAll('[data-result], [data-quick-add]')
+        this.$refs.results.querySelectorAll(`[data-result], ${actionSelector}`)
       );
     },
 
@@ -68,18 +72,11 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       // Open whenever the fragment has anything in it. Keying off results
-      // alone would hide the panel on a no-match query and make quick-add —
-      // the only useful action at that moment — unreachable.
+      // alone would hide the panel on a no-match query and make the action —
+      // the only useful thing at that moment — unreachable.
       this.open = this.$refs.results.children.length > 0;
       this.activeIndex = this.options().length > 0 ? 0 : -1;
       this.highlight();
-    },
-
-    /* Typing invalidates any previous pick: the row falls back to free text. */
-    onInput() {
-      this.field('item-product').value = '';
-      this.field('item-advice').value = '';
-      this.field('item-free-text').value = this.field('item-search').value;
     },
 
     move(delta) {
@@ -103,12 +100,45 @@ document.addEventListener('alpine:init', () => {
       const options = this.options();
       const active = this.open && this.activeIndex >= 0 && options[this.activeIndex];
       if (!active) return;
-      if (active.matches('[data-quick-add]')) {
-        // Let HTMX post it; the created entry comes back auto-selecting.
+      if (active.matches(actionSelector)) {
+        // Let the button do its own thing — post to quick-add, or open the
+        // registration modal. Either way the result comes back auto-selecting.
         active.click();
         return;
       }
       this.select(active);
+    },
+
+    close() {
+      this.open = false;
+      this.activeIndex = -1;
+    },
+  };
+}
+
+document.addEventListener('alpine:init', () => {
+  Alpine.data('itemRow', () => ({
+    ...autocompleteCore('[data-quick-add]'),
+    itemType: 'MEDICATION',
+    removed: false,
+
+    init() {
+      this.itemType = this.field('item-type')?.value || 'MEDICATION';
+    },
+
+    get typeLabel() {
+      return this.itemType === 'ADVICE' ? 'Advice' : '';
+    },
+
+    isAdvice() {
+      return this.itemType === 'ADVICE';
+    },
+
+    /* Typing invalidates any previous pick: the row falls back to free text. */
+    onInput() {
+      this.field('item-product').value = '';
+      this.field('item-advice').value = '';
+      this.field('item-free-text').value = this.field('item-search').value;
     },
 
     select(option) {
@@ -140,11 +170,6 @@ document.addEventListener('alpine:init', () => {
       if (input && !input.value) input.value = value;
     },
 
-    close() {
-      this.open = false;
-      this.activeIndex = -1;
-    },
-
     /* Remove this row.
      *
      * A saved row must survive as markup: the formset only deletes it if its
@@ -173,6 +198,47 @@ document.addEventListener('alpine:init', () => {
         total.value = index;
       }
       this.$root.remove();
+    },
+  }));
+
+  /* Which patient this visit is for.
+   *
+   * The doctor opens Visits first, so registering someone must happen here
+   * rather than sending him to another screen and back. The trailing option
+   * opens the registration modal; the created patient arrives as a
+   * ``patient-picked`` event rather than a swapped fragment, because the modal
+   * lives outside this component's subtree (a <form> cannot nest, so the modal
+   * sits in base.html's modals block) and has no way to swap into it. */
+  Alpine.data('patientPicker', () => ({
+    ...autocompleteCore('[data-add-patient]'),
+
+    select(option) {
+      this.field('patient-id').value = option.dataset.id || '';
+      this.field('patient-search').value = option.dataset.name || '';
+      this.justSelected = true;
+      this.close();
+    },
+
+    /* Typing invalidates the pick. Without this the box can read one patient's
+     * name while the hidden field still posts another's pk — the visit would
+     * be filed against whoever was selected before, silently. */
+    onInput() {
+      this.field('patient-id').value = '';
+    },
+
+    /* Fired by templates/patients/_picked.html once the modal has created or
+     * matched someone. The typed query is already in the box; overwrite it with
+     * the canonical label so what is displayed matches what is posted. */
+    onPicked(event) {
+      this.field('patient-id').value = event.detail.id;
+      this.field('patient-search').value = event.detail.name;
+      this.close();
+    },
+
+    /* The modal is prefilled with whatever has been typed so far, so the doctor
+     * does not retype the name he just searched for. */
+    typedName() {
+      return this.field('patient-search')?.value || '';
     },
   }));
 });

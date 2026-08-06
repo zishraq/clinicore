@@ -44,6 +44,7 @@ __all__ = [
     'next_invoice_number',
     'outstanding_balance',
     'patient_invoices',
+    'prescribed_product_lines',
     'record_payment',
     'resolve_invoice_branch',
     'save_invoice_items',
@@ -92,6 +93,57 @@ def consultation_line_defaults(organization) -> dict:
         'unit_price': to_money(organization.default_consultation_fee),
         'discount': ZERO,
     }
+
+
+def prescribed_product_lines(organization, encounter, *, branch=None) -> list[dict]:
+    """Bill lines for what was prescribed and can actually be sold (A5).
+
+    A convenience copy, never a link: these are ordinary editable lines, and
+    nothing here writes back to the prescription. Removing one is just removing
+    a line.
+
+    Quantity is 1 because a prescription carries no quantity and none should be
+    invented — ADR 0009 keeps quantity on the invoice, which is the stock event.
+    One is a starting point the practitioner adjusts, not a claim about what was
+    prescribed.
+
+    Advice and anything untracked or unsellable never appear: they are not
+    things that come off a shelf.
+    """
+    if encounter is None:
+        return []
+    prescription = getattr(encounter, 'prescription', None)
+    if prescription is None:
+        return []
+
+    items = [
+        item
+        for item in prescription.items.select_related('product')
+        if item.product_id and not item.is_advice
+    ]
+    # One query for the shelf, whatever the prescription's length.
+    sellable = inventory.sellable_now(
+        organization, [item.product for item in items], branch=branch
+    )
+
+    lines = []
+    seen = set()
+    for item in items:
+        # The same medicine written twice is one line to price, not two.
+        if item.product_id not in sellable or item.product_id in seen:
+            continue
+        seen.add(item.product_id)
+        lines.append(
+            {
+                'line_type': LineType.PRODUCT,
+                'product': item.product_id,
+                'display_name': item.product.name,
+                'quantity': 1,
+                'unit_price': to_money(item.product.sale_price),
+                'discount': ZERO,
+            }
+        )
+    return lines
 
 
 def resolve_invoice_branch(organization, *, actor=None, encounter=None):
@@ -263,17 +315,27 @@ def record_payment(
 
 @transaction.atomic
 def void_payment(payment: Payment, *, actor, reason: str) -> Payment:
-    """Reverse a payment recorded in error. The row stays, the money stops counting."""
+    """Reverse a payment recorded in error. The row stays, the money stops counting.
+
+    The row is locked before it is read, as in ``void_invoice``. Two clicks on
+    the void button write the same values today, so the asymmetry was harmless —
+    but it is the kind of harmless that stops being true the moment voiding
+    grows a side effect, which is exactly what happened to the invoice.
+    """
     reason = (reason or '').strip()
     if not reason:
         raise BillingError('Voiding a payment requires a reason.')
-    if payment.is_void:
-        return payment
-    payment.voided_at = timezone.now()
-    payment.voided_by = actor
-    payment.void_reason = reason[:300]
-    payment.save(update_fields=['voided_at', 'voided_by', 'void_reason', 'updated_at'])
-    return payment
+
+    locked = Payment.all_objects.select_for_update().get(
+        pk=payment.pk, organization_id=payment.organization_id
+    )
+    if locked.is_void:
+        return locked
+    locked.voided_at = timezone.now()
+    locked.voided_by = actor
+    locked.void_reason = reason[:300]
+    locked.save(update_fields=['voided_at', 'voided_by', 'void_reason', 'updated_at'])
+    return locked
 
 
 @transaction.atomic

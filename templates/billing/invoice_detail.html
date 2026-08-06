@@ -13,7 +13,7 @@
 <div class="grid gap-4 lg:grid-cols-3">
   <section class="card-surface rounded-xl p-6 lg:col-span-2">
     <div class="flex items-center justify-between">
-      <h2 class="font-semibold">Lines</h2>
+      <h2 class="font-semibold">{{ terms.invoice_line_plural }}</h2>
       {% include 'billing/_status_badge.html' with status=invoice.payment_status %}
     </div>
 
@@ -142,8 +142,15 @@
   {% endif %}
 
   {% if not invoice.is_void and invoice.balance > 0 %}
+    {% comment %}
+      items-start, not items-end: the "Balance now" help text under Amount makes
+      that column taller than the other three, and aligning on the bottom edge
+      then puts Amount's input above the rest with the button sitting low. Every
+      cell is label-then-control instead, including the button's, so the four
+      controls share a top edge and the help text is free to hang below.
+    {% endcomment %}
     <form method="post" action="{% url 'billing:payment_create' invoice.pk %}"
-          class="grid gap-3 sm:grid-cols-4 items-end mt-6 border-t border-black/5 pt-6">
+          class="grid gap-3 sm:grid-cols-4 items-start mt-6 border-t border-black/5 pt-6">
       {% csrf_token %}
       {% for field in payment_form %}
         <div>
@@ -154,7 +161,11 @@
           {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
         </div>
       {% endfor %}
-      <button type="submit" class="btn btn-brand">Record {{ terms.payment|lower }}</button>
+      <div>
+        {# Spacer label so the button starts level with the three inputs. #}
+        <div class="label py-1" aria-hidden="true"><span class="label-text text-xs">&nbsp;</span></div>
+        <button type="submit" class="btn btn-brand w-full">Record {{ terms.payment|lower }}</button>
+      </div>
     </form>
   {% endif %}
 </section>

@@ -157,6 +157,44 @@ def test_service_refuses_a_reasonless_amendment_even_without_the_form(
             )
 
 
+def test_the_view_shows_a_reasonless_amendment_as_a_field_error(
+    client, practitioner, finalized_encounter, organization, monkeypatch
+):
+    """The backstop in ``encounter_update`` (B10).
+
+    Unreachable through the form as it stands: the view derives
+    ``requires_reason`` from the same ``is_locked`` read the service uses, so
+    the two cannot disagree, and the test above already covers the service
+    refusing on its own. What is left to prove is the handler — if the two ever
+    drift, the practitioner gets their form back with a field error rather than
+    a 500. The service is stubbed because nothing else can make it raise here.
+    """
+
+    def _refuse(*args, **kwargs):
+        raise services.AmendmentReasonRequired(
+            'Amending a finalized encounter requires a reason.'
+        )
+
+    monkeypatch.setattr(services, 'save_encounter', _refuse)
+
+    client.force_login(practitioner)
+    response = client.post(
+        reverse('clinical:encounter_update', args=[finalized_encounter.pk]),
+        _amendment_payload(finalized_encounter),
+    )
+
+    assert response.status_code == 200
+    errors = response.context['form'].errors
+    assert 'change_reason' in errors
+    assert 'requires a reason' in str(errors['change_reason'])
+
+    with organization_context(organization):
+        finalized_encounter.refresh_from_db()
+        # Nothing was written on the way to the error.
+        assert finalized_encounter.status == EncounterStatus.FINALIZED
+        assert finalized_encounter.assessment == 'Viral URTI'
+
+
 def test_staff_cannot_amend_or_read_history(client, staff, finalized_encounter):
     client.force_login(staff)
     assert (

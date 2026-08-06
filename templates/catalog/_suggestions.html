@@ -53,17 +53,22 @@ selecting it needs no further request (static/js/item-autocomplete.js).
             hx-swap="innerHTML">
       Add “{{ query|truncatechars:40 }}” as a medicine
     </button>
-    <button type="button" data-quick-add
-            class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] text-[var(--cc-primary)]"
-            hx-post="{% url 'catalog:quick_add' %}"
-            hx-vals='{"q": "{{ query|escapejs }}", "item_type": "ADVICE"}'
-            hx-target="closest [data-results]"
-            hx-swap="innerHTML">
-      Add “{{ query|truncatechars:40 }}” as advice
-    </button>
+    {# Not offered where the clinic has advice turned off (A3). #}
+    {% if allow_advice %}
+      <button type="button" data-quick-add
+              class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] text-[var(--cc-primary)]"
+              hx-post="{% url 'catalog:quick_add' %}"
+              hx-vals='{"q": "{{ query|escapejs }}", "item_type": "ADVICE"}'
+              hx-target="closest [data-results]"
+              hx-swap="innerHTML">
+        Add “{{ query|truncatechars:40 }}” as advice
+      </button>
+    {% endif %}
   </div>
 {% endif %}
 
 {% if not query and not has_results %}
-  <p class="px-3 py-2 text-sm text-muted">Start typing to search the catalogs.</p>
+  <p class="px-3 py-2 text-sm text-muted">
+    {% if allow_advice %}Start typing to search the catalogs.{% else %}Start typing to search medicines.{% endif %}
+  </p>
 {% endif %}

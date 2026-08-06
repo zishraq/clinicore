@@ -12,6 +12,7 @@ and ``is_sellable`` exist now so that app attaches without a schema change.
 from decimal import Decimal
 
 from django.db import models
+from django.db.models.functions import Lower
 
 from core.models import OrgOwnedModel
 
@@ -74,7 +75,17 @@ class Product(OrgOwnedModel):
                 fields=['organization', 'sku'],
                 condition=~models.Q(sku=''),
                 name='product_sku_unique_per_org',
-            )
+            ),
+            # One row per medicine per clinic, and case-insensitively so, because
+            # that is the lookup quick-add matches on: without this, two
+            # practitioners typing "Paracetamol 500mg" and "paracetamol 500mg"
+            # mid-consultation fork the catalog, and each new prescription then
+            # points at whichever half its author happened to reach.
+            models.UniqueConstraint(
+                Lower('name'),
+                'organization',
+                name='product_name_unique_per_org',
+            ),
         ]
         indexes = [models.Index(fields=['organization', 'name'])]
 
@@ -100,6 +111,16 @@ class AdviceTemplate(OrgOwnedModel):
 
     class Meta:
         ordering = ['category', 'text']
+        constraints = [
+            # Same reasoning as ``Product``: advice is repeated near-verbatim
+            # across patients, so a second copy of one sentence is a fork of the
+            # catalog rather than a second piece of advice.
+            models.UniqueConstraint(
+                Lower('text'),
+                'organization',
+                name='advice_text_unique_per_org',
+            ),
+        ]
         indexes = [models.Index(fields=['organization', 'category'])]
 
     def __str__(self) -> str:

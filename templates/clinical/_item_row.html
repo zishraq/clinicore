@@ -36,7 +36,7 @@ which substitutes __prefix__ for the new index.
              name="{{ form.display_name.html_name }}"
              id="{{ form.display_name.id_for_label }}"
              value="{{ form.display_name.value|default_if_none:'' }}"
-             placeholder="Search medicines and advice…"
+             placeholder="{% if organization.advice_enabled %}Search medicines and advice…{% else %}Search medicines…{% endif %}"
              autocomplete="off"
              data-role="item-search"
              class="input input-bordered w-full"

@@ -1,0 +1,12 @@
+{% comment %}
+A patient was just registered from the visit form's modal.
+
+The picker lives outside this fragment's subtree — the modal is in base.html's
+modals block so it does not nest inside the visit form — so the selection is
+handed over as a bubbling event rather than a swapped-in [data-autoselect]
+option. patientPicker.onPicked() catches it on window.
+{% endcomment %}
+<div x-data
+     x-init="$dispatch('patient-picked', {id: '{{ patient.pk }}', name: '{{ patient.full_name|escapejs }}'}); add_patient_modal.close()">
+  <p class="text-sm">{{ patient.full_name }} registered as {{ patient.code }}.</p>
+</div>

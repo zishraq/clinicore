@@ -179,6 +179,9 @@ class Command(BaseCommand):
                 'currency': 'BDT',
                 'timezone': 'Asia/Dhaka',
                 'default_consultation_fee': DEMO_CONSULTATION_FEE,
+                # This clinic prescribes medicines only. The capability ships
+                # on by default; the seed is what turns it off (A3).
+                'advice_enabled': False,
             },
         )
         if not created:

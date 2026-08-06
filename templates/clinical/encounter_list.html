@@ -16,8 +16,14 @@
 {% if encounters %}
   <div class="card-surface rounded-xl overflow-x-auto">
     <table class="table">
+      {% comment %}
+        Since saving completes a visit (A4), everything on this page reads
+        "{{ terms.status_finalized }}" unless something was actually left open —
+        a column of one repeated word is noise. It comes back the moment a
+        draft exists.
+      {% endcomment %}
       <thead>
-        <tr><th>Date</th><th>Patient</th><th>Practitioner</th><th>Branch</th><th>Status</th></tr>
+        <tr><th>Date</th><th>Patient</th><th>Practitioner</th><th>Branch</th>{% if has_open %}<th>Status</th>{% endif %}</tr>
       </thead>
       <tbody>
         {% for encounter in encounters %}
@@ -26,11 +32,13 @@
             <td class="font-medium">{{ encounter.patient.full_name }}</td>
             <td>{{ encounter.practitioner.full_name }}</td>
             <td>{{ encounter.branch.name }}</td>
-            <td>
-              <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
-                {% status_label encounter.status %}
-              </span>
-            </td>
+            {% if has_open %}
+              <td>
+                <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
+                  {% status_label encounter.status %}
+                </span>
+              </td>
+            {% endif %}
           </tr>
         {% endfor %}
       </tbody>

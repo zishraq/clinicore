@@ -43,7 +43,15 @@ def encounter_list(request):
         encounters = encounters.filter(patient__full_name__icontains=query)
     page = Paginator(encounters, PAGE_SIZE).get_page(request.GET.get('page'))
     return render(
-        request, 'clinical/encounter_list.html', {'encounters': page, 'query': query}
+        request,
+        'clinical/encounter_list.html',
+        {
+            'encounters': page,
+            'query': query,
+            # The status column earns its width only when something is actually
+            # open; saving completes a visit now (A4).
+            'has_open': any(not item.is_locked for item in page),
+        },
     )
 
 
@@ -90,6 +98,39 @@ def _encounter_form_context(request, encounter=None):
     return form, prescription_form, item_formset
 
 
+#: The secondary submit button's name. Its absence means "complete this visit",
+#: which is what the primary button and the Enter key both do (A4).
+DRAFT_SUBMIT = 'save_draft'
+
+
+def _save_and_report(request, encounter, *, actor) -> str:
+    """Complete the visit unless a draft was asked for, and say which happened.
+
+    The doctor writes the note at the end of the consultation, so Open/Completed
+    is bookkeeping he should not have to carry: saving completes. Drafts remain
+    for interruptions, and the state machine and amendment trail are unchanged —
+    only which one you get by default (A4).
+    """
+    terms = request.organization.terms
+    label = terms['encounter']
+    if request.POST.get(DRAFT_SUBMIT):
+        return f'{label} saved as {terms["status_draft"].lower()}.'
+    services.finalize_encounter(encounter, actor=actor)
+    return f'{label} saved and marked {terms["status_finalized"].lower()}.'
+
+
+def _selected_patient(form):
+    """Whoever the patient field currently points at, for the picker's text box.
+
+    Read off the bound field rather than the instance so it survives all three
+    cases the same way: editing a saved visit, a ``?patient=`` prefill, and a
+    redisplay after a validation error — the last of which would otherwise show
+    an empty search box above a hidden pk that is still set.
+    """
+    raw = form['patient'].value()
+    return Patient.objects.filter(pk=raw).first() if raw else None
+
+
 @login_required
 @clinical_access_required
 def encounter_create(request):
@@ -115,8 +156,9 @@ def encounter_create(request):
             prescription_form=prescription_form,
             item_formset=item_formset,
         )
-        label = request.organization.terms['encounter']
-        messages.success(request, f'{label} saved.')
+        messages.success(
+            request, _save_and_report(request, encounter, actor=membership.user)
+        )
         return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
@@ -125,6 +167,7 @@ def encounter_create(request):
             'form': form,
             'prescription_form': prescription_form,
             'item_formset': item_formset,
+            'selected_patient': _selected_patient(form),
             'is_create': True,
         },
     )
@@ -145,19 +188,31 @@ def encounter_update(request, pk: int):
         and prescription_form.is_valid()
         and item_formset.is_valid()
     ):
-        services.save_encounter(
-            request.organization,
-            actor=membership.user,
-            form=form,
-            prescription_form=prescription_form,
-            item_formset=item_formset,
-            reason=form.cleaned_data.get('change_reason', ''),
-        )
-        label = request.organization.terms['encounter']
-        messages.success(
-            request, 'Changes saved.' if is_amendment else f'{label} updated.'
-        )
-        return redirect('clinical:encounter_detail', pk=encounter.pk)
+        try:
+            saved = services.save_encounter(
+                request.organization,
+                actor=membership.user,
+                form=form,
+                prescription_form=prescription_form,
+                item_formset=item_formset,
+                reason=form.cleaned_data.get('change_reason', ''),
+            )
+        except services.AmendmentReasonRequired as error:
+            # The form asks for the reason first, so this is the backstop —
+            # reached only if the record was locked between rendering the form
+            # and posting it. Nothing was written; show it as a field error
+            # rather than a 500.
+            form.add_error('change_reason', str(error))
+        else:
+            # An amendment already carries its own status; only a draft being
+            # finished has a completion decision left to make.
+            messages.success(
+                request,
+                'Changes saved.'
+                if is_amendment
+                else _save_and_report(request, saved, actor=membership.user),
+            )
+            return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
         'clinical/encounter_form.html',
@@ -165,6 +220,7 @@ def encounter_update(request, pk: int):
             'form': form,
             'prescription_form': prescription_form,
             'item_formset': item_formset,
+            'selected_patient': _selected_patient(form),
             'encounter': encounter,
             'is_create': False,
             'is_amendment': is_amendment,

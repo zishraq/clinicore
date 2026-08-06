@@ -8,4 +8,5 @@ app_name = 'organizations'
 
 urlpatterns = [
     path('billing/', views.billing_settings, name='billing_settings'),
+    path('features/', views.feature_settings, name='feature_settings'),
 ]

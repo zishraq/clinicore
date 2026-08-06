@@ -85,11 +85,19 @@ def invoice_list(request):
     )
 
 
-def _prefill_lines(organization, encounter) -> list[dict]:
-    """Opening lines for a new bill: the consultation fee, when there was one."""
+def _prefill_lines(organization, encounter, *, branch=None) -> list[dict]:
+    """Opening lines for a new bill from a visit.
+
+    The consultation fee, then whatever was prescribed that the clinic can
+    actually sell today (A5). Every one of them is an ordinary editable line the
+    practitioner can price, requantify or remove.
+    """
     if encounter is None:
         return []
-    return [services.consultation_line_defaults(organization)]
+    return [
+        services.consultation_line_defaults(organization),
+        *services.prescribed_product_lines(organization, encounter, branch=branch),
+    ]
 
 
 @login_required
@@ -125,16 +133,19 @@ def invoice_create(request):
                 messages.success(request, f'{label} {invoice.number} created.')
                 return redirect('billing:invoice_detail', pk=invoice.pk)
     else:
-        lines = _prefill_lines(organization, encounter)
+        # Resolved first: which shelf the bill comes off decides which
+        # prescribed products count as in stock.
+        branch = services.resolve_invoice_branch(
+            organization, actor=membership.user, encounter=encounter
+        )
+        lines = _prefill_lines(organization, encounter, branch=branch)
         # One blank row after whatever is prefilled, so a product can be added
         # without reaching for the add-row button first.
         item_formset = invoice_item_formset_class(extra=len(lines) + 1)(
             initial=lines, organization=organization
         )
         if 'branch' in form.fields:
-            form.initial['branch'] = services.resolve_invoice_branch(
-                organization, actor=membership.user, encounter=encounter
-            )
+            form.initial['branch'] = branch
         if encounter is not None:
             form.initial['encounter'] = encounter.pk
             form.initial['patient'] = encounter.patient_id

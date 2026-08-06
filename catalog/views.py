@@ -6,6 +6,7 @@ sits behind the same role check as the clinical app.
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -65,13 +66,21 @@ def suggestions(request):
     without the quick-add offer. Quick-add exists because a missing catalog
     entry blocks a prescription mid-consultation; a bill line can simply be
     typed, so there is nothing to unblock.
+
+    A clinic with ``advice_enabled`` off never sees the advice half (A3). The
+    rows stay, and stay readable where they were already prescribed — they just
+    stop being offered.
     """
     require_membership(request)
     products_only = request.GET.get('only') == 'products'
+    advice_on = request.organization.advice_enabled
     context = services.search_catalogs(
-        request.organization, _typed_query(request), include_advice=not products_only
+        request.organization,
+        _typed_query(request),
+        include_advice=not products_only and advice_on,
     )
     context['allow_quick_add'] = not products_only
+    context['allow_advice'] = advice_on
     return render(request, 'catalog/_suggestions.html', context)
 
 
@@ -100,6 +109,11 @@ def quick_add(request):
                 'allow_quick_add': True,
             },
         )
+
+    # The offer is not rendered when advice is off, so this is the direct-POST
+    # case. A clinic that has the feature off should not acquire advice rows.
+    if item_type == ItemType.ADVICE and not request.organization.advice_enabled:
+        raise PermissionDenied('Advice is not enabled for this organization.')
 
     if item_type == ItemType.ADVICE:
         entry = services.quick_add_advice(

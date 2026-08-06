@@ -1,0 +1,75 @@
+{% comment %}
+Body of the visit form's "add patient" modal.
+
+Not a <form>: the modal sits in base.html's modals block, outside the visit
+form, because a form cannot nest inside another one — and the whole point is
+that the visit form keeps its state. The fields are posted by htmx with
+hx-include over this container instead, which is why the submit button carries
+the URL rather than a form action.
+
+This renders PatientForm itself. A trimmed parallel form would be a second
+definition to keep in step with the real one, and would silently lose A2's
+branch default and date-of-birth handling.
+{% endcomment %}
+<div id="add-patient-fields">
+  {% if duplicates %}
+    <div class="alert alert-warning items-start mb-4">
+      <div>
+        <p class="font-medium">This may already be on file</p>
+        <p class="text-sm mt-1">Pick the existing record rather than creating a second one.</p>
+        <ul class="mt-3 space-y-2">
+          {% for duplicate in duplicates %}
+            <li>
+              {% comment %}
+                Selecting an existing match is a plain client-side pick: the
+                patient already exists, so there is nothing to post. Same event
+                the created-patient fragment fires.
+              {% endcomment %}
+              <button type="button"
+                      class="btn btn-sm btn-brand-ghost w-full justify-start"
+                      x-data
+                      @click="$dispatch('patient-picked', {id: '{{ duplicate.pk }}', name: '{{ duplicate.full_name|escapejs }}'}); add_patient_modal.close()">
+                <span class="font-medium">{{ duplicate.full_name }}</span>
+                <span class="text-xs font-mono opacity-70">{{ duplicate.code }}</span>
+                {% if duplicate.phone %}<span class="text-xs opacity-70">{{ duplicate.phone }}</span>{% endif %}
+              </button>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {# The guard warns once; submitting again with this set registers anyway. #}
+    <input type="hidden" name="duplicates_acknowledged" value="1">
+  {% endif %}
+
+  {% if form.non_field_errors %}
+    <div class="alert alert-error mb-4">
+      {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="grid gap-3 sm:grid-cols-2">
+    {% for field in form %}
+      <div class="{% if field.name == 'address' %}sm:col-span-2{% endif %}">
+        <label class="label py-1" for="{{ field.id_for_label }}">
+          <span class="label-text text-xs">{{ field.label }}</span>
+        </label>
+        {{ field }}
+        {% for error in field.errors %}
+          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-ghost" onclick="add_patient_modal.close()">Cancel</button>
+    <button type="button" class="btn btn-brand"
+            hx-post="{% url 'patients:quick_create' %}"
+            hx-include="#add-patient-fields"
+            hx-target="#add-patient-body"
+            hx-swap="innerHTML">
+      {% if duplicates %}Add anyway{% else %}Add patient{% endif %}
+    </button>
+  </div>
+</div>

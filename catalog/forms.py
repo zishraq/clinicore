@@ -1,4 +1,11 @@
-"""Catalog maintenance forms."""
+"""Catalog maintenance forms.
+
+Both forms check their text field against the rest of the catalog. The database
+constraint is the guard (``catalog/models.py``), but it names the organization,
+which a ModelForm excludes from constraint validation — so without the check
+here a duplicate name arrives as a 500 rather than as "that is already in the
+catalog". The queryset is organization-scoped through the ambient manager.
+"""
 
 from django import forms
 
@@ -10,6 +17,14 @@ _INPUT = {'class': 'input input-bordered w-full'}
 _TEXTAREA = {'class': 'textarea textarea-bordered w-full', 'rows': 3}
 _SELECT = {'class': 'select select-bordered w-full'}
 _CHECKBOX = {'class': 'checkbox'}
+
+
+def _already_in_catalog(model, *, field: str, value: str, instance) -> bool:
+    """Whether another row in this organization already holds ``value``."""
+    queryset = model.objects.filter(**{f'{field}__iexact': value})
+    if instance.pk:
+        queryset = queryset.exclude(pk=instance.pk)
+    return queryset.exists()
 
 
 class ProductForm(forms.ModelForm):
@@ -46,6 +61,17 @@ class ProductForm(forms.ModelForm):
             'is_active': forms.CheckboxInput(attrs=_CHECKBOX),
         }
 
+    def clean_name(self) -> str:
+        name = self.cleaned_data['name'].strip()
+        if _already_in_catalog(
+            Product, field='name', value=name, instance=self.instance
+        ):
+            raise forms.ValidationError(
+                'This medicine is already in the catalog. Edit that entry instead — '
+                'two rows for one medicine split its prescriptions and its stock.'
+            )
+        return name
+
 
 class AdviceTemplateForm(forms.ModelForm):
     class Meta:
@@ -70,3 +96,13 @@ class AdviceTemplateForm(forms.ModelForm):
             ),
             'is_active': forms.CheckboxInput(attrs=_CHECKBOX),
         }
+
+    def clean_text(self) -> str:
+        text = self.cleaned_data['text'].strip()
+        if _already_in_catalog(
+            AdviceTemplate, field='text', value=text, instance=self.instance
+        ):
+            raise forms.ValidationError(
+                'This advice is already in the catalog. Edit that entry instead.'
+            )
+        return text

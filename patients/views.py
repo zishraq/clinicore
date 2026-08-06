@@ -20,11 +20,17 @@ __all__ = [
     'patient_delete',
     'patient_detail',
     'patient_list',
+    'patient_quick_create',
     'patient_search',
+    'patient_suggestions',
     'patient_update',
 ]
 
 PAGE_SIZE = 20
+
+#: How many names the visit form's picker offers before it stops being a list
+#: worth reading. Narrowing the query is faster than scrolling.
+SUGGESTION_LIMIT = 8
 
 
 def _page(request, queryset):
@@ -59,6 +65,74 @@ def patient_search(request):
         request,
         'patients/_results.html' if is_htmx else 'patients/list.html',
         {'patients': _page(request, patients), 'query': query},
+    )
+
+
+@login_required
+def patient_suggestions(request):
+    """Autocomplete fragment for the visit form's patient field.
+
+    Same rows the patient list already shows any member, so this carries the
+    same role posture as ``patient_search`` rather than a stricter one.
+    """
+    require_membership(request)
+    query = request.GET.get('q', '').strip()
+    matches = []
+    if query:
+        matches = list(services.search_patients(request.organization, query))
+    return render(
+        request,
+        'patients/_suggestions.html',
+        {
+            'patients': matches[:SUGGESTION_LIMIT],
+            'more': max(len(matches) - SUGGESTION_LIMIT, 0),
+            'query': query,
+        },
+    )
+
+
+@login_required
+@clinical_access_required
+def patient_quick_create(request):
+    """Register a patient from inside the visit form (A1).
+
+    Renders and posts ``PatientForm`` itself rather than a trimmed parallel
+    form, so the branch default and the date-of-birth rule from A2 apply here
+    without being restated — one form definition, nothing to drift.
+
+    The duplicate guard is the point of the screen, not a formality: the
+    fastest way to corrupt this dataset is two records for one person, and this
+    path is the one used mid-consultation at speed. Matches are offered as
+    something to pick, so choosing the existing record is less work than
+    insisting on the new one.
+    """
+    membership = require_membership(request)
+    form = PatientForm(request.POST or None, organization=request.organization)
+    duplicates = []
+
+    if request.method == 'POST':
+        duplicates = list(
+            services.possible_duplicates(
+                request.organization,
+                full_name=request.POST.get('full_name', ''),
+                phone=request.POST.get('phone', ''),
+            )
+        )
+        confirmed = request.POST.get('duplicates_acknowledged') == '1'
+        if form.is_valid() and (not duplicates or confirmed):
+            patient = services.create_patient(
+                request.organization, actor=membership.user, form=form
+            )
+            return render(request, 'patients/_picked.html', {'patient': patient})
+    else:
+        # Whatever was typed into the picker seeds the name, so the doctor does
+        # not retype the search he just ran.
+        form.initial['full_name'] = request.GET.get('full_name', '').strip()
+
+    return render(
+        request,
+        'patients/_quick_create_form.html',
+        {'form': form, 'duplicates': duplicates},
     )
 
 
@@ -148,8 +222,14 @@ def patient_update(request, pk: int):
 
 
 @login_required
+@clinical_access_required
 def patient_delete(request, pk: int):
-    """Soft delete: clinical records must survive a mis-click (SPEC §4)."""
+    """Soft delete, PRACTITIONER/OWNER only — STAFF gets a 403 by direct URL.
+
+    STAFF registers and corrects patients (SPEC §6.1) but removing a record from
+    the list is not on that list: it takes a patient's whole clinical history out
+    of every screen at once, so it sits with the roles that own that history.
+    """
     membership = require_membership(request)
     patient = get_object_or_404(Patient, pk=pk)
     if request.method == 'POST':

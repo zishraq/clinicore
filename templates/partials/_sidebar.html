@@ -19,13 +19,23 @@
           <summary>Catalogs</summary>
           <ul>
             <li><a href="{% url 'catalog:product_list' %}" class="{% if request.resolver_match.url_name == 'product_list' %}active{% endif %}">Medicines</a></li>
-            <li><a href="{% url 'catalog:advice_list' %}" class="{% if request.resolver_match.url_name == 'advice_list' %}active{% endif %}">Advice</a></li>
+            {% if organization.advice_enabled %}
+              <li><a href="{% url 'catalog:advice_list' %}" class="{% if request.resolver_match.url_name == 'advice_list' %}active{% endif %}">Advice</a></li>
+            {% endif %}
           </ul>
         </details>
       </li>
     {% endif %}
     {% if membership.is_owner %}
-      <li><a href="{% url 'organizations:billing_settings' %}" class="{% if request.resolver_match.url_name == 'billing_settings' %}active{% endif %}">Settings</a></li>
+      <li>
+        <details {% if 'organizations' in request.resolver_match.namespaces %}open{% endif %}>
+          <summary>Settings</summary>
+          <ul>
+            <li><a href="{% url 'organizations:billing_settings' %}" class="{% if request.resolver_match.url_name == 'billing_settings' %}active{% endif %}">Billing</a></li>
+            <li><a href="{% url 'organizations:feature_settings' %}" class="{% if request.resolver_match.url_name == 'feature_settings' %}active{% endif %}">Features</a></li>
+          </ul>
+        </details>
+      </li>
     {% endif %}
   </ul>
 
