@@ -156,6 +156,51 @@ A1/A4/A5 are browser-verified end to end. What each one settled:
   off would look like it worked. `organizations/views.py` binds on
   `request.method` instead. Found by a test, confirmed in a browser.
 
+Appointments (SPEC §6.3) are in progress. Increment 1 is done: the `scheduling`
+app's model, services and tests, plus the terminology keys. **No UI yet** — the
+day view, walk-in and mark-arrived are increment 2. Rules to know before
+touching it, all in `docs/adr/0010-appointments-as-one-day-list.md`:
+
+- **One model, not two.** `QueueEntry` is struck from SPEC §5 and §6.3's
+  "reorder" and "slot templates" go with it. A walk-in is an `Appointment` with
+  `source=WALK_IN`, created already arrived. A booked patient who turned up
+  would otherwise exist in two tables that can disagree about whether they are
+  still waiting.
+- **Status is never a column.** The five states are computed from `resolution`,
+  `seen_at` and `arrived_at` — all three have to exist anyway, so a `status`
+  field would be a fourth value restating them. Same call as the derived invoice
+  balance and batch on-hand. Four check constraints keep the derivation
+  unambiguous rather than precedence-dependent.
+- **SEEN is a timestamp, not a lookup through the encounter link.** Deriving it
+  from "a visit points here" would let a future soft delete on `Encounter`
+  silently revert the row to ARRIVED — this day's history rewriting itself. The
+  link still says *which* visit; `seen_at` says the appointment was consumed.
+  `test_seen_survives_the_visit_being_deleted` is the guard.
+- **`Encounter.appointment` is a nullable OneToOne.** Nullable because a visit
+  with no appointment must stay completely valid; one-to-one because two visits
+  off one row would make "was this seen?" ambiguous.
+- **SEEN is a consequence, not a button.** `transition(to=SEEN)` refuses without
+  an encounter, so an ARRIVED row whose doctor never wrote a visit stays ARRIVED.
+  That is information the receptionist needs, not a gap.
+- **NO_SHOW is not terminal.** `NO_SHOW → ARRIVED` is allowed and clears the
+  resolution — patients turn up late, and rebooking them to say so is a worse
+  lie than the one it prevents.
+- **`follow_up_date` keeps one writer.** The field stays (SPEC §6.3's
+  follow-ups-due list wants an indexed date), and `scheduling.services.reschedule`
+  is the only thing that writes it once an appointment exists. That single-writer
+  rule is what makes the sync safe, so `test_follow_ups.py` tests it directly.
+- **`bootstrap_demo` teardown grew a line.** `Appointment` PROTECTs the patient
+  and branch, and nothing the loader generates is an appointment — so, like the
+  batch override before it, only a hand-staged row catches a wrong order.
+  `core/tests/test_bootstrap_demo.py` stages one.
+
+Two things settled for increment 2 and not yet built: payment status is
+display-only on the row, read through `appointment → encounter → invoice`, and
+it is **hidden from STAFF** because SPEC §6.1 as amended puts every billing
+surface behind PRACTITIONER/OWNER — even though STAFF owns the rest of that
+screen. Scheduling views themselves are `login_required` + `require_membership`,
+the existing any-member posture; no new decorator is needed.
+
 Next: SPEC §11 phases remain suspended. Not deployed.
 
 ## Standing rules

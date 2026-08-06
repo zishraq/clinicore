@@ -36,6 +36,7 @@ from inventory.models import (
 from organizations.models import Branch as BranchModel
 from organizations.models import Organization
 from patients.models import Patient, PatientClinicalProfile, Sex
+from scheduling.models import Appointment
 
 DEMO_SLUG = 'demo-clinic'
 DEMO_PASSWORD = 'clinicore-demo'
@@ -282,6 +283,11 @@ class Command(BaseCommand):
             PrescriptionItem.all_objects.filter(organization=organization).delete()
             Prescription.all_objects.filter(organization=organization).delete()
             Encounter.all_objects.filter(organization=organization).delete()
+            # After the encounters (whose FK to an appointment is SET_NULL) and
+            # before the patients and branches an appointment PROTECTs. Nothing
+            # here generates one yet, so only a hand-staged row catches this —
+            # core/tests/test_bootstrap_demo.py stages one.
+            Appointment.all_objects.filter(organization=organization).delete()
             # After the items that PROTECT them.
             Product.all_objects.filter(organization=organization).delete()
             AdviceTemplate.all_objects.filter(organization=organization).delete()

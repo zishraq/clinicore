@@ -29,6 +29,7 @@ from inventory.models import (
 )
 from organizations.models import Branch
 from patients.models import Patient, PatientClinicalProfile
+from scheduling.models import Appointment
 
 pytestmark = pytest.mark.django_db
 
@@ -70,6 +71,15 @@ def _build_encounter(organization):
         practitioner=_practitioner_for(organization),
         branch=_build_branch(organization),
         occurred_at=timezone.now(),
+    )
+
+
+def _build_appointment(organization):
+    return Appointment.objects.create(
+        organization=organization,
+        patient=_build_patient(organization),
+        branch=_build_branch(organization),
+        scheduled_date=timezone.localdate(),
     )
 
 
@@ -199,6 +209,7 @@ BUILDERS = {
     'organizations.Branch': _build_branch,
     'patients.Patient': _build_patient,
     'patients.PatientClinicalProfile': _build_clinical_profile,
+    'scheduling.Appointment': _build_appointment,
 }
 
 

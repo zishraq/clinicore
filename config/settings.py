@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'accounts',
     'patients',
     'catalog',
+    'scheduling',
     'clinical',
     'billing',
     'inventory',

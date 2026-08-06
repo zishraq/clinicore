@@ -53,6 +53,17 @@ class Encounter(OrgOwnedModel):
     branch = models.ForeignKey(
         'organizations.Branch', on_delete=models.PROTECT, related_name='encounters'
     )
+    # The day-list row this visit was written from, when there was one. Nullable
+    # and one-to-one: a visit needs no appointment to be valid — the doctor can
+    # simply write one — but two visits off a single row would make "was this
+    # appointment seen?" ambiguous.
+    appointment = models.OneToOneField(
+        'scheduling.Appointment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='encounter',
+    )
     occurred_at = models.DateTimeField()
     chief_complaint = models.TextField(blank=True)
     examination = models.TextField(blank=True)

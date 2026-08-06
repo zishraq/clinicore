@@ -12,12 +12,15 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
 
 from billing.models import Invoice, InvoiceItem
 from catalog.models import Product
 from core.context import organization_context
 from inventory.models import StockBatch, StockMovement
-from organizations.models import Organization
+from organizations.models import Branch, Organization
+from patients.models import Patient
+from scheduling.models import Appointment
 
 pytestmark = pytest.mark.django_db
 
@@ -67,6 +70,31 @@ def test_rebuilding_tears_down_a_bill_line_that_named_a_batch():
     with organization_context(Organization.objects.get(slug=DEMO_SLUG)):
         assert Invoice.objects.exists()
         assert StockBatch.objects.exists()
+
+
+def test_rebuilding_tears_down_an_appointment():
+    """Same shape as the batch override, one model later.
+
+    ``Appointment`` PROTECTs the patient and the branch it names, and nothing
+    the loader generates is an appointment yet — so without a staged row the
+    teardown order looks correct right up until the first demo that books one.
+    """
+    organization = _build()
+
+    with organization_context(organization):
+        Appointment.objects.create(
+            organization=organization,
+            patient=Patient.objects.first(),
+            branch=Branch.objects.first(),
+            scheduled_date=timezone.localdate(),
+        )
+
+    _build('--reset')
+
+    assert Organization.objects.filter(slug=DEMO_SLUG).count() == 1
+    with organization_context(Organization.objects.get(slug=DEMO_SLUG)):
+        assert not Appointment.objects.exists()
+        assert Patient.objects.exists()
 
 
 def test_a_second_build_without_reset_leaves_the_first_alone():

@@ -110,9 +110,16 @@ neutral naming — no specialty terms:
   code, and structured intake fields. Sensitive clinical narrative fields
   (history, lifestyle/constitutional notes) must be modelled separately from
   demographics so access control can differ.
-- **Appointment** — patient, branch, practitioner, scheduled slot, status.
-- **QueueEntry** — patient, branch, date, position, status
-  (`WAITING` / `IN_CONSULTATION` / `DONE` / `ABSENT`), timestamps.
+- **Appointment** — patient, branch, practitioner, when, and how it came to
+  exist (`BOOKED` / `WALK_IN`).
+  **Amended 2026-08-07:** the confirmed workflow treats booked patients and
+  walk-ins as one day list, so a walk-in is an `Appointment` created already
+  arrived. `QueueEntry` is struck — a booked patient who arrives would otherwise
+  exist in two tables that can disagree about whether they are still waiting.
+  Scheduling is loose: there are no fixed slots, "Tuesday morning" is a real
+  answer, and double-booking is allowed. Status is **derived** from
+  `arrived_at` / `seen_at` / `resolution`, never stored. Reasoning in
+  `docs/adr/0010-appointments-as-one-day-list.md`.
 - **Encounter** — one consultation. Patient, practitioner, branch, datetime,
   chief complaint, examination notes, assessment, plan, follow-up date.
   Full history tracking, append-only corrections.
@@ -195,11 +202,15 @@ can sanity-check the schema.
   before saving.
 
 ### 6.3 Scheduling and queue
-- A per-branch, per-day queue board that both roles use. Add walk-in, mark
-  present/absent, reorder, call next.
-- HTMX polling on the queue board (3–5s) for near-live updates. No WebSockets.
-- Appointment booking with slot templates per practitioner per branch.
+- A per-branch, per-day list that both roles use, in three bands: waiting,
+  expected, and closed. Add walk-in, mark arrived, no-show, cancel.
+- HTMX polling on the day list (3–5s) for near-live updates. No WebSockets.
 - Follow-up tracking: patients due for follow-up, with call outcome logging.
+- **Amended 2026-08-07:** "reorder" and "slot templates per practitioner per
+  branch" are struck. There are no slots to template, and the order that matters
+  is who has waited longest, which `arrived_at` answers without a `position`
+  column anyone can forget to maintain. See
+  `docs/adr/0010-appointments-as-one-day-list.md`.
 
 ### 6.4 Clinical and prescriptions
 - Encounter form optimized for speed of entry: keyboard-navigable, "repeat last

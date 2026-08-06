@@ -64,6 +64,18 @@ DEFAULT_TERMINOLOGY = {
     # carries the fact that a correction happened.
     'status_amended': 'Completed',
     'amend': 'Edit',
+    # Scheduling. One day list covers booked patients and walk-ins alike, so
+    # there is one word for the row rather than "appointment" and "queue entry".
+    'appointment': 'Appointment',
+    'appointment_plural': 'Appointments',
+    'walk_in': 'Walk-in',
+    # Appointment states. Derived from the row's timestamps, never stored, but
+    # they still reach the UI as labels and so still go through the map.
+    'status_booked': 'Booked',
+    'status_arrived': 'Arrived',
+    'status_seen': 'Seen',
+    'status_no_show': 'No show',
+    'status_cancelled': 'Cancelled',
     # Billing. "Bill" by default because that is what a patient is handed and
     # what a practitioner says; an organization that invoices corporate clients
     # maps these back to "Invoice" without a migration.
