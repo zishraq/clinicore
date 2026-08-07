@@ -18,7 +18,7 @@
     </div>
 
     <div class="overflow-x-auto mt-4">
-      <table class="table">
+      <table class="table table-cards">
         <thead>
           <tr>
             <th>Item</th><th class="text-right">Qty</th><th class="text-right">Unit price</th>
@@ -29,11 +29,11 @@
           {% for item in items %}
             <tr>
               {# name_snapshot, never the live catalog row: a renamed product must not rewrite this bill. #}
-              <td class="font-medium">{{ item.name_snapshot }}</td>
-              <td class="text-right tabular-nums">{{ item.quantity }}</td>
-              <td class="text-right tabular-nums">{{ item.unit_price }}</td>
-              <td class="text-right tabular-nums">{{ item.discount }}</td>
-              <td class="text-right tabular-nums">{{ item.line_total }}</td>
+              <td class="font-medium" data-label="Item">{{ item.name_snapshot }}</td>
+              <td class="text-right tabular-nums" data-label="Qty">{{ item.quantity }}</td>
+              <td class="text-right tabular-nums" data-label="Unit price">{{ item.unit_price }}</td>
+              <td class="text-right tabular-nums" data-label="Discount">{{ item.discount }}</td>
+              <td class="text-right tabular-nums" data-label="Total">{{ item.line_total }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -90,17 +90,17 @@
 
   {% if payments %}
     <div class="overflow-x-auto mt-4">
-      <table class="table">
+      <table class="table table-cards">
         <thead>
           <tr><th>When</th><th class="text-right">Amount</th><th>Method</th><th>Taken by</th><th>Note</th><th></th></tr>
         </thead>
         <tbody>
           {% for payment in payments %}
             <tr class="{% if payment.is_void %}opacity-50{% endif %}">
-              <td>{{ payment.received_at|date:'d M Y, H:i' }}</td>
-              <td class="text-right tabular-nums {% if payment.is_void %}line-through{% endif %}">{{ payment.amount }}</td>
-              <td>{{ payment.get_method_display }}</td>
-              <td>{{ payment.received_by.full_name }}</td>
+              <td data-label="When">{{ payment.received_at|date:'d M Y, H:i' }}</td>
+              <td class="text-right tabular-nums {% if payment.is_void %}line-through{% endif %}" data-label="Amount">{{ payment.amount }}</td>
+              <td data-label="Method">{{ payment.get_method_display }}</td>
+              <td data-label="Taken by">{{ payment.received_by.full_name }}</td>
               <td>
                 {{ payment.note|default:'—' }}
                 {% if payment.is_void %}
@@ -150,7 +150,7 @@
       controls share a top edge and the help text is free to hang below.
     {% endcomment %}
     <form method="post" action="{% url 'billing:payment_create' invoice.pk %}"
-          class="grid gap-3 sm:grid-cols-4 items-start mt-6 border-t border-black/5 pt-6">
+          class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-start mt-6 border-t border-black/5 pt-6">
       {% csrf_token %}
       {% for field in payment_form %}
         <div>

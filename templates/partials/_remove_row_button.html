@@ -1,0 +1,44 @@
+{% comment %}
+The one remove control for every formset row — prescription items, bill
+charges, delivered products.
+
+Icon only. The word "Remove" was tried and took more width than the inputs it
+sat beside could spare, especially once the rows stack on a phone; the filled
+colour is what makes it read as a control, and that stays. The accessible name
+carries the meaning instead, so nothing is lost to a screen reader.
+
+``btn-square`` is ``height:3rem;width:3rem``, which is exactly ``.input``'s
+height — so the button matches the field it sits beside rather than floating
+above it, with nothing pinned by hand.
+
+``getBoundingClientRect`` reports 45.6px here, not 48, and waiting does not
+help. It is not a sizing bug and it is not a race. daisyUI runs ``animation:
+button-pop`` on every ``.btn``, whose 0% keyframe is
+``scale(var(--btn-focus-scale))`` — and the theme sets that to 0.95, so
+48 × 0.95 = 45.6. In an **automated tab** ``document.visibilityState`` is
+``hidden``, CSS animations are frozen, and the button never leaves that first
+frame. A real tab finishes the animation at ``scale(1)``.
+
+Measure ``offsetHeight``, or the computed height, or set ``animation: none``
+first. Measuring the rect in a driven tab will send you chasing two pixels that
+only exist in the harness — the same class of trap as the day list's poll, which
+that same hidden flag suppresses.
+``self-end`` does the alignment in both directions the row is laid out. Beside
+the fields it puts the button on their baseline — they carry labels and it does
+not, so top alignment would leave it a label's height too high. Below ``sm``
+the row stacks into a column and the same rule right-aligns it under the last
+field, still square, still obviously part of that row. It was tried full-width
+there and read as a red bar across the form: far louder than removing one line
+of a prescription deserves.
+
+Calls ``remove()`` on the row's Alpine component. All three provide one: the
+prescription and bill rows tick their formset's DELETE box when the row was
+already saved, and drop it from the DOM when it was not.
+
+Takes nothing — it is deliberately identical on all three screens.
+{% endcomment %}
+<button type="button"
+        class="btn btn-square bg-[var(--cc-danger)] text-white border-none self-end shrink-0 text-xl leading-none"
+        @click="remove()"
+        aria-label="Remove"
+        title="Remove">&times;</button>

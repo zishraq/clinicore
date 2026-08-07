@@ -10,18 +10,19 @@
 {% block content %}
 {% if receipts %}
   <div class="card-surface rounded-xl overflow-x-auto">
-    <table class="table">
+    {# table-cards: below sm each row stacks into a card — see static/css/app.css. #}
+    <table class="table table-cards">
       <thead>
-        <tr><th>Number</th><th>Received</th><th>Branch</th><th>Supplier</th><th class="text-right">Lines</th></tr>
+        <tr><th>Number</th><th>Received</th><th>Branch</th><th>Supplier</th><th class="text-right">{{ terms.line_item_plural }}</th></tr>
       </thead>
       <tbody>
         {% for receipt in receipts %}
           <tr class="hover cursor-pointer" onclick="window.location='{% url 'inventory:receipt_detail' receipt.pk %}'">
-            <td class="font-mono">{{ receipt.number }}</td>
-            <td>{{ receipt.received_at|date:'d M Y' }}</td>
-            <td>{{ receipt.branch.name }}</td>
-            <td>{{ receipt.supplier|default:'—' }}</td>
-            <td class="text-right tabular-nums">{{ receipt.items.count }}</td>
+            <td class="font-mono" data-label="Number">{{ receipt.number }}</td>
+            <td data-label="Received">{{ receipt.received_at|date:'d M Y' }}</td>
+            <td data-label="Branch">{{ receipt.branch.name }}</td>
+            <td data-label="Supplier">{{ receipt.supplier|default:'—' }}</td>
+            <td class="text-right tabular-nums" data-label="{{ terms.line_item_plural }}">{{ receipt.items.count }}</td>
           </tr>
         {% endfor %}
       </tbody>

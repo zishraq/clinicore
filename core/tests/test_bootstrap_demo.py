@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from billing.models import Invoice, InvoiceItem
 from catalog.models import Product
-from core.context import organization_context
+from core.context import organization_context, organization_timezone
 from inventory.models import StockBatch, StockMovement
 from organizations.models import Branch, Organization
 from patients.models import Patient
@@ -83,7 +83,11 @@ def test_the_demo_opens_the_day_list_on_every_state():
 
     organization = _build()
 
-    with organization_context(organization):
+    # On the clinic's calendar, not the server's. The demo org is Asia/Dhaka, so
+    # for the six hours after midnight there the two disagree — and the loader
+    # files "today" under the clinic's. Reading it in UTC here made this fail at
+    # 06:0x Dhaka, which is exactly the bug ADR 0011 was about, in a test.
+    with organization_context(organization), organization_timezone(organization):
         today = Appointment.objects.filter(scheduled_date=timezone.localdate())
         assert {row.status for row in today} == set(AppointmentStatus.values)
         # Both ways a row reaches the list, so the "Walk-in" label is visible.
@@ -101,7 +105,7 @@ def test_the_seen_rows_show_both_answers_the_payment_column_can_give():
 
     organization = _build()
 
-    with organization_context(organization):
+    with organization_context(organization), organization_timezone(organization):
         seen = Appointment.objects.filter(
             scheduled_date=timezone.localdate(), seen_at__isnull=False
         ).select_related('encounter')

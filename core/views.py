@@ -3,7 +3,23 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
-__all__ = ['dashboard']
+__all__ = ['csrf_failure', 'dashboard']
+
+
+def csrf_failure(request, reason: str = ''):
+    """What a receptionist sees instead of Django's debug 403.
+
+    Every cause of this failure that a clinic will actually meet is the same
+    one: a page was left open, somebody signed in, the token rotated, and the
+    old page is now stale. So the page says the true thing in one sentence and
+    offers the one action that fixes it, rather than explaining CSRF.
+
+    Deliberately standalone rather than extending base.html — the page a
+    session-expiry lands on should not itself depend on a session, a
+    membership, or an organization's palette. ``reason`` is accepted because
+    Django passes it, and dropped because it is for a log, not a person.
+    """
+    return render(request, 'core/csrf_failure.html', status=403)
 
 
 @login_required

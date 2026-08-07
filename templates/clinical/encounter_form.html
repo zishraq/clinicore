@@ -35,8 +35,8 @@
 
   {% if is_amendment %}
     <section class="card-surface rounded-xl p-6 border-l-4 border-l-[var(--cc-warning)]">
-      {% status_label encounter.status as status %}
-      <h2 class="font-semibold">This {{ terms.encounter|lower }} is {{ status|lower }}</h2>
+      {# States what is about to happen, not what state the record is in. #}
+      <h2 class="font-semibold">You are changing a saved {{ terms.encounter|lower }}</h2>
       <p class="text-sm text-muted mt-1">
         The old version is kept along with your reason. Nothing is lost.
         <a class="link" href="{% url 'clinical:encounter_history' encounter.pk %}">View history</a>
@@ -105,7 +105,7 @@
             hx-target="#item-rows"
             hx-swap="beforeend"
             hx-on::after-request="const total = document.getElementById('id_items-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
-      Add another item
+      Add another {{ terms.line_item|lower }}
     </button>
 
     <div class="grid gap-4 sm:grid-cols-2 mt-6">
@@ -138,8 +138,11 @@
     <a href="{% if encounter %}{% url 'clinical:encounter_detail' encounter.pk %}{% else %}{% url 'clinical:encounter_list' %}{% endif %}"
        class="btn btn-ghost">Cancel</a>
     {% if not is_amendment %}
+      {% comment %}
+        The state word is gone; what remains is the only consequence the doctor
+        can act on — that later changes are recorded.
+      {% endcomment %}
       <p class="text-xs text-muted basis-full">
-        Saving marks this {{ terms.encounter|lower }} {{ terms.status_finalized|lower }}.
         Later changes are kept as {{ terms.amend|lower }}s, with a reason.
       </p>
     {% endif %}

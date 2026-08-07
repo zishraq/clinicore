@@ -37,8 +37,10 @@ __all__ = [
 ]
 
 PAGE_SIZE = 25
-#: Blank rows on a new delivery. Three covers the common small order.
-RECEIPT_ROWS = 3
+#: Blank rows on a new delivery. One, like the visit form and the bill: three
+#: empty rows read as three things to fill in, and "Add another item" is how
+#: every other formset in the project grows.
+RECEIPT_ROWS = 1
 
 
 def _selected_branch(request):

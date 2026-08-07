@@ -207,8 +207,12 @@ def test_a_walk_in_lands_on_the_receptionists_today(
 
     client.force_login(staff)
     response = client.post(
-        reverse('scheduling:walk_in'),
-        {'patient': patient.pk, 'walk_in_branch': branch.pk},
+        reverse('scheduling:create'),
+        {
+            'patient': patient.pk,
+            'appointment_branch': branch.pk,
+            'already_here': '1',
+        },
     )
     assert response.status_code == 200
 

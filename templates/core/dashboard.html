@@ -86,17 +86,22 @@ usually empty stops being read.
 
 {% if recent_encounters %}
   <div class="card-surface rounded-xl mt-6 overflow-x-auto">
-    <table class="table">
+    <table class="table table-cards">
       <thead>
         <tr><th>Patient</th><th>When</th><th>Practitioner</th><th>Status</th></tr>
       </thead>
       <tbody>
         {% for encounter in recent_encounters %}
           <tr class="hover">
-            <td><a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ encounter.patient.full_name }}</a></td>
-            <td>{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
-            <td>{{ encounter.practitioner.full_name }}</td>
-            <td><span class="badge badge-ghost">{% status_label encounter.status %}</span></td>
+            <td data-label="Patient"><a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ encounter.patient.full_name }}</a></td>
+            <td data-label="When">{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
+            <td data-label="Practitioner">{{ encounter.practitioner.full_name }}</td>
+            {# Draft only. A finished visit is the ordinary case and says nothing. #}
+            <td>
+              {% if not encounter.is_locked %}
+                <span class="badge badge-warning badge-outline badge-sm">{{ terms.status_draft }}</span>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>

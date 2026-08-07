@@ -8,7 +8,7 @@ app_name = 'accounts'
 
 urlpatterns = [
     path('login/', views.ClinicoreLoginView.as_view(), name='login'),
-    path('logout/', views.ClinicoreLogoutView.as_view(), name='logout'),
+    path('logout/', views.logout_view, name='logout'),
     path(
         'organizations/<int:organization_id>/switch/',
         views.switch_organization,

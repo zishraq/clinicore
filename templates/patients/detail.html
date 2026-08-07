@@ -1,13 +1,51 @@
 {% extends 'base.html' %}
-{% load terminology %}
+{% load static terminology %}
+
+{% comment %}
+  The appointment modal renders the patient picker, whose Alpine component
+  lives here. Without it the picker's x-data never resolves and the search box
+  is inert — a failure that is entirely in the browser.
+{% endcomment %}
+{% block alpine_components %}
+  <script src="{% static 'js/item-autocomplete.js' %}" defer></script>
+{% endblock %}
 
 {% block title %}{{ patient.full_name }}{% endblock %}
 {% block page_title %}{{ patient.full_name }}{% endblock %}
 {% block page_actions %}
   <a href="{% url 'patients:update' patient.pk %}" class="btn btn-sm btn-brand-ghost">Edit</a>
+  {% comment %}
+    The same modal and the same service the day list uses, opened with this
+    patient already chosen. Booking the next visit from the person's own page
+    is where the front desk is standing when the patient asks for it.
+  {% endcomment %}
+  <button type="button" class="btn btn-sm btn-brand-ghost"
+          hx-get="{% url 'scheduling:create' %}?patient={{ patient.pk }}&redirect_to=1"
+          hx-target="#appointment-body"
+          hx-swap="innerHTML"
+          hx-on::after-request="document.getElementById('appointment_modal').showModal()">
+    Next {{ terms.appointment|lower }}
+  </button>
   {% if show_clinical %}
     <a href="{% url 'clinical:encounter_create' %}?patient={{ patient.pk }}" class="btn btn-sm btn-brand">New {{ terms.encounter|lower }}</a>
   {% endif %}
+{% endblock %}
+
+{% block modals %}
+  {% comment %}
+    The appointment form renders the patient picker, so this page owes it the
+    registration dialog the picker's offer targets — see
+    templates/patients/_add_patient_modal.html for why that coupling is easy to
+    miss and how it is asserted.
+  {% endcomment %}
+  <dialog id="appointment_modal" class="modal">
+    <div class="modal-box max-w-xl">
+      <h3 class="font-semibold text-lg">Next {{ terms.appointment|lower }}</h3>
+      <div id="appointment-body" class="mt-4"></div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+  {% include 'patients/_add_patient_modal.html' with noun=terms.appointment|lower %}
 {% endblock %}
 
 {% block content %}
@@ -102,7 +140,10 @@
                   </a>
                   <p class="text-sm text-muted">{{ encounter.chief_complaint|truncatechars:80|default:'No chief complaint recorded' }}</p>
                 </div>
-                <span class="badge badge-ghost">{% status_label encounter.status %}</span>
+                {# Draft only — see templates/clinical/encounter_list.html. #}
+                {% if not encounter.is_locked %}
+                  <span class="badge badge-warning badge-outline badge-sm">{{ terms.status_draft }}</span>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>

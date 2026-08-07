@@ -130,6 +130,10 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = _env_bool('DJANGO_SECURE_COOKIES', False)
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+# Signing in rotates the CSRF token, so a page left open in another tab posts a
+# stale one. On a shared reception machine that is routine, not an attack, and
+# Django's default answer to it is a page of debug text.
+CSRF_FAILURE_VIEW = 'core.views.csrf_failure'
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'

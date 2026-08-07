@@ -1,0 +1,64 @@
+{% load static %}<!doctype html>
+{% comment %}
+Shown when a CSRF check fails. Standalone on purpose: this is what a stale page
+lands on, so it must not need a session, a membership, or the organization's
+palette to render. Self-contained CSS for the same reason — the CDN that styles
+the rest of the app is one more thing that can be missing at exactly this
+moment (docs/MVP-NOTES.md records the CDN dependency).
+
+One sentence and one link. The cause is always the same in a clinic — somebody
+signed in on the shared machine and the open page went stale — so the page says
+that, and not the word "CSRF".
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session expired</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f4f7fb;
+      color: #1f2933;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(15, 32, 56, 0.08);
+      padding: 2rem;
+      max-width: 27rem;
+      width: 100%;
+      text-align: center;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+    p { margin: 0 0 1.5rem; line-height: 1.55; color: #52606d; }
+    a.button {
+      display: inline-block;
+      background: #2563eb;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 0.7rem 1.4rem;
+      border-radius: 9px;
+    }
+    a.button:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Your session expired</h1>
+    <p>
+      This page was open for a while, or somebody else signed in on this
+      computer. Nothing was lost — please sign in again to carry on.
+    </p>
+    <a class="button" href="{% url 'accounts:login' %}">Sign in again</a>
+  </main>
+</body>
+</html>

@@ -45,7 +45,7 @@
   <section class="card-surface rounded-xl p-6">
     <h2 class="font-semibold">{{ terms.invoice_line_plural }}</h2>
     <p class="text-sm text-muted mb-4">
-      The {{ terms.consultation_fee|lower }} is its own line. Search products by name, or just type.
+      The {{ terms.consultation_fee|lower }} is its own {{ terms.line_item|lower }}. Search products by name, or just type.
     </p>
 
     {{ item_formset.non_form_errors }}
@@ -68,7 +68,7 @@
             hx-target="#line-rows"
             hx-swap="beforeend"
             hx-on::after-request="const total = document.getElementById('id_items-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
-      Add another line
+      Add another {{ terms.line_item|lower }}
     </button>
 
     <div class="flex justify-end items-baseline gap-3 mt-6 border-t border-black/5 pt-4">

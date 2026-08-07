@@ -16,7 +16,7 @@ from django.utils import timezone
 from accounts.permissions import clinical_access_required, require_membership
 from clinical import services
 from clinical.forms import EncounterForm, PrescriptionForm, PrescriptionItemFormSet
-from clinical.models import Encounter, PrintSize
+from clinical.models import Encounter, EncounterStatus, PrintSize
 from organizations.services import default_branch
 from patients.models import Patient
 from scheduling import services as scheduling_services
@@ -36,13 +36,26 @@ __all__ = [
 PAGE_SIZE = 25
 
 
+#: The status filter's options, in the order the dropdown shows them. Only
+#: DRAFT is named: a visit is either still being written or it is just a visit,
+#: and the second case is every other row on the page.
+STATUS_FILTERS = {
+    'draft': [EncounterStatus.DRAFT],
+    'finished': [EncounterStatus.FINALIZED, EncounterStatus.AMENDED],
+}
+
+
 @login_required
 @clinical_access_required
 def encounter_list(request):
+    """One list, filtered. The status column is a dropdown, not a column."""
     encounters = Encounter.objects.select_related('patient', 'practitioner', 'branch')
     query = request.GET.get('q', '').strip()
     if query:
         encounters = encounters.filter(patient__full_name__icontains=query)
+    status = request.GET.get('status', '').strip().lower()
+    if status in STATUS_FILTERS:
+        encounters = encounters.filter(status__in=STATUS_FILTERS[status])
     page = Paginator(encounters, PAGE_SIZE).get_page(request.GET.get('page'))
     return render(
         request,
@@ -50,9 +63,7 @@ def encounter_list(request):
         {
             'encounters': page,
             'query': query,
-            # The status column earns its width only when something is actually
-            # open; saving completes a visit now (A4).
-            'has_open': any(not item.is_locked for item in page),
+            'status': status if status in STATUS_FILTERS else '',
         },
     )
 
@@ -118,7 +129,9 @@ def _save_and_report(request, encounter, *, actor) -> str:
     if request.POST.get(DRAFT_SUBMIT):
         return f'{label} saved as {terms["status_draft"].lower()}.'
     services.finalize_encounter(encounter, actor=actor)
-    return f'{label} saved and marked {terms["status_finalized"].lower()}.'
+    # Just "saved". The doctor pressed one button and wrote one note; naming the
+    # state it landed in describes bookkeeping he never asked to do.
+    return f'{label} saved.'
 
 
 def _selected_patient(form):
@@ -158,6 +171,26 @@ def _prefill_from_appointment(form, appointment) -> None:
     form.initial['branch'] = appointment.branch_id
     if appointment.practitioner_id:
         form.initial['practitioner'] = appointment.practitioner_id
+
+
+def _book_follow_up(request, encounter, *, actor) -> None:
+    """Turn the visit's "next appointment" date into a row somebody will see.
+
+    Failure must not cost the note, for the same reason marking the row seen
+    must not: the visit is saved and complete either way, and a follow-up that
+    could not be booked is worth a sentence rather than a rollback.
+    """
+    if not encounter.follow_up_date:
+        return
+    try:
+        scheduling_services.schedule_follow_up(
+            request.organization,
+            actor=actor,
+            encounter=encounter,
+            on_date=encounter.follow_up_date,
+        )
+    except scheduling_services.AppointmentError as failure:
+        messages.warning(request, str(failure))
 
 
 def _mark_seen(request, appointment, encounter, *, actor) -> None:
@@ -215,6 +248,7 @@ def encounter_create(request):
         )
         if appointment is not None:
             _mark_seen(request, appointment, encounter, actor=membership.user)
+        _book_follow_up(request, encounter, actor=membership.user)
         return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
@@ -269,6 +303,9 @@ def encounter_update(request, pk: int):
                 if is_amendment
                 else _save_and_report(request, saved, actor=membership.user),
             )
+            # Also on edit: a follow-up date added or moved on a saved visit is
+            # the same intention as one set while writing it.
+            _book_follow_up(request, saved, actor=membership.user)
             return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
@@ -309,8 +346,7 @@ def encounter_finalize(request, pk: int):
     if request.method == 'POST' and not encounter.is_locked:
         services.finalize_encounter(encounter, actor=membership.user)
         terms = request.organization.terms
-        label, state = terms['encounter'], terms['status_finalized'].lower()
-        messages.success(request, f'{label} marked {state}.')
+        messages.success(request, f'{terms["encounter"]} finished.')
     return redirect('clinical:encounter_detail', pk=encounter.pk)
 
 

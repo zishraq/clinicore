@@ -19,7 +19,9 @@ from datetime import time
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Case, F, IntegerField, Value, When
+from django.db.models import Case, F, IntegerField, Q, Value, When
+from django.db.models.functions import Coalesce, TruncTime
+from django.utils import timezone
 
 from core.managers import OrgScopedManager, OrgScopedQuerySet
 from core.models import OrgOwnedModel
@@ -81,6 +83,18 @@ CLOSED_STATUSES = frozenset(
 )
 
 
+def _sort_time():
+    """The time a row is *about*: what was agreed, or when they walked in.
+
+    A walk-in has no agreed time, but it does have a real one — the moment they
+    turned up — and on a single chronological list it has to take its place
+    among the bookings rather than sink to the bottom. Read through from
+    ``arrived_at`` rather than copied into ``scheduled_time``: two columns
+    holding one fact is exactly what this model avoids elsewhere.
+    """
+    return Coalesce('scheduled_time', TruncTime('arrived_at'))
+
+
 def _day_part_rank():
     """Sort key placing timed and vague appointments on one axis.
 
@@ -88,14 +102,16 @@ def _day_part_rank():
     ranked by the part of day it falls in rather than sorted into a separate
     block ahead of everything vague. Anything with neither goes last — it is the
     least specific thing on the list.
+
+    Reads the ``sort_time`` annotation, so it must be chained after it.
     """
     return Case(
         When(day_part=DayPart.MORNING, then=Value(0)),
         When(day_part=DayPart.AFTERNOON, then=Value(1)),
         When(day_part=DayPart.EVENING, then=Value(2)),
-        When(scheduled_time__lt=MORNING_ENDS, then=Value(0)),
-        When(scheduled_time__lt=AFTERNOON_ENDS, then=Value(1)),
-        When(scheduled_time__isnull=False, then=Value(2)),
+        When(sort_time__lt=MORNING_ENDS, then=Value(0)),
+        When(sort_time__lt=AFTERNOON_ENDS, then=Value(1)),
+        When(sort_time__isnull=False, then=Value(2)),
         default=Value(3),
         output_field=IntegerField(),
     )
@@ -110,29 +126,67 @@ class AppointmentQuerySet(OrgScopedQuerySet):
             queryset = queryset.filter(practitioner=practitioner)
         return queryset
 
+    def chronological(self):
+        """The one order the day list uses, whatever the row's status.
+
+        The screen is a single list now, so every row sorts on one axis: the
+        part of the day it falls in, then the time it is about. Annotations are
+        guarded so this composes with the status filters, which is the same
+        shape as ``InvoiceQuerySet.with_totals``.
+        """
+        queryset = self
+        if 'sort_time' not in queryset.query.annotations:
+            queryset = queryset.annotate(sort_time=_sort_time())
+        if 'day_rank' not in queryset.query.annotations:
+            queryset = queryset.annotate(day_rank=_day_part_rank())
+        return queryset.order_by(
+            'day_rank', F('sort_time').asc(nulls_last=True), 'created_at'
+        )
+
     def waiting(self):
         """Arrived, not yet seen, not resolved — who is in the building."""
         return self.filter(
             arrived_at__isnull=False, seen_at__isnull=True, resolution=''
-        ).order_by('arrived_at')
-
-    def expected(self):
-        """Still to arrive. Ordered the way the day runs, vaguest last."""
-        return (
-            self.filter(arrived_at__isnull=True, resolution='')
-            .annotate(day_rank=_day_part_rank())
-            .order_by(
-                'day_rank',
-                F('scheduled_time').asc(nulls_last=True),
-                'created_at',
-            )
         )
 
+    def expected(self):
+        """Still to arrive."""
+        return self.filter(arrived_at__isnull=True, resolution='')
+
+    def seen(self):
+        return self.filter(seen_at__isnull=False)
+
     def closed(self):
-        """Seen, no-showed or cancelled. Newest first: it is a record, not a queue."""
+        """Seen, no-showed or cancelled — finished with, either way."""
+        return self.filter(Q(seen_at__isnull=False) | ~Q(resolution=''))
+
+    def with_status(self, key: str):
+        """Narrow to one of the five states, or return everything.
+
+        Keyed by the strings the URL carries, so the dropdown, the view and the
+        queryset all name the states the same way and an unknown value means
+        "All" rather than an error.
+        """
+        if key == 'expected':
+            return self.expected()
+        if key == 'waiting':
+            return self.waiting()
+        if key == 'seen':
+            return self.seen()
+        if key == 'cancelled':
+            return self.filter(resolution=Resolution.CANCELLED)
+        if key == 'no_show':
+            return self.filter(resolution=Resolution.NO_SHOW)
+        return self
+
+    def matching(self, term: str):
+        """Name or phone, which is how the front desk finds somebody."""
+        term = (term or '').strip()
+        if not term:
+            return self
         return self.filter(
-            models.Q(seen_at__isnull=False) | ~models.Q(resolution='')
-        ).order_by(F('seen_at').desc(nulls_last=True), '-updated_at')
+            Q(patient__full_name__icontains=term) | Q(patient__phone__icontains=term)
+        )
 
 
 class AppointmentManager(OrgScopedManager.from_queryset(AppointmentQuerySet)):
@@ -255,9 +309,17 @@ class Appointment(OrgOwnedModel):
 
     @property
     def when_display(self) -> str:
-        """What was actually agreed, at the precision it was agreed to."""
+        """What was actually agreed, at the precision it was agreed to.
+
+        Falls through to the arrival time for someone who was never booked:
+        that is a real time rather than an invented one, and on one
+        chronological list "Any time" against a row that is standing in front
+        of you reads as missing information.
+        """
         if self.scheduled_time:
             return self.scheduled_time.strftime('%H:%M')
         if self.day_part:
             return self.get_day_part_display()
+        if self.arrived_at:
+            return timezone.localtime(self.arrived_at).strftime('%H:%M')
         return 'Any time'

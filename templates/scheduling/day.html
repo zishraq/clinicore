@@ -2,8 +2,9 @@
 {% load static %}
 
 {% comment %}
-The front desk's screen. Three bands inside one polled container, and every
-control that takes typing outside it — see templates/scheduling/_rows.html.
+The front desk's screen. One chronological list inside a polled container, with
+the filters and every control that takes typing outside it — see
+templates/scheduling/_rows.html.
 {% endcomment %}
 
 {% block alpine_components %}
@@ -14,11 +15,11 @@ control that takes typing outside it — see templates/scheduling/_rows.html.
 {% block page_title %}{{ terms.appointment_plural }}{% endblock %}
 {% block page_actions %}
   <button type="button" class="btn btn-brand btn-sm"
-          hx-get="{% url 'scheduling:walk_in' %}"
-          hx-target="#walk-in-body"
+          hx-get="{% url 'scheduling:create' %}"
+          hx-target="#appointment-body"
           hx-swap="innerHTML"
-          hx-on::after-request="document.getElementById('walk_in_modal').showModal()">
-    Add {{ terms.walk_in|lower }}
+          hx-on::after-request="document.getElementById('appointment_modal').showModal()">
+    Add {{ terms.appointment|lower }}
   </button>
 {% endblock %}
 
@@ -36,10 +37,26 @@ control that takes typing outside it — see templates/scheduling/_rows.html.
   </div>
 
   <div class="flex gap-2">
-    <a class="btn btn-ghost btn-sm" href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}">‹</a>
+    <a class="btn btn-ghost btn-sm" href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">‹</a>
     <a class="btn btn-sm {% if is_today %}btn-disabled{% else %}btn-ghost{% endif %}"
-       href="?{% if branch %}branch={{ branch.pk }}{% endif %}">Today</a>
-    <a class="btn btn-ghost btn-sm" href="?date={{ next_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}">›</a>
+       href="?{% if branch %}branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">Today</a>
+    <a class="btn btn-ghost btn-sm" href="?date={{ next_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">›</a>
+  </div>
+
+  <div>
+    <label class="label py-1" for="day-status"><span class="label-text text-xs">Show</span></label>
+    <select id="day-status" name="status" onchange="this.form.submit()"
+            class="select select-bordered">
+      {% for value, label in status_options %}
+        <option value="{{ value }}" {% if value == status %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="flex-1 min-w-[12rem]">
+    <label class="label py-1" for="day-search"><span class="label-text text-xs">Find</span></label>
+    <input type="search" id="day-search" name="q" value="{{ search }}"
+           placeholder="Name or phone" class="input input-bordered w-full">
   </div>
 
   {% if branches|length > 1 %}
@@ -58,6 +75,8 @@ control that takes typing outside it — see templates/scheduling/_rows.html.
     <input type="hidden" name="branch" value="">
   {% endif %}
 
+  <button type="submit" class="btn btn-brand">Search</button>
+
   <p class="text-xs text-muted basis-full">
     {{ on_date|date:'l, d F Y' }}{% if not is_today %} · not today{% endif %} ·
     refreshes every {{ poll_seconds }} seconds
@@ -72,7 +91,7 @@ control that takes typing outside it — see templates/scheduling/_rows.html.
 <div id="day-rows"
      hx-get="{% url 'scheduling:day_rows' %}"
      hx-trigger="every {{ poll_seconds }}s [document.visibilityState === 'visible']"
-     hx-include="[name='date'],[name='branch']"
+     hx-include="[name='date'],[name='branch'],[name='status'],[name='q']"
      hx-swap="innerHTML">
   {% include 'scheduling/_rows.html' %}
 </div>
@@ -84,13 +103,10 @@ control that takes typing outside it — see templates/scheduling/_rows.html.
   seconds.
 {% endcomment %}
 {% block modals %}
-<dialog id="walk_in_modal" class="modal">
+<dialog id="appointment_modal" class="modal">
   <div class="modal-box max-w-xl">
-    <h3 class="font-semibold text-lg">Add {{ terms.walk_in|lower }}</h3>
-    <p class="text-sm text-muted mt-1 mb-4">
-      They go straight into Waiting — they are already here.
-    </p>
-    <div id="walk-in-body"></div>
+    <h3 class="font-semibold text-lg">Add {{ terms.appointment|lower }}</h3>
+    <div id="appointment-body" class="mt-4"></div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
@@ -103,10 +119,10 @@ control that takes typing outside it — see templates/scheduling/_rows.html.
 </dialog>
 
 {% comment %}
-  The walk-in modal renders the patient picker, so the page owes it the dialog
-  its "add a new patient" offer targets. A sibling of walk_in_modal rather than
-  a child: nesting one <dialog> in another stacks backdrops, and closing the
-  registration would take the half-filled walk-in down with it.
+  The appointment modal renders the patient picker, so the page owes it the
+  dialog its "add a new patient" offer targets. A sibling of appointment_modal
+  rather than a child: nesting one <dialog> in another stacks backdrops, and
+  closing the registration would take the half-filled form down with it.
 {% endcomment %}
-{% include 'patients/_add_patient_modal.html' with noun=terms.walk_in|lower %}
+{% include 'patients/_add_patient_modal.html' with noun=terms.appointment|lower %}
 {% endblock %}

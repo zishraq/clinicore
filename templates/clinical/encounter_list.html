@@ -8,37 +8,49 @@
 {% endblock %}
 
 {% block content %}
-<form method="get" class="card-surface rounded-xl p-4 mb-4">
-  <input type="search" name="q" value="{{ query }}" placeholder="Filter by patient name"
-         class="input input-bordered w-full max-w-lg">
+{% comment %}
+  One list, two filters, no status column. A column that reads the same word on
+  every row teaches the reader to ignore it; a draft is the only case worth
+  interrupting for, so it gets a badge on its own row and everything else shows
+  nothing at all.
+{% endcomment %}
+<form method="get" class="card-surface rounded-xl p-4 mb-4 flex flex-wrap items-end gap-3">
+  <div class="flex-1 min-w-[14rem]">
+    <label class="label py-1" for="visit-search"><span class="label-text text-xs">Patient</span></label>
+    <input type="search" id="visit-search" name="q" value="{{ query }}"
+           placeholder="Filter by patient name" class="input input-bordered w-full">
+  </div>
+  <div>
+    <label class="label py-1" for="visit-status"><span class="label-text text-xs">Show</span></label>
+    <select id="visit-status" name="status" onchange="this.form.submit()"
+            class="select select-bordered">
+      <option value="">All</option>
+      <option value="draft" {% if status == 'draft' %}selected{% endif %}>{{ terms.status_draft }}</option>
+      <option value="finished" {% if status == 'finished' %}selected{% endif %}>{{ terms.status_finalized }}</option>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-brand">Search</button>
 </form>
 
 {% if encounters %}
   <div class="card-surface rounded-xl overflow-x-auto">
-    <table class="table">
-      {% comment %}
-        Since saving completes a visit (A4), everything on this page reads
-        "{{ terms.status_finalized }}" unless something was actually left open —
-        a column of one repeated word is noise. It comes back the moment a
-        draft exists.
-      {% endcomment %}
+    {# table-cards: below sm each row stacks into a card — see static/css/app.css. #}
+    <table class="table table-cards">
       <thead>
-        <tr><th>Date</th><th>Patient</th><th>Practitioner</th><th>Branch</th>{% if has_open %}<th>Status</th>{% endif %}</tr>
+        <tr><th>Date</th><th>Patient</th><th>Practitioner</th><th>Branch</th></tr>
       </thead>
       <tbody>
         {% for encounter in encounters %}
           <tr class="hover cursor-pointer" onclick="window.location='{% url 'clinical:encounter_detail' encounter.pk %}'">
-            <td>{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
-            <td class="font-medium">{{ encounter.patient.full_name }}</td>
-            <td>{{ encounter.practitioner.full_name }}</td>
-            <td>{{ encounter.branch.name }}</td>
-            {% if has_open %}
-              <td>
-                <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
-                  {% status_label encounter.status %}
-                </span>
-              </td>
-            {% endif %}
+            <td data-label="Date">{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
+            <td class="font-medium" data-label="Patient">
+              {{ encounter.patient.full_name }}
+              {% if not encounter.is_locked %}
+                <span class="badge badge-warning badge-outline badge-sm ml-2">{{ terms.status_draft }}</span>
+              {% endif %}
+            </td>
+            <td data-label="Practitioner">{{ encounter.practitioner.full_name }}</td>
+            <td data-label="Branch">{{ encounter.branch.name }}</td>
           </tr>
         {% endfor %}
       </tbody>
@@ -48,11 +60,11 @@
   {% if encounters.has_other_pages %}
     <div class="join mt-4 flex justify-center">
       {% if encounters.has_previous %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&page={{ encounters.previous_page_number }}">«</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status|urlencode }}&page={{ encounters.previous_page_number }}">«</a>
       {% endif %}
       <span class="join-item btn btn-sm btn-disabled">Page {{ encounters.number }} of {{ encounters.paginator.num_pages }}</span>
       {% if encounters.has_next %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&page={{ encounters.next_page_number }}">»</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status|urlencode }}&page={{ encounters.next_page_number }}">»</a>
       {% endif %}
     </div>
   {% endif %}

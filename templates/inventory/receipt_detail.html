@@ -33,20 +33,20 @@
 </section>
 
 <section class="card-surface rounded-xl p-6">
-  <h2 class="font-semibold mb-4">Lines</h2>
+  <h2 class="font-semibold mb-4">{{ terms.line_item_plural }}</h2>
   <div class="overflow-x-auto">
-    <table class="table">
+    <table class="table table-cards">
       <thead>
         <tr><th>Product</th><th>Lot</th><th>Expires</th><th class="text-right">Quantity</th><th class="text-right">Unit cost</th><th></th></tr>
       </thead>
       <tbody>
         {% for item in items %}
           <tr class="hover">
-            <td class="font-medium">{{ item.product.name }}</td>
-            <td class="font-mono text-sm">{{ item.batch.lot_number|default:'—' }}</td>
-            <td>{{ item.batch.expiry_date|date:'d M Y'|default:'—' }}</td>
-            <td class="text-right tabular-nums">{{ item.quantity }}</td>
-            <td class="text-right tabular-nums">{{ item.cost_price }}</td>
+            <td class="font-medium" data-label="Product">{{ item.product.name }}</td>
+            <td class="font-mono text-sm" data-label="Lot">{{ item.batch.lot_number|default:'—' }}</td>
+            <td data-label="Expires">{{ item.batch.expiry_date|date:'d M Y'|default:'—' }}</td>
+            <td class="text-right tabular-nums" data-label="Quantity">{{ item.quantity }}</td>
+            <td class="text-right tabular-nums" data-label="Unit cost">{{ item.cost_price }}</td>
             <td class="text-right">
               <a href="{% url 'inventory:product_stock' item.product_id %}" class="btn btn-xs btn-brand-ghost">{{ terms.stock }}</a>
             </td>

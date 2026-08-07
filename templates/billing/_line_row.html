@@ -15,7 +15,13 @@ which substitutes __prefix__ for the new index.
   {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
   {% if form.DELETE %}{{ form.DELETE }}{% endif %}
 
-  <div class="flex items-start gap-2">
+  {% comment %}
+    Stacks below sm: five inputs cannot share a phone's width, and with
+    the button in the same row it stole 46px from every one of them.
+    Below the breakpoint the fields take the full width and the Remove
+    button sits under them, still plainly inside this row's card.
+  {% endcomment %}
+  <div class="flex flex-col sm:flex-row items-stretch sm:items-start gap-2">
     <div class="grid gap-2 sm:grid-cols-12 items-end flex-1">
       <div class="sm:col-span-5 relative">
         <label class="label py-1">
@@ -74,11 +80,7 @@ which substitutes __prefix__ for the new index.
       </div>
     </div>
 
-    <button type="button"
-            class="btn btn-ghost btn-sm text-[var(--cc-danger)] mt-7"
-            @click="remove()"
-            aria-label="Remove this line"
-            title="Remove this line">✕</button>
+    {% include 'partials/_remove_row_button.html' %}
   </div>
 
   {% comment %}

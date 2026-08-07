@@ -103,8 +103,7 @@ def finalize_encounter(encounter: Encounter, *, actor=None) -> Encounter:
     """Lock the record. Later corrections become amendments, not overwrites."""
     # The reason is read back on the history page, so it is worded from the
     # organization's terminology map rather than the stored status (SPEC §5).
-    state = encounter.organization.terms['status_finalized'].lower()
-    reason = f'Marked {state}'
+    reason = encounter.organization.terms['status_finalized']
     encounter.status = EncounterStatus.FINALIZED
     encounter.finalized_at = timezone.now()
     _stamp(encounter, actor=actor, reason=reason)
@@ -150,7 +149,7 @@ def revision_timeline(organization, encounter: Encounter) -> list[dict]:
     }
     # The lock fields are named after the stored statuses, so their labels come
     # from the terminology map rather than from the model (SPEC §5).
-    labels['finalized_at'] = f'Marked {terms["status_finalized"].lower()}'
+    labels['finalized_at'] = terms['status_finalized']
     labels['amended_at'] = f'Last {terms["amend"].lower()}'
 
     timeline = []

@@ -1,0 +1,110 @@
+{% comment %}
+Body of the "add appointment" modal. Outside the polled container, so a
+half-filled form survives however long the patient takes to find their number.
+
+Not a <form>: this sits in base.html's modals block and htmx posts the container
+by hx-include, the same shape as the visit form's add-patient modal.
+
+One form for a booking and for someone already standing at the desk. The only
+difference between them is whether the patient is here yet, so that is the only
+question asked — ticking it hides the date, because "already here" means now and
+two answers that can disagree is how a walk-in ends up filed under next Tuesday.
+{% endcomment %}
+<div id="appointment-fields" x-data="{ alreadyHere: false }">
+  {% if error %}
+    <div class="alert alert-error mb-4"><span>{{ error }}</span></div>
+  {% endif %}
+
+  {% include 'partials/_patient_picker.html' with field_name='patient' input_id='appointment-patient' label='Patient' selected=selected_patient %}
+
+  {# Only set when opened from a patient's page, which has no day list to swap. #}
+  {% if redirect_to %}<input type="hidden" name="redirect_to" value="1">{% endif %}
+
+  <div class="mt-3">
+    <label class="label cursor-pointer justify-start gap-3 py-1">
+      <input type="checkbox" name="already_here" value="1" class="checkbox checkbox-sm"
+             x-model="alreadyHere">
+      <span class="label-text">Patient is already here</span>
+    </label>
+    <p class="text-xs text-muted ml-8" x-show="alreadyHere" x-cloak>
+      They go straight into today's list, marked as waiting.
+    </p>
+  </div>
+
+  <div class="grid gap-3 sm:grid-cols-2 mt-3" x-show="!alreadyHere" x-cloak>
+    <div>
+      <label class="label py-1" for="appointment-date"><span class="label-text text-xs">Date</span></label>
+      <input type="date" id="appointment-date" name="appointment_date"
+             value="{{ on_date|date:'Y-m-d' }}" class="input input-bordered w-full">
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <label class="label py-1" for="appointment-time"><span class="label-text text-xs">Time</span></label>
+        <input type="time" id="appointment-time" name="time" class="input input-bordered w-full">
+      </div>
+      <div>
+        {% comment %}
+          "Morning" is a real answer from this clinic, so it is offered rather
+          than rounded up into a time nobody agreed to. A time wins if both are
+          given — the view drops the day part — so the pair cannot conflict.
+        {% endcomment %}
+        <label class="label py-1" for="appointment-part"><span class="label-text text-xs">or</span></label>
+        <select id="appointment-part" name="day_part" class="select select-bordered w-full">
+          <option value="">Any time</option>
+          {% for value, label in day_parts %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-3 sm:grid-cols-2 mt-3">
+    <div>
+      <label class="label py-1" for="appointment-practitioner"><span class="label-text text-xs">With</span></label>
+      <select id="appointment-practitioner" name="practitioner" class="select select-bordered w-full">
+        <option value="">Anyone</option>
+        {% for person in practitioners %}
+          <option value="{{ person.pk }}">{{ person.full_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% comment %}
+      Deliberately not called "branch": that name belongs to the day list's own
+      filter, which this modal carries below so the rebuilt list comes back for
+      the view the user is on.
+    {% endcomment %}
+    <div class="{% if branches|length < 2 %}hidden{% endif %}">
+      <label class="label py-1" for="appointment-branch"><span class="label-text text-xs">Chamber</span></label>
+      <select id="appointment-branch" name="appointment_branch" class="select select-bordered w-full">
+        {% for option in branches %}
+          <option value="{{ option.pk }}" {% if option.pk == default_branch.pk %}selected{% endif %}>{{ option.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <label class="label py-1" for="appointment-note"><span class="label-text text-xs">Note</span></label>
+    <input type="text" id="appointment-note" name="note" autocomplete="off"
+           placeholder="What they are coming about" class="input input-bordered w-full">
+  </div>
+
+  {# Carried so the rebuilt list comes back for the day and filter being viewed. #}
+  <input type="hidden" name="date" value="{{ on_date|date:'Y-m-d' }}">
+  <input type="hidden" name="branch" value="{{ branch.pk|default:'' }}">
+  <input type="hidden" name="status" value="{{ status }}">
+  <input type="hidden" name="q" value="{{ search }}">
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-ghost" onclick="appointment_modal.close()">Cancel</button>
+    <button type="button" class="btn btn-brand"
+            hx-post="{% url 'scheduling:create' %}"
+            hx-include="#appointment-fields"
+            hx-target="#day-rows"
+            hx-swap="innerHTML"
+            hx-on::after-request="if (event.detail.successful) appointment_modal.close()">
+      Save
+    </button>
+  </div>
+</div>

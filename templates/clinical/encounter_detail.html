@@ -6,8 +6,8 @@
 {% block page_actions %}
   {% comment %}
     Billing follows the consultation, so the action lives here. It appears once
-    the record is {{ terms.status_finalized|lower }} — billing a visit still
-    being written up is how a half-finished line ends up on a receipt.
+    the record is no longer a draft — billing a visit still being written up is
+    how a half-finished line ends up on a receipt.
   {% endcomment %}
   {% if invoice %}
     <a href="{% url 'billing:invoice_detail' invoice.pk %}" class="btn btn-sm btn-brand-ghost">{{ invoice.number }} · {{ invoice.currency }} {{ invoice.balance }} due</a>
@@ -27,9 +27,14 @@
   <section class="card-surface rounded-xl p-6 lg:col-span-2 space-y-5">
     <div class="flex items-center justify-between">
       <h2 class="font-semibold">Consultation notes</h2>
-      <span class="badge {% if encounter.status == 'FINALIZED' %}badge-success badge-outline{% else %}badge-ghost{% endif %}">
-        {% status_label encounter.status %}
-      </span>
+      {% comment %}
+        A finished visit shows nothing. A badge on the ordinary case is a word
+        the reader has to learn in order to discover it did not matter; only
+        the unfinished state is worth an interruption.
+      {% endcomment %}
+      {% if not encounter.is_locked %}
+        <span class="badge badge-warning badge-outline">{{ terms.status_draft }}</span>
+      {% endif %}
     </div>
 
     <div>
@@ -61,24 +66,28 @@
 
     {% if not encounter.is_locked %}
       {# Destructive-ish and irreversible, so it goes through a confirm dialog. #}
-      <button class="btn btn-brand btn-sm w-full mt-4" onclick="finalize_modal.showModal()">Mark {{ terms.status_finalized|lower }}</button>
+      <button class="btn btn-brand btn-sm w-full mt-4" onclick="finalize_modal.showModal()">{{ terms.finish }} {{ terms.encounter|lower }}</button>
       <dialog id="finalize_modal" class="modal">
         <div class="modal-box">
-          <h3 class="font-semibold text-lg">Mark this {{ terms.encounter|lower }} {{ terms.status_finalized|lower }}?</h3>
+          <h3 class="font-semibold text-lg">{{ terms.finish }} this {{ terms.encounter|lower }}?</h3>
           <p class="py-3 text-sm">You can still {{ terms.amend|lower }} it later. Every change is saved with a reason, and nothing is lost.</p>
           <div class="modal-action">
             <form method="dialog"><button class="btn btn-ghost">Cancel</button></form>
             <form method="post" action="{% url 'clinical:encounter_finalize' encounter.pk %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-brand">Mark {{ terms.status_finalized|lower }}</button>
+              <button type="submit" class="btn btn-brand">{{ terms.finish }} {{ terms.encounter|lower }}</button>
             </form>
           </div>
         </div>
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
       </dialog>
     {% else %}
+      {% comment %}
+        Dates, not a state word: when it was written and when it was last
+        changed are facts the reader may want. "Completed" was neither.
+      {% endcomment %}
       <p class="text-xs text-muted mt-4">
-        {{ terms.status_finalized }} {{ encounter.finalized_at|date:'d M Y, H:i' }}.
+        Written up {{ encounter.finalized_at|date:'d M Y, H:i' }}.
         {# Noun form, so the label works whatever verb an org maps `amend` to. #}
         {% if encounter.amended_at %}<br>Last {{ terms.amend|lower }}: {{ encounter.amended_at|date:'d M Y, H:i' }}{% endif %}
       </p>
@@ -92,16 +101,16 @@
   {% if medicines %}
     <p class="text-xs uppercase tracking-wide text-muted mt-4">Medicines</p>
     <div class="overflow-x-auto">
-      <table class="table">
+      <table class="table table-cards">
         <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
         <tbody>
           {% for item in medicines %}
             <tr>
-              <td class="font-medium">{{ item.name_snapshot }}</td>
-              <td>{{ item.dosage|default:'—' }}</td>
-              <td>{{ item.frequency|default:'—' }}</td>
-              <td>{{ item.duration|default:'—' }}</td>
-              <td>{{ item.instructions|default:'—' }}</td>
+              <td class="font-medium" data-label="Medicine">{{ item.name_snapshot }}</td>
+              <td data-label="Dosage">{{ item.dosage|default:'—' }}</td>
+              <td data-label="Frequency">{{ item.frequency|default:'—' }}</td>
+              <td data-label="Duration">{{ item.duration|default:'—' }}</td>
+              <td data-label="Instructions">{{ item.instructions|default:'—' }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -112,15 +121,15 @@
   {% if advice_items %}
     <p class="text-xs uppercase tracking-wide text-muted mt-4">Advice</p>
     <div class="overflow-x-auto">
-      <table class="table">
+      <table class="table table-cards">
         <thead><tr><th>Advice</th><th>Frequency</th><th>Duration</th><th>Notes</th></tr></thead>
         <tbody>
           {% for item in advice_items %}
             <tr>
-              <td class="font-medium">{{ item.name_snapshot }}</td>
-              <td>{{ item.frequency|default:'—' }}</td>
-              <td>{{ item.duration|default:'—' }}</td>
-              <td>{{ item.instructions|default:'—' }}</td>
+              <td class="font-medium" data-label="Advice">{{ item.name_snapshot }}</td>
+              <td data-label="Frequency">{{ item.frequency|default:'—' }}</td>
+              <td data-label="Duration">{{ item.duration|default:'—' }}</td>
+              <td data-label="Notes">{{ item.instructions|default:'—' }}</td>
             </tr>
           {% endfor %}
         </tbody>

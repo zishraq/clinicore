@@ -33,7 +33,14 @@
     <div class="drawer-content flex flex-col min-h-screen">
       {# Topbar is inline, not an include: block tags do not cross an include, so page_title and page_actions would never render from a partial. #}
       <header class="sticky top-0 z-20 bg-[var(--cc-surface)] border-b border-black/5">
-        <div class="flex items-center gap-3 px-4 h-16">
+        {% comment %}
+          min-h-16 and wrapping, not a fixed h-16 row: on a phone the page
+          actions plus the user menu are wider than the viewport, and a fixed
+          height row pushed them off the right edge — /stock/ and
+          /catalog/medicines/ scrolled the whole page sideways because of it.
+          The actions take a full line of their own below sm instead.
+        {% endcomment %}
+        <div class="flex flex-wrap items-center gap-3 px-4 min-h-16 py-2">
           <label for="app-drawer" class="btn btn-ghost btn-square lg:hidden" aria-label="Open menu">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
@@ -44,7 +51,7 @@
             <h1 class="text-lg font-semibold truncate">{% block page_title %}{% endblock %}</h1>
           </div>
 
-          <div class="flex items-center gap-2">{% block page_actions %}{% endblock %}</div>
+          <div class="flex flex-wrap items-center gap-2 order-last basis-full sm:order-none sm:basis-auto">{% block page_actions %}{% endblock %}</div>
 
           <div class="dropdown dropdown-end">
             <div tabindex="0" role="button" class="btn btn-ghost btn-sm normal-case max-w-[12rem] truncate">{{ user.full_name }}</div>

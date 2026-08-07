@@ -8,7 +8,12 @@
 {% endblock %}
 
 {% block content %}
-<form method="get" class="card-surface rounded-xl p-4 mb-4 grid gap-3 sm:grid-cols-4">
+{% comment %}
+  Two columns until lg, not four from sm: at 640–1023 a quarter of the width is
+  narrower than a date input plus the Filter button, and the last cell pushed
+  the page sideways in phone landscape.
+{% endcomment %}
+<form method="get" class="card-surface rounded-xl p-4 mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
   <div>
     <label class="label py-1" for="q"><span class="label-text text-xs">Search</span></label>
     <input id="q" type="search" name="q" value="{{ query }}" placeholder="Number or patient"
@@ -29,8 +34,8 @@
     <label class="label py-1" for="from"><span class="label-text text-xs">From</span></label>
     <input id="from" type="date" name="from" value="{{ date_from }}" class="input input-bordered w-full">
   </div>
-  <div class="flex gap-2 items-end">
-    <div class="flex-1">
+  <div class="flex flex-wrap gap-2 items-end">
+    <div class="flex-1 min-w-[8rem]">
       <label class="label py-1" for="to"><span class="label-text text-xs">To</span></label>
       <input id="to" type="date" name="to" value="{{ date_to }}" class="input input-bordered w-full">
     </div>
@@ -40,7 +45,8 @@
 
 {% if invoices %}
   <div class="card-surface rounded-xl overflow-x-auto">
-    <table class="table">
+    {# table-cards: below sm each row stacks into a card — see static/css/app.css. #}
+    <table class="table table-cards">
       <thead>
         <tr>
           <th>Number</th><th>Date</th><th>Patient</th>
@@ -51,12 +57,12 @@
       <tbody>
         {% for invoice in invoices %}
           <tr class="hover cursor-pointer" onclick="window.location='{% url 'billing:invoice_detail' invoice.pk %}'">
-            <td class="font-mono">{{ invoice.number }}</td>
-            <td>{{ invoice.issued_at|date:'d M Y' }}</td>
-            <td class="font-medium">{{ invoice.patient.full_name }}</td>
-            <td class="text-right tabular-nums">{{ invoice.amount_due }}</td>
-            <td class="text-right tabular-nums">{{ invoice.amount_paid }}</td>
-            <td class="text-right tabular-nums font-semibold">{{ invoice.balance }}</td>
+            <td class="font-mono" data-label="Number">{{ invoice.number }}</td>
+            <td data-label="Date">{{ invoice.issued_at|date:'d M Y' }}</td>
+            <td class="font-medium" data-label="Patient">{{ invoice.patient.full_name }}</td>
+            <td class="text-right tabular-nums" data-label="Total">{{ invoice.amount_due }}</td>
+            <td class="text-right tabular-nums" data-label="Paid">{{ invoice.amount_paid }}</td>
+            <td class="text-right tabular-nums font-semibold" data-label="Balance">{{ invoice.balance }}</td>
             <td>
               {% include 'billing/_status_badge.html' with status=invoice.payment_status %}
             </td>

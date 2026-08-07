@@ -88,9 +88,12 @@ class EncounterForm(forms.ModelForm):
         terms = organization.terms if organization else DEFAULT_TERMINOLOGY
         amend, one = terms['amend'].lower(), terms['encounter'].lower()
         reason.label = f'Reason for this {amend}'
+        # "Follow up date" was a date the clinic wrote down and never saw again.
+        # It books an appointment now, so it is named after what it produces.
+        self.fields['follow_up_date'].label = f'Next {terms["appointment"].lower()}'
         reason.help_text = (
             f'Saved in the {one} history. '
-            f'Needed once the {one} is marked {terms["status_finalized"].lower()}.'
+            f'Needed once the {one} is no longer a {terms["status_draft"].lower()}.'
         )
         if organization is None:
             return

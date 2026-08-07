@@ -2,8 +2,8 @@
 
 STAFF is the primary user of this screen rather than a role it was adapted for,
 so almost every test here signs in as STAFF. What matters is that the whole
-working path — add a walk-in, mark arrived, no-show, cancel with a reason —
-completes with no clinical access anywhere near it.
+working path — book, mark arrived, no-show, cancel with a reason — completes
+with no clinical access anywhere near it.
 """
 
 import datetime
@@ -39,8 +39,9 @@ def test_staff_can_open_the_day_list(client, staff, booking):
     assert response.status_code == 200
     body = response.content.decode()
     assert 'Rahima Begum' in body
-    assert 'Waiting' in body
-    assert 'Expected' in body
+    # One list with a filter, not three headed bands.
+    assert 'Show' in body
+    assert '<h2' not in body
 
 
 def test_the_day_list_is_in_both_navs_for_staff(client, staff):
@@ -51,22 +52,129 @@ def test_the_day_list_is_in_both_navs_for_staff(client, staff):
     assert body.count(reverse('scheduling:day')) >= 2
 
 
-def test_staff_can_add_a_walk_in(client, staff, organization, patient, branch):
+def test_staff_can_book_a_future_appointment(
+    client, staff, organization, patient, branch
+):
+    """The gap this closed: there was no way to book anything at all."""
     client.force_login(staff)
-    assert client.get(reverse('scheduling:walk_in')).status_code == 200
+    assert client.get(reverse('scheduling:create')).status_code == 200
 
+    tomorrow = timezone.localdate() + datetime.timedelta(days=1)
     response = client.post(
-        reverse('scheduling:walk_in'),
-        {'patient': patient.pk, 'walk_in_branch': branch.pk, 'note': 'Chest pain'},
+        reverse('scheduling:create'),
+        {
+            'patient': patient.pk,
+            'appointment_branch': branch.pk,
+            'appointment_date': tomorrow.strftime('%Y-%m-%d'),
+            'time': '10:30',
+            'note': 'Follow-up',
+            'date': tomorrow.strftime('%Y-%m-%d'),
+        },
     )
     assert response.status_code == 200
+
     with organization_context(organization):
         created = Appointment.objects.get()
-        assert created.status == AppointmentStatus.ARRIVED
-        assert created.is_walk_in
-        assert created.note == 'Chest pain'
+    assert created.scheduled_date == tomorrow
+    assert created.scheduled_time == datetime.time(10, 30)
+    assert created.status == AppointmentStatus.BOOKED
+    assert not created.is_walk_in
+    assert created.note == 'Follow-up'
+
+
+def test_a_day_part_books_without_inventing_a_time(
+    client, staff, organization, patient, branch
+):
+    """ "Tuesday morning" is a real answer and is stored as itself (ADR 0010)."""
+    client.force_login(staff)
+    client.post(
+        reverse('scheduling:create'),
+        {
+            'patient': patient.pk,
+            'appointment_branch': branch.pk,
+            'appointment_date': timezone.localdate().strftime('%Y-%m-%d'),
+            'day_part': 'MORNING',
+        },
+    )
+
+    with organization_context(organization):
+        created = Appointment.objects.get()
+    assert created.scheduled_time is None
+    assert created.day_part == 'MORNING'
+
+
+def test_a_time_wins_over_a_day_part_rather_than_refusing(
+    client, staff, organization, patient, branch
+):
+    """The two are exclusive by constraint, so the form cannot let both through.
+
+    Dropping the vaguer of the two beats an error message about a rule the
+    receptionist did not know she was breaking.
+    """
+    client.force_login(staff)
+    client.post(
+        reverse('scheduling:create'),
+        {
+            'patient': patient.pk,
+            'appointment_branch': branch.pk,
+            'appointment_date': timezone.localdate().strftime('%Y-%m-%d'),
+            'time': '09:15',
+            'day_part': 'EVENING',
+        },
+    )
+
+    with organization_context(organization):
+        created = Appointment.objects.get()
+    assert created.scheduled_time == datetime.time(9, 15)
+    assert created.day_part == ''
+
+
+def test_already_here_books_and_arrives_in_one_step(
+    client, staff, organization, patient, branch
+):
+    """What a walk-in is. One checkbox, not a second screen."""
+    client.force_login(staff)
+    response = client.post(
+        reverse('scheduling:create'),
+        {
+            'patient': patient.pk,
+            'appointment_branch': branch.pk,
+            'already_here': '1',
+            'note': 'Chest pain',
+            # Deliberately a future date: ticking the box means now, and the
+            # date must not be able to file them under a day they are not on.
+            'appointment_date': (
+                timezone.localdate() + datetime.timedelta(days=3)
+            ).strftime('%Y-%m-%d'),
+        },
+    )
+    assert response.status_code == 200
+
+    with organization_context(organization):
+        created = Appointment.objects.get()
+    assert created.scheduled_date == timezone.localdate()
+    assert created.status == AppointmentStatus.ARRIVED
+    assert created.is_walk_in
+    assert created.note == 'Chest pain'
     # The response is the rebuilt day, so the row appears without a reload.
     assert 'Rahima Begum' in response.content.decode()
+
+
+def test_the_word_walk_in_is_gone_from_the_screen(
+    client, staff, organization, patient, branch
+):
+    """Kept in the data, dropped from the vocabulary the front desk learns."""
+    with organization_context(organization):
+        services.walk_in(organization, actor=staff, patient=patient, branch=branch)
+
+    client.force_login(staff)
+    body = client.get(reverse('scheduling:day')).content.decode()
+    form = client.get(reverse('scheduling:create')).content.decode()
+
+    assert 'Rahima Begum' in body
+    assert 'Walk-in' not in body
+    assert 'walk-in' not in body.lower()
+    assert 'walk-in' not in form.lower()
 
 
 def test_the_registration_offer_has_somewhere_to_open(client, staff):
@@ -93,14 +201,16 @@ def test_the_registration_offer_has_somewhere_to_open(client, staff):
     assert f'id="{target.group(1)}"' in body
 
 
-def test_a_walk_in_without_a_patient_is_refused_into_its_own_modal(
+def test_an_appointment_without_a_patient_is_refused_into_its_own_modal(
     client, staff, organization, branch
 ):
     """The error must not swap over the day list, which is the button's target."""
     client.force_login(staff)
-    response = client.post(reverse('scheduling:walk_in'), {'walk_in_branch': branch.pk})
+    response = client.post(
+        reverse('scheduling:create'), {'appointment_branch': branch.pk}
+    )
     assert response.status_code == 200
-    assert response['HX-Retarget'] == '#walk-in-body'
+    assert response['HX-Retarget'] == '#appointment-body'
     assert 'before saving' in response.content.decode()
     with organization_context(organization):
         assert not Appointment.objects.exists()
@@ -470,9 +580,11 @@ def test_the_bills_are_one_query_for_the_whole_day(
                 actor=practitioner,
                 encounter=encounter,
             )
-        closed = services.day_list(organization, on_date=timezone.localdate())['closed']
+        seen = services.day_list(
+            organization, on_date=timezone.localdate(), status='seen'
+        )
         with django_assert_num_queries(2):
-            rows = services.with_bills(organization, closed)
+            rows = services.with_bills(organization, seen)
             assert [row.bill for row in rows].count(None) == 4
 
 

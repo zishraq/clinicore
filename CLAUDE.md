@@ -274,6 +274,12 @@ Next: SPEC §11 phases remain suspended. Not deployed.
 
 ## Standing rules
 
+- **Default to the simplest thing that works.** The users are new to software,
+  so simpler beats complete. Prefer one list with a filter over several
+  sections; one button over two; a familiar word over a precise one. **If a
+  screen needs explaining, it is wrong.** Propose removing things, not only
+  adding them. This outranks tidiness, symmetry, and my own sense of what is
+  well-modelled — the data model can stay precise while the screen gets plain.
 - Propose before you build on schema changes and new apps. For bug fixes and
   UI work inside an existing app, just do it.
 - Small increments. Never generate the whole app in one pass.

@@ -1,4 +1,13 @@
 {% extends 'base.html' %}
+{% load static %}
+
+{% comment %}
+  The rows carry the shared Remove control, which calls remove() on the row's
+  Alpine component. This is the only screen whose rows have nothing else to do.
+{% endcomment %}
+{% block alpine_components %}
+  <script src="{% static 'js/formset-row.js' %}" defer></script>
+{% endblock %}
 
 {% block title %}Receive {{ terms.stock|lower }}{% endblock %}
 {% block page_title %}Receive {{ terms.stock|lower }}{% endblock %}
@@ -54,7 +63,7 @@
             hx-target="#receipt-rows"
             hx-swap="beforeend"
             hx-on::after-request="const total = document.getElementById('id_items-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
-      Add another line
+      Add another {{ terms.line_item|lower }}
     </button>
   </section>
 

@@ -25,9 +25,11 @@ is why the submit button targets #day-rows rather than the modal.
          value="{{ request.POST.reason|default:'' }}"
          placeholder="Rang to cancel, unwell, rebooking…"
          class="input input-bordered w-full">
-  {# Carried so the rebuilt bands come back for the day being looked at. #}
+  {# Carried so the rebuilt list comes back for the day and filter being viewed. #}
   <input type="hidden" name="date" value="{{ on_date|date:'Y-m-d' }}">
   <input type="hidden" name="branch" value="{{ branch.pk|default:'' }}">
+  <input type="hidden" name="status" value="{{ status }}">
+  <input type="hidden" name="q" value="{{ search }}">
 
   <div class="modal-action">
     <button type="button" class="btn btn-ghost" onclick="cancel_modal.close()">Keep it</button>

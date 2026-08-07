@@ -57,13 +57,20 @@ def default_branding() -> dict:
 DEFAULT_TERMINOLOGY = {
     'encounter': 'Visit',
     'encounter_plural': 'Visits',
-    'status_draft': 'Open',
-    'status_finalized': 'Completed',
+    # "Draft" is the only status word a clinician is shown. Open/Completed was
+    # two words for a distinction they do not make: a visit is either still
+    # being written or it is a visit. A finished one carries no badge at all,
+    # so these two labels reach a screen only on the history page.
+    'status_draft': 'Draft',
+    'status_finalized': 'Finished',
     # A locked record that was later corrected. Deliberately the same label as
     # FINALIZED: staff see two states, and "last edited" on the detail page
     # carries the fact that a correction happened.
-    'status_amended': 'Completed',
+    'status_amended': 'Finished',
     'amend': 'Edit',
+    # The verb for leaving draft. Composed with `encounter` at the call site
+    # ("Finish visit") so relabelling the record relabels the button.
+    'finish': 'Finish',
     # Scheduling. One day list covers booked patients and walk-ins alike, so
     # there is one word for the row rather than "appointment" and "queue entry".
     'appointment': 'Appointment',
@@ -71,8 +78,11 @@ DEFAULT_TERMINOLOGY = {
     'walk_in': 'Walk-in',
     # Appointment states. Derived from the row's timestamps, never stored, but
     # they still reach the UI as labels and so still go through the map.
-    'status_booked': 'Booked',
-    'status_arrived': 'Arrived',
+    # "Expected" and "Waiting" rather than "Booked" and "Arrived": the day list
+    # is one list with a status filter, and these are the words that read
+    # correctly both as a row's badge and as the filter's option.
+    'status_booked': 'Expected',
+    'status_arrived': 'Waiting',
     'status_seen': 'Seen',
     'status_no_show': 'No show',
     'status_cancelled': 'Cancelled',
@@ -87,6 +97,11 @@ DEFAULT_TERMINOLOGY = {
     # What a bill is made of. "Lines" is accounting's word for it; the person
     # reading the bill is looking at what they are being charged for.
     'invoice_line_plural': 'Charges',
+    # One row of any of the three formsets — a prescription item, a charge, a
+    # delivered product. "Line" is the word a developer uses for a row in a
+    # form; the clinic is adding an item to a list.
+    'line_item': 'Item',
+    'line_item_plural': 'Items',
     # Payment states are derived from the payments received, never stored, but
     # they still reach the UI as labels and so still go through the map.
     'status_unpaid': 'Unpaid',

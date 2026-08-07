@@ -44,6 +44,151 @@
   opacity: 1;
 }
 
+/* Tables become cards on a phone.
+ *
+ * A list that scrolls sideways is a list you cannot read: the column that
+ * matters is always the one off-screen, and on a touch device the horizontal
+ * scroll fights the vertical one. Below the `sm` breakpoint every `.table-cards`
+ * row becomes a stacked card whose cells carry their own heading, taken from
+ * `data-label` on the `td` — so the header row can be dropped without the
+ * numbers losing their meaning.
+ *
+ * A `td` with no `data-label` (an actions cell, a badge) renders full width with
+ * no heading, which is what those want anyway.
+ */
+@media (max-width: 639px) {
+  /* `table.` on the element: daisyUI ships `table.table { display: table }`,
+   * which outranks a bare class and left the element a table with block rows. */
+  table.table-cards,
+  table.table-cards tbody,
+  table.table-cards tr,
+  table.table-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  table.table-cards thead {
+    display: none;
+  }
+
+  table.table-cards tr {
+    background-color: var(--cc-surface);
+    border: 1px solid rgb(0 0 0 / 0.08);
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  table.table-cards td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3rem 0;
+    border: 0;
+    text-align: right;
+    white-space: normal;
+  }
+
+  table.table-cards td[data-label]::before {
+    content: attr(data-label);
+    color: var(--cc-text-muted);
+    font-size: 0.75rem;
+    text-align: left;
+    flex: 0 0 auto;
+  }
+
+  /* An empty cell is a column that had nothing to say for this row. */
+  table.table-cards td:empty {
+    display: none;
+  }
+}
+
+/* Modals fill the phone.
+ *
+ * A dialog that leaves a margin of backdrop on every side is a desktop dialog
+ * shrunk down: it wastes the width the form needs, and the inputs inside end up
+ * narrower than the screen can afford. Below `sm` the box takes the viewport,
+ * scrolls its own body, and keeps its actions reachable above the bottom nav.
+ */
+@media (max-width: 639px) {
+  /* The dialog itself carries padding that keeps the box off the edges, so it
+   * has to go too — otherwise the box is 86% of the screen however wide it is
+   * told to be. `.modal .modal-box` to outrank daisyUI's own `.modal-box`. */
+  .modal {
+    padding: 0;
+  }
+
+  .modal .modal-box {
+    max-width: 100vw;
+    width: 100vw;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
+
+  /* The action row stays put while the fields above it scroll, so "Save" is
+   * never below the fold on a short screen with a keyboard open. */
+  .modal .modal-box > .modal-action {
+    margin-top: auto;
+    padding-top: 1rem;
+  }
+}
+
+/* Fingers, not mice. Below `sm` the small button variants keep their compact
+ * look but grow to a 44px touch target, which is the smallest thing a thumb
+ * hits reliably. */
+@media (max-width: 639px) {
+  .btn-sm,
+  .select-sm,
+  .input-sm {
+    min-height: 2.75rem;
+    height: 2.75rem;
+  }
+
+  /* `btn-xs` is a table-row action — Edit, Deactivate, Batches. At 23px it is a
+   * mouse target; in a stacked card it is a thumb target. It keeps its small
+   * text and grows only its box. */
+  .btn-xs {
+    min-height: 2.75rem;
+    height: 2.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Five destinations in 375px. daisyUI sizes the labels for a roomier bar, so
+   * "Dashboard", "Patients" and "Appointments" ran into each other with no gap
+   * — legible only if you already knew what they said. Smaller type, a little
+   * padding, and each label truncated inside its own cell instead of spilling
+   * into its neighbour. */
+  .btm-nav > * {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    min-width: 0;
+  }
+
+  .btm-nav .btm-nav-label {
+    font-size: 0.6875rem;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Menu rows: the sidebar links and the Log out item in the user dropdown.
+   * daisyUI sizes these from text, which left Log out a 34px strip. */
+  .menu li > a,
+  .menu li > button {
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+}
+
 /* Calm and clinical: no bounce, no slide. */
 @media (prefers-reduced-motion: reduce) {
   * {

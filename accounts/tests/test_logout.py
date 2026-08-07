@@ -58,13 +58,51 @@ def test_the_whole_menu_row_submits_the_logout(client, staff):
     )
 
 
-def test_logout_needs_a_csrf_token(client, staff):
-    """The form carries one; a cross-site POST must not sign somebody out."""
-    client.force_login(staff)
+def test_logout_survives_a_stale_csrf_token(client, staff):
+    """The regression from the clinic: signing out had to keep working.
+
+    This test used to assert the opposite — that a tokenless POST is refused.
+    That was correct in the abstract and wrong in the room: signing in rotates
+    the token, so on a shared desk the second person to log in left the first
+    with a Log out button that answered "CSRF verification failed", and the
+    remedy for that is to sign out. The reasoning for accepting a forged logout
+    is on ``ClinicoreLogoutView``.
+    """
     unsafe = client.__class__(enforce_csrf_checks=True)
     unsafe.force_login(staff)
 
     response = unsafe.post(reverse('accounts:logout'))
 
+    assert response.status_code == 302
+    assert not unsafe.get(reverse('accounts:login')).wsgi_request.user.is_authenticated
+
+
+def test_logout_is_still_post_only(client, staff):
+    """The exemption is from the token, not from the method.
+
+    POST-only is what stops a link, an image, or a prefetch signing somebody
+    out, which is the reason Django requires it — and that reason survives.
+    """
+    client.force_login(staff)
+    assert client.get(reverse('accounts:logout')).status_code == 405
+    assert client.get(reverse('core:dashboard')).wsgi_request.user.is_authenticated
+
+
+def test_a_stale_token_elsewhere_gets_a_readable_page(client, staff, settings):
+    """Django's debug 403 is a wall of technical text; reception gets a sentence.
+
+    Asserted against a real CSRF failure rather than by calling the view, so a
+    mis-wired ``CSRF_FAILURE_VIEW`` fails here.
+    """
+    unsafe = client.__class__(enforce_csrf_checks=True)
+    unsafe.force_login(staff)
+
+    response = unsafe.post(reverse('patients:create'), {'full_name': 'Rahima Begum'})
+
     assert response.status_code == 403
-    assert unsafe.get(reverse('core:dashboard')).wsgi_request.user.is_authenticated
+    body = response.content.decode()
+    assert 'Your session expired' in body
+    assert reverse('accounts:login') in body
+    # The words a receptionist cannot act on.
+    assert 'CSRF' not in body
+    assert 'Forbidden' not in body

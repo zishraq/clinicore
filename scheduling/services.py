@@ -26,6 +26,7 @@ __all__ = [
     'book',
     'day_list',
     'reschedule',
+    'schedule_follow_up',
     'transition',
     'walk_in',
     'with_bills',
@@ -236,24 +237,68 @@ def reschedule(
     return locked
 
 
-def day_list(organization, *, on_date, branch=None, practitioner=None) -> dict:
-    """The three bands of one day, in the order the front desk reads them.
+@transaction.atomic
+def schedule_follow_up(organization, *, actor, encounter, on_date):
+    """Put the visit's next appointment on a day list, or move the one there.
 
-    Waiting is ordered longest-wait-first, which is the fairness question the
-    receptionist is actually answering.
+    The visit form asks "next appointment?" and used to answer it by writing a
+    date onto the encounter and nothing else — a date nobody was ever shown
+    again. This is the other half: the date becomes a row the front desk can
+    see.
+
+    Routed through ``reschedule`` when a row already exists, which is what keeps
+    ``Encounter.follow_up_date`` and the appointment from drifting apart. That
+    single-writer rule is the one ADR 0010 set out, and this is the only other
+    door into it.
+    """
+    if on_date is None:
+        return None
+    existing = (
+        Appointment.objects.for_organization(organization)
+        .filter(origin_encounter=encounter)
+        .exclude(seen_at__isnull=False)
+        .filter(resolution='')
+        .first()
+    )
+    if existing is not None:
+        if existing.scheduled_date == on_date:
+            return existing
+        return reschedule(existing, actor=actor, scheduled_date=on_date)
+    return book(
+        organization,
+        actor=actor,
+        patient=encounter.patient,
+        branch=encounter.branch,
+        practitioner=encounter.practitioner,
+        scheduled_date=on_date,
+        origin_encounter=encounter,
+    )
+
+
+def day_list(
+    organization,
+    *,
+    on_date,
+    branch=None,
+    practitioner=None,
+    status: str = '',
+    search: str = '',
+):
+    """One day, one chronological list, optionally narrowed.
+
+    Was three bands — Waiting, Expected, Done — and is now a single list with a
+    status filter. Sections taught the receptionist a layout before she could
+    read the day; one list in time order is the thing she already understands,
+    and the filter answers the question the sections were guessing at.
     """
     rows = Appointment.objects.for_organization(organization).for_day(
         on_date, branch=branch, practitioner=practitioner
     )
     # ``encounter`` is the reverse of a nullable one-to-one, so this is a left
-    # join that costs the two open bands nothing and saves the closed band a
-    # query per row once bills are being shown.
+    # join that costs the unseen rows nothing and saves a query per row once
+    # bills are being shown.
     rows = rows.select_related('patient', 'practitioner', 'branch', 'encounter')
-    return {
-        'waiting': rows.waiting(),
-        'expected': rows.expected(),
-        'closed': rows.closed(),
-    }
+    return rows.with_status(status).matching(search).chronological()
 
 
 def with_bills(organization, rows) -> list:
