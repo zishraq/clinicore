@@ -1,0 +1,24 @@
+{% comment %}
+The dialog the patient picker's "add a new patient" offer opens.
+
+Extracted from the visit form because base.html's modals block is empty by
+design: a page that renders partials/_patient_picker.html without also
+rendering this gets an htmx:targetError on #add-patient-body and a dead offer.
+The walk-in modal shipped that way, and status-code tests could not see it.
+**Include this from the modals block of every page that renders the picker.**
+
+Sits outside any <form>: forms cannot nest, and the point of registering from
+here is that the half-written thing behind it survives.
+
+Takes: noun — what the patient is being selected for, already lowercased.
+{% endcomment %}
+<dialog id="add_patient_modal" class="modal">
+  <div class="modal-box max-w-2xl">
+    <h3 class="font-semibold text-lg">Add a new patient</h3>
+    <p class="text-sm text-muted mt-1 mb-4">
+      They are selected for this {{ noun|default:'record' }} as soon as they are saved.
+    </p>
+    <div id="add-patient-body"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

@@ -1,0 +1,15 @@
+{% comment %}
+Opens the page's one cancellation modal, having first fetched a body that knows
+which row it is about.
+
+Deliberately not a modal per row: the rows live in the polled container, so a
+form rendered beside them would be swapped away mid-sentence. The modal itself
+sits in base.html's modals block where nothing touches it.
+{% endcomment %}
+<button type="button" class="btn btn-sm btn-ghost text-[var(--cc-danger)]"
+        hx-get="{% url 'scheduling:cancel' row.pk %}"
+        hx-target="#cancel-body"
+        hx-swap="innerHTML"
+        hx-on::after-request="document.getElementById('cancel_modal').showModal()">
+  Cancel
+</button>

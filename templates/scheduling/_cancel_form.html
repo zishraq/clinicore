@@ -1,0 +1,43 @@
+{% comment %}
+Body of the cancellation modal. Lives outside the polled container, so what is
+typed here survives however long it takes to type.
+
+On success the server returns the rebuilt bands instead of this fragment, which
+is why the submit button targets #day-rows rather than the modal.
+{% endcomment %}
+<div id="cancel-fields">
+  <h3 class="font-semibold text-lg">
+    Cancel {{ appointment.patient.full_name }}'s {{ terms.appointment|lower }}?
+  </h3>
+  <p class="text-sm text-muted mt-1">
+    {{ appointment.when_display }} · {{ appointment.scheduled_date|date:'d M Y' }}.
+    The row stays on the day with your reason on it, so the afternoon still adds up.
+  </p>
+
+  {% if error %}
+    <div class="alert alert-error mt-4"><span>{{ error }}</span></div>
+  {% endif %}
+
+  <label class="label mt-4" for="cancel-reason">
+    <span class="label-text">Reason</span>
+  </label>
+  <input type="text" id="cancel-reason" name="reason" autocomplete="off"
+         value="{{ request.POST.reason|default:'' }}"
+         placeholder="Rang to cancel, unwell, rebooking…"
+         class="input input-bordered w-full">
+  {# Carried so the rebuilt bands come back for the day being looked at. #}
+  <input type="hidden" name="date" value="{{ on_date|date:'Y-m-d' }}">
+  <input type="hidden" name="branch" value="{{ branch.pk|default:'' }}">
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-ghost" onclick="cancel_modal.close()">Keep it</button>
+    <button type="button" class="btn btn-brand"
+            hx-post="{% url 'scheduling:cancel' appointment.pk %}"
+            hx-include="#cancel-fields"
+            hx-target="#day-rows"
+            hx-swap="innerHTML"
+            hx-on::after-request="if (event.detail.successful) cancel_modal.close()">
+      Cancel {{ terms.appointment|lower }}
+    </button>
+  </div>
+</div>

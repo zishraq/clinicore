@@ -92,9 +92,14 @@ def patient_suggestions(request):
 
 
 @login_required
-@clinical_access_required
 def patient_quick_create(request):
-    """Register a patient from inside the visit form (A1).
+    """Register a patient from inside another screen's modal.
+
+    Reachable by any member, like ``patient_create``. It was PRACTITIONER/OWNER
+    while the visit form was its only caller; the walk-in modal made that wrong,
+    and it was over-restrictive anyway — SPEC §6.1 gives STAFF "patient search
+    and creation", this creates exactly what ``/patients/new/`` creates, and the
+    clinical profile is not on the form.
 
     Renders and posts ``PatientForm`` itself rather than a trimmed parallel
     form, so the branch default and the date-of-birth rule from A2 apply here

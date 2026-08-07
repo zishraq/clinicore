@@ -10,6 +10,8 @@
   <ul class="menu gap-1 p-3 text-base flex-1">
     <li><a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.view_name == 'core:dashboard' %}active{% endif %}">Dashboard</a></li>
     <li><a href="{% url 'patients:list' %}" class="{% if 'patients' in request.resolver_match.namespaces %}active{% endif %}">Patients</a></li>
+    {# Ungated: the day list is the receptionist's screen (SPEC §6.3). #}
+    <li><a href="{% url 'scheduling:day' %}" class="{% if 'scheduling' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.appointment_plural }}</a></li>
     {% if membership.can_view_clinical %}
       <li><a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.encounter_plural }}</a></li>
       <li><a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.invoice_plural }}</a></li>

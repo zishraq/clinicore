@@ -1,0 +1,56 @@
+{% comment %}
+Search-and-register patient control (static/js/item-autocomplete.js, component
+patientPicker). Used by the visit form and by the walk-in modal, which is why it
+takes its field name rather than a bound form field: one is a ModelForm's
+``patient``, the other a bare input in a modal that is not a <form> at all.
+
+The real value is the hidden input. The visible box is search only and is never
+posted, so the component clears the hidden pk on every keystroke — otherwise the
+box could read one patient's name while the form still submits another's.
+
+Takes: field_name, input_id, selected (a Patient or nothing), label, errors.
+{% endcomment %}
+<div class="relative"
+     x-data="patientPicker()"
+     @htmx:after-swap="onResults()"
+     @patient-picked.window="onPicked($event)">
+  {% if label %}
+    <label class="label" for="{{ input_id }}"><span class="label-text">{{ label }}</span></label>
+  {% endif %}
+
+  <input type="hidden" name="{{ field_name }}" data-role="patient-id"
+         value="{{ selected.pk|default:'' }}">
+
+  <input type="text"
+         id="{{ input_id }}"
+         name="q"
+         placeholder="Search by name or phone…"
+         autocomplete="off"
+         data-role="patient-search"
+         value="{{ selected.full_name|default:'' }}"
+         class="input input-bordered w-full"
+         hx-get="{% url 'patients:suggestions' %}"
+         {% comment %}
+           The key filter stops navigation keys searching: without it the keyup
+           from Enter fires another request whose results reopen the dropdown
+           that selecting just closed.
+         {% endcomment %}
+         hx-trigger="keyup[key!=='Enter'&&key!=='Escape'&&key!=='ArrowUp'&&key!=='ArrowDown'&&key!=='Tab'] changed delay:250ms"
+         hx-target="next [data-results]"
+         hx-swap="innerHTML"
+         @input="onInput()"
+         @keydown.arrow-down.prevent="move(1)"
+         @keydown.arrow-up.prevent="move(-1)"
+         @keydown.enter.prevent="choose()"
+         @keydown.escape="close()">
+
+  {% for error in errors %}
+    <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+  {% endfor %}
+
+  <div x-ref="results"
+       x-show="open"
+       @click.outside="close()"
+       class="absolute z-40 left-0 right-0 mt-1 bg-[var(--cc-surface)] rounded-box shadow-lg border border-black/10 max-h-72 overflow-y-auto"
+       data-results></div>
+</div>

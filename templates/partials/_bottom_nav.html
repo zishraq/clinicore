@@ -6,6 +6,10 @@
   <a href="{% url 'patients:list' %}" class="{% if 'patients' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
     <span class="btm-nav-label">Patients</span>
   </a>
+  {# Ungated: STAFF works the day list all day, and it is the reason they are here. #}
+  <a href="{% url 'scheduling:day' %}" class="{% if 'scheduling' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+    <span class="btm-nav-label">{{ terms.appointment_plural }}</span>
+  </a>
   {% if membership.can_view_clinical %}
     <a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
       <span class="btm-nav-label">{{ terms.encounter_plural }}</span>

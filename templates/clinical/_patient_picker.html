@@ -1,54 +1,8 @@
 {% comment %}
-The visit form's patient field: search by name or phone, or register inline.
-
-Replaces a <select> of every patient in the clinic. The real form field is the
-hidden input — the visible box is search only and is never posted, so the
-component clears the hidden pk on every keystroke (see patientPicker.onInput).
-
-@patient-picked.window is how the modal gets its answer back; it cannot swap
-into this subtree because it is not in it.
+The visit form's patient field. The control itself is shared with the walk-in
+modal — see templates/partials/_patient_picker.html for the markup contract and
+why the hidden input, not the visible box, is the real field.
 {% endcomment %}
-<div class="sm:col-span-2 relative"
-     x-data="patientPicker()"
-     @htmx:after-swap="onResults()"
-     @patient-picked.window="onPicked($event)">
-  <label class="label" for="patient-search">
-    <span class="label-text">{{ form.patient.label }}</span>
-  </label>
-
-  {# The bound field, rendered hidden: validation, errors and org scoping are unchanged. #}
-  {{ form.patient }}
-
-  <input type="text"
-         id="patient-search"
-         placeholder="Search by name or phone…"
-         autocomplete="off"
-         data-role="patient-search"
-         value="{{ selected_patient.full_name|default:'' }}"
-         class="input input-bordered w-full"
-         hx-get="{% url 'patients:suggestions' %}"
-         name="q"
-         {% comment %}
-           Same key filter as the prescription row: without it the keyup from
-           Enter fires another search whose results reopen the dropdown that
-           selecting just closed.
-         {% endcomment %}
-         hx-trigger="keyup[key!=='Enter'&&key!=='Escape'&&key!=='ArrowUp'&&key!=='ArrowDown'&&key!=='Tab'] changed delay:250ms"
-         hx-target="next [data-results]"
-         hx-swap="innerHTML"
-         @input="onInput()"
-         @keydown.arrow-down.prevent="move(1)"
-         @keydown.arrow-up.prevent="move(-1)"
-         @keydown.enter.prevent="choose()"
-         @keydown.escape="close()">
-
-  {% for error in form.patient.errors %}
-    <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
-  {% endfor %}
-
-  <div x-ref="results"
-       x-show="open"
-       @click.outside="close()"
-       class="absolute z-40 left-0 right-0 mt-1 bg-[var(--cc-surface)] rounded-box shadow-lg border border-black/10 max-h-72 overflow-y-auto"
-       data-results></div>
+<div class="sm:col-span-2">
+  {% include 'partials/_patient_picker.html' with field_name='patient' input_id='patient-search' label=form.patient.label selected=selected_patient errors=form.patient.errors %}
 </div>

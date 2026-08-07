@@ -50,14 +50,25 @@
             <div tabindex="0" role="button" class="btn btn-ghost btn-sm normal-case max-w-[12rem] truncate">{{ user.full_name }}</div>
             <ul tabindex="0" class="dropdown-content menu bg-[var(--cc-surface)] rounded-box z-30 w-56 p-2 shadow">
               <li class="menu-title text-xs">{{ user.phone }}</li>
+              {% comment %}
+                The button is the menu item and the form sits outside the list,
+                joined by the HTML `form` attribute. Wrapping the button in a
+                form instead makes the *form* daisyUI's menu item: it takes the
+                padding and lays the button out in a content-sized grid column,
+                so only the width of the words "Log out" is clickable — 13% of
+                the row. Everywhere else in it silently does nothing, which at a
+                shared reception desk reads as "logout is broken".
+
+                POST, not a link: Django's LogoutView refuses GET.
+              {% endcomment %}
               <li>
-                <form method="post" action="{% url 'accounts:logout' %}">
-                  {% csrf_token %}
-                  <button type="submit" class="w-full text-left">Log out</button>
-                </form>
+                <button type="submit" form="logout-form" class="w-full text-left">Log out</button>
               </li>
             </ul>
           </div>
+          <form id="logout-form" method="post" action="{% url 'accounts:logout' %}" class="hidden">
+            {% csrf_token %}
+          </form>
         </div>
       </header>
       {% comment %}

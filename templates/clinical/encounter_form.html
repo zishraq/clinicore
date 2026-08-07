@@ -130,20 +130,6 @@
 </form>
 {% endblock %}
 
-{% comment %}
-  Outside the visit form on purpose: a <form> cannot nest, and the whole value
-  of registering here is that the half-written visit survives it. The body is
-  filled by htmx when the picker's "add a new patient" option is taken.
-{% endcomment %}
 {% block modals %}
-<dialog id="add_patient_modal" class="modal">
-  <div class="modal-box max-w-2xl">
-    <h3 class="font-semibold text-lg">Add a new patient</h3>
-    <p class="text-sm text-muted mt-1 mb-4">
-      They are selected for this {{ terms.encounter|lower }} as soon as they are saved.
-    </p>
-    <div id="add-patient-body"></div>
-  </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
-</dialog>
+  {% include 'patients/_add_patient_modal.html' with noun=terms.encounter|lower %}
 {% endblock %}

@@ -1,0 +1,53 @@
+{% comment %}
+Body of the walk-in modal. Outside the polled container, so a half-filled form
+survives however long the patient takes to find their phone number.
+
+Not a <form>: this sits in base.html's modals block and htmx posts the container
+by hx-include, the same shape as the visit form's add-patient modal.
+{% endcomment %}
+<div id="walk-in-fields">
+  {% if error %}
+    <div class="alert alert-error mb-4"><span>{{ error }}</span></div>
+  {% endif %}
+
+  {% include 'partials/_patient_picker.html' with field_name='patient' input_id='walk-in-patient' label='Patient' %}
+
+  <div class="grid gap-3 sm:grid-cols-2 mt-3">
+    {% comment %}
+      Deliberately not called "branch": that name belongs to the day list's own
+      filter, which this modal carries below so the rebuilt bands come back for
+      the view the user is on rather than jumping to whichever chamber the
+      patient walked into.
+    {% endcomment %}
+    <div class="{% if branches|length < 2 %}hidden{% endif %}">
+      <label class="label py-1" for="walk-in-branch"><span class="label-text text-xs">Chamber</span></label>
+      <select id="walk-in-branch" name="walk_in_branch" class="select select-bordered w-full">
+        {% for option in branches %}
+          <option value="{{ option.pk }}" {% if option.pk == default_branch.pk %}selected{% endif %}>{{ option.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label py-1" for="walk-in-note"><span class="label-text text-xs">Note</span></label>
+      <input type="text" id="walk-in-note" name="note" autocomplete="off"
+             placeholder="What they have come about"
+             class="input input-bordered w-full">
+    </div>
+  </div>
+
+  {# Carried so the rebuilt bands come back for the day being looked at. #}
+  <input type="hidden" name="date" value="{{ on_date|date:'Y-m-d' }}">
+  <input type="hidden" name="branch" value="{{ branch.pk|default:'' }}">
+
+  <div class="modal-action">
+    <button type="button" class="btn btn-ghost" onclick="walk_in_modal.close()">Cancel</button>
+    <button type="button" class="btn btn-brand"
+            hx-post="{% url 'scheduling:walk_in' %}"
+            hx-include="#walk-in-fields"
+            hx-target="#day-rows"
+            hx-swap="innerHTML"
+            hx-on::after-request="if (event.detail.successful) walk_in_modal.close()">
+      Add to the day
+    </button>
+  </div>
+</div>

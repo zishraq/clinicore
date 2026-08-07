@@ -172,16 +172,29 @@ def test_the_modal_inherits_the_registration_defaults(
     assert 'approx_age_years' not in response.context['form'].fields
 
 
-def test_staff_cannot_register_from_the_visit_form(client, staff):
-    """The visit form is PRACTITIONER/OWNER, and so is its modal."""
+def test_staff_may_register_from_the_modal(client, staff, organization):
+    """Registering a patient is a STAFF right (SPEC §6.1), wherever it happens.
+
+    This was PRACTITIONER/OWNER while the visit form was the only caller. The
+    walk-in modal made that wrong, and it was over-restrictive to begin with:
+    the same form at /patients/new/ has always been open to STAFF, and the
+    clinical profile is not on it.
+    """
     client.force_login(staff)
-    assert client.get(reverse('patients:quick_create')).status_code == 403
-    assert (
-        client.post(
-            reverse('patients:quick_create'), _quick_create_payload()
-        ).status_code
-        == 403
-    )
+    assert client.get(reverse('patients:quick_create')).status_code == 200
+
+    response = client.post(reverse('patients:quick_create'), _quick_create_payload())
+    assert response.status_code == 200
+    with organization_context(organization):
+        assert Patient.objects.filter(full_name='Kamal Hossain').exists()
+
+
+def test_the_modal_still_gives_staff_nothing_clinical(client, staff):
+    """The boundary that does hold: demographics yes, narrative no."""
+    client.force_login(staff)
+    fields = client.get(reverse('patients:quick_create')).context['form'].fields
+    assert 'medical_history' not in fields
+    assert 'allergies' not in fields
 
 
 def test_the_visit_form_renders_the_picker(client, practitioner, patient):
