@@ -123,6 +123,52 @@ These were cut by the brief itself, not by me:
 - **Docker maps Postgres to host port 5433**, not 5432, because 5432 was already
   in use on the dev machine. Inside the compose network it is still `db:5432`.
 
+## Known defects
+
+### The organization's timezone is written and never read
+
+Found 2026-08-07 while browser-checking the appointments day list.
+
+`config/settings.py` sets `TIME_ZONE = 'UTC'` with `USE_TZ = True`.
+`Organization.timezone` exists, is populated (`bootstrap_demo` writes
+`Asia/Dhaka`), and is **read by nothing** — `grep -rn 'timezone.activate'`
+returns no hits, and no middleware activates a per-request timezone alongside
+the organization context. So every aware datetime renders in UTC, and for this
+clinic that is six hours behind the wall clock.
+
+Observed: the new-visit form defaulted `occurred_at` to `2026-08-07T14:06`
+while the browser clock read 20:07 Asia/Dhaka.
+
+**This corrupts data; it is not a display nicety.** The mechanism is worth
+stating exactly, because it is the opposite way round from what it looks like:
+
+- **Accepting the default is safe.** Render and parse both use UTC, so the value
+  round-trips. Encounter 104 was saved by accepting `14:06` and stored
+  `14:06+00:00`, which is 20:06 Dhaka — the correct instant.
+- **Correcting the field is what writes bad data.** A doctor who sees "02:06 PM"
+  at eight in the evening will fix it to `20:06`. That is parsed as UTC and
+  stored as `20:06+00:00` = **02:06 the following day** in Dhaka: wrong by six
+  hours and on the wrong date.
+
+So the corruption is triggered by a conscientious user correcting what is
+plainly wrong on screen, from entirely correct input — which is the failure mode
+the standing "never silently write wrong data" principle exists to catch. It
+also gets worse the further the deployment is from UTC, and a clinic that never
+notices the display will keep the *right* data by doing nothing.
+
+Blast radius is every absolute datetime, not just this form: `Encounter.
+occurred_at`, `finalized_at`, `Invoice.issued_at`, `Payment.received_at`,
+stock movement timestamps, and history rows. The appointments day list is mostly
+immune by accident — `timesince` is a duration, and `Appointment.scheduled_time`
+is a naive `TimeField` — which is why this survived that increment's browser
+pass until the visit form was opened from it.
+
+Fix is not a one-liner and was deliberately not folded into the appointments
+work: activate the organization's timezone per request (next to the org context,
+so the two cannot disagree), decide whether `TIME_ZONE` stays UTC, and audit
+every `datetime-local` widget for the render/parse round trip. Until then,
+**treat any hand-edited datetime in existing data as suspect.**
+
 ## Not done at all
 
 CI (`.github/workflows/ci.yml`), pre-commit hooks, the ERD in the README,

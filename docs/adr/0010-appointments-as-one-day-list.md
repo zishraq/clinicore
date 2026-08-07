@@ -119,6 +119,47 @@ Note for the UI increment: SPEC §6.1 as amended 2026-08-03 puts every billing
 surface behind PRACTITIONER/OWNER, so the payment column is hidden from STAFF
 even though STAFF owns the rest of this screen.
 
+Built in increment 2 as `scheduling.services.with_bills`, which is where the
+read lives so no template has to reach through two relations. Hidden from STAFF
+by not looking it up at all — `_day_context` only calls it for a membership with
+clinical access, so a template that forgot its check would have nothing to leak.
+It is one query for the whole day, mirroring the invoice list's annotations
+rather than walking rows. A seen visit with no bill says "No bill" rather than
+rendering blank: blank reads as "nothing owing", which is the opposite of true.
+
+### "Start visit" is on the day list, gated by role, not moved off it
+
+SEEN is a consequence, not a button (above) — but something still has to be the
+occasion for writing the visit, and the first version of this screen linked
+nowhere clinical at all. That left `ARRIVED → SEEN` unreachable from anywhere in
+the application.
+
+The affordance belongs on the day list: it is where the doctor learns someone
+has arrived, and sending him to the visit list to act on that is a worse flow
+than the one link is worth. It is gated on `membership.can_view_clinical` rather
+than relocated — an offer STAFF cannot follow is a 403 they were invited to walk
+into.
+
+The link opens the visit form with `?appointment=`, which prefills the patient,
+branch and practitioner the receptionist already recorded, and the form carries
+the row through the POST as a hidden field because a query string does not
+survive one. Saving marks the row seen, so the doctor never marks anything.
+
+Two failure modes decided the error handling, and both resolve the same way — in
+favour of the note:
+
+- The row stops being ARRIVED mid-consultation (cancelled at the desk). The
+  visit is saved and the failure to consume the row is reported as a warning.
+  A visit with no appointment is completely valid, so there is nothing to roll
+  back and rolling back would cost the doctor his typing.
+- Two tabs, two saves against one row. `transition` is idempotent, so the second
+  save leaves the link alone; the second visit is real but unlinked, which is
+  what `Encounter.appointment` being one-to-one is for.
+
+Only ARRIVED rows offer the link, because ARRIVED is the only state
+`transition(to=SEEN)` accepts — offering it on a booked row would be a button
+that refuses.
+
 ### `Encounter.follow_up_date` stays, with exactly one writer
 
 Three options were weighed:
@@ -139,6 +180,73 @@ because there is one writer and one transaction — the same shape as
 `name_snapshot` (ADR 0007). What makes it safe is the single-writer rule, so
 that rule is tested directly in `scheduling/tests/test_follow_ups.py` rather
 than trusted.
+
+### The patient picker moved, and registering became a STAFF right
+
+The walk-in modal needs the same search-and-register control the visit form has,
+so `templates/clinical/_patient_picker.html` became
+`templates/partials/_patient_picker.html`, parameterized by `field_name` and
+`input_id`. The clinical template is now a one-line shim: the visit form binds a
+ModelForm field, the walk-in modal binds a bare input in something that is not a
+`<form>` at all, and the control cannot assume either.
+
+The dialog the picker's "add a new patient" offer opens moved out with it, into
+`templates/patients/_add_patient_modal.html`. This one is a trap worth naming:
+`base.html`'s `modals` block is empty by design, so **a page that renders the
+picker must also render the dialog**, or htmx raises `htmx:targetError` on a
+target that does not exist and the offer silently does nothing. The walk-in
+modal shipped exactly that way, past a green suite, because every test around it
+asserted a status code. `test_the_registration_offer_has_somewhere_to_open`
+now reads the offer's own `hx-target` out of the suggestions fragment and
+asserts the day page contains that id, so the coupling fails in CI instead of in
+a clinic.
+
+`patients.patient_quick_create` lost `clinical_access_required` as a consequence
+— the receptionist is the person registering a walk-in. This is a relaxation, so
+the reasoning is recorded rather than assumed: SPEC §6.1 gives STAFF "patient
+search and creation"; the view renders and posts the same `PatientForm` that
+`/patients/new/` has always exposed to STAFF; and the clinical profile is not on
+that form. `require_membership` still runs, so it is exactly as open as
+`patient_create` and no more. The boundary that does hold — demographics yes,
+narrative no — is asserted by
+`test_the_modal_still_gives_staff_nothing_clinical`.
+
+### What the browser pass established (2026-08-07)
+
+Two sessions, STAFF and PRACTITIONER, against the seeded demo day. Recorded
+because three of these could not have been caught by a status code, and one
+changed the tests.
+
+- **The polled fragment is a second render through a second view, and needed its
+  own assertion.** `_rows.html` is reached both by the page and by `day_rows`.
+  Had `membership` arrived in one context and not the other, the gate would read
+  false for everyone and the doctor's link would vanish five seconds after he
+  opened the screen — or appear for STAFF on the first tick. The fragment
+  renders identically for a practitioner, and there are now tests for both roles
+  on the fragment, not just on the page.
+- **A visibility-guarded poll cannot be observed from an automated tab.** The
+  driven tab reports `document.visibilityState === 'hidden'`, so the guard
+  correctly suppresses every tick and a "did my text survive the poll?" check
+  passes without a swap ever happening. The honest test is to fire the identical
+  swap by hand (`htmx.ajax` GET of the rows URL into `#day-rows`) with the modal
+  open. Done that way: two swaps landed, the modal stayed open, the typed reason
+  was byte-identical, focus never moved. Anyone re-checking this must force the
+  swap or they are testing nothing.
+- **The refusal path lands where it should.** A whitespace-only reason put the
+  error inside the modal, left `#day-rows` untouched, and the polled container
+  measured zero inputs at every point checked.
+- **The registration offer inside the walk-in modal works**, which is the
+  precise thing that shipped dead. The dialog opened, the created patient came
+  back selected with the hidden pk actually set, and the half-written walk-in
+  survived behind it.
+- **Start visit → seen completes**, including the prefill fallback: a walk-in
+  with no practitioner assigned filled the field with the signed-in doctor. The
+  row left Waiting, landed in Done as seen, and stopped offering the link.
+
+One defect was found and is **not** an appointments defect: the organization's
+timezone is written and never read, so absolute datetimes render in UTC. It
+reaches this feature only through the visit form the day list now links to.
+Recorded in `docs/MVP-NOTES.md` under "Known defects".
 
 ## Consequences
 

@@ -16,6 +16,23 @@
 <form method="post" class="space-y-4 max-w-5xl">
   {% csrf_token %}
 
+  {% if appointment %}
+    {% comment %}
+      Started from the day list. The hidden field is what carries the row across
+      the POST — a query string does not survive one — and saving marks it seen.
+      Not a form field: the appointment is not part of the record being edited,
+      it is where this one came from.
+    {% endcomment %}
+    <input type="hidden" name="appointment" value="{{ appointment.pk }}">
+    <section class="card-surface rounded-xl px-6 py-4 border-l-4 border-l-[var(--cc-primary)]">
+      <p class="text-sm">
+        From today's list — <span class="font-medium">{{ appointment.patient.full_name }}</span>
+        arrived {{ appointment.arrived_at|timesince }} ago.
+        Saving marks the {{ terms.appointment|lower }} {{ terms.status_seen|lower }}.
+      </p>
+    </section>
+  {% endif %}
+
   {% if is_amendment %}
     <section class="card-surface rounded-xl p-6 border-l-4 border-l-[var(--cc-warning)]">
       {% status_label encounter.status as status %}

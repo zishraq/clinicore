@@ -5,7 +5,7 @@ No real patient data or clinic identity is ever committed (SPEC §8).
 """
 
 import random
-from datetime import timedelta
+from datetime import time, timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -36,7 +36,8 @@ from inventory.models import (
 from organizations.models import Branch as BranchModel
 from organizations.models import Organization
 from patients.models import Patient, PatientClinicalProfile, Sex
-from scheduling.models import Appointment
+from scheduling import services as scheduling
+from scheduling.models import Appointment, AppointmentStatus, DayPart
 
 DEMO_SLUG = 'demo-clinic'
 DEMO_PASSWORD = 'clinicore-demo'
@@ -237,8 +238,19 @@ class Command(BaseCommand):
             receipts += self._second_shelf(
                 organization, second_branch, owner, catalog['products']
             )
+            appointments, todays_visits = self._appointments(
+                organization, branch, practitioner, patients
+            )
+            # Only the first of today's visits joins the billing plan. The
+            # second stays unbilled on purpose: "no bill yet" is the other
+            # thing the day list's payment column has to be able to say.
             invoices = self._invoices(
-                organization, branch, practitioner, patients, encounters, catalog
+                organization,
+                branch,
+                practitioner,
+                patients,
+                todays_visits[:1] + encounters,
+                catalog,
             )
 
         self.stdout.write(self.style.SUCCESS('\nDemo data ready.'))
@@ -252,6 +264,10 @@ class Command(BaseCommand):
             '(some short-dated, so the alerts have something to show)'
         )
         self.stdout.write(f'  Bills        : {len(invoices)} (unpaid, part paid, paid)')
+        self.stdout.write(
+            f"  Today's list : {len(appointments)} "
+            '(expected, waiting, seen, no-show, cancelled)'
+        )
         self.stdout.write('\n  Sign in with any of these (password below):')
         self.stdout.write('    01711000001  Owner        Dr Ayesha Karim')
         self.stdout.write('    01711000002  Practitioner Dr Sabbir Ahmed')
@@ -602,6 +618,112 @@ class Command(BaseCommand):
                 order += 1
             encounters.append(encounter)
         return encounters
+
+    def _appointments(self, organization, branch, practitioner, patients):
+        """Today's list, with all five states on it.
+
+        Built through ``scheduling.services`` rather than by writing rows, so
+        the demo cannot hold a combination the application would refuse — a seen
+        row with no visit behind it, or a cancellation with no reason. Every row
+        is dated today because the day list opens on today, and a first screen
+        with nothing on it demonstrates nothing.
+
+        Returns the rows and the visits the seen ones produced; the caller
+        decides which of those get billed, because "no bill yet" is a state that
+        column has to be able to say.
+        """
+        today = timezone.localdate()
+        chosen = random.sample(patients, 9)
+        rows = []
+
+        def booked(patient, **when):
+            return scheduling.book(
+                organization,
+                actor=practitioner,
+                patient=patient,
+                branch=branch,
+                scheduled_date=today,
+                practitioner=practitioner,
+                note=random.choice(COMPLAINTS),
+                **when,
+            )
+
+        # Expected: two committed times, and one "morning" — the vaguer answer
+        # this clinic actually gives, stored as itself rather than rounded up
+        # into a time nobody agreed to (docs/adr/0010).
+        rows.append(booked(chosen[0], scheduled_time=time(10, 0)))
+        rows.append(booked(chosen[1], scheduled_time=time(11, 30)))
+        rows.append(booked(chosen[2], day_part=DayPart.MORNING))
+
+        # Waiting: one who booked and turned up, one who simply walked in.
+        arrived = booked(chosen[3], scheduled_time=time(9, 30))
+        rows.append(
+            scheduling.transition(
+                arrived, to=AppointmentStatus.ARRIVED, actor=practitioner
+            )
+        )
+        rows.append(
+            scheduling.walk_in(
+                organization,
+                actor=practitioner,
+                patient=chosen[4],
+                branch=branch,
+                practitioner=practitioner,
+                note='Fever since last night',
+            )
+        )
+
+        # Seen: arrived, then consumed by a visit being written against the row.
+        visits = []
+        for patient, hours_ago in ((chosen[5], 2), (chosen[6], 1)):
+            row = booked(patient, scheduled_time=time(8, 30))
+            row = scheduling.transition(
+                row, to=AppointmentStatus.ARRIVED, actor=practitioner
+            )
+            occurred_at = timezone.now() - timedelta(hours=hours_ago)
+            index = random.randrange(len(COMPLAINTS))
+            visit = Encounter.objects.create(
+                organization=organization,
+                created_by=practitioner,
+                patient=patient,
+                practitioner=practitioner,
+                branch=branch,
+                occurred_at=occurred_at,
+                chief_complaint=COMPLAINTS[index],
+                examination='Vitals stable. No acute distress.',
+                assessment=ASSESSMENTS[index],
+                plan='Symptomatic treatment. Review if no improvement.',
+                status=EncounterStatus.FINALIZED,
+                finalized_at=occurred_at,
+            )
+            rows.append(
+                scheduling.transition(
+                    row,
+                    to=AppointmentStatus.SEEN,
+                    actor=practitioner,
+                    encounter=visit,
+                )
+            )
+            visits.append(visit)
+
+        # The two endings that are decisions rather than timestamps. NO_SHOW is
+        # not terminal — this one can still be marked arrived if they turn up.
+        no_show = booked(chosen[7], scheduled_time=time(9, 0))
+        rows.append(
+            scheduling.transition(
+                no_show, to=AppointmentStatus.NO_SHOW, actor=practitioner
+            )
+        )
+        cancelled = booked(chosen[8], day_part=DayPart.AFTERNOON)
+        rows.append(
+            scheduling.transition(
+                cancelled,
+                to=AppointmentStatus.CANCELLED,
+                actor=practitioner,
+                reason='Rang to cancel — travelling',
+            )
+        )
+        return rows, visits
 
     def _invoices(
         self, organization, branch, practitioner, patients, encounters, catalog

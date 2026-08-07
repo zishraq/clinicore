@@ -29,6 +29,19 @@ and what has already happened.
             {% if row.note %}<p class="text-xs text-muted mt-1">{{ row.note }}</p>{% endif %}
           </div>
           <p class="text-sm text-muted whitespace-nowrap">waiting {{ row.arrived_at|timesince }}</p>
+          {% if membership.can_view_clinical %}
+            {% comment %}
+              The doctor learns someone has arrived here, so this is where he
+              acts on it. Gated rather than moved: STAFF works the same screen
+              all day and must not be offered a link that 403s. A plain link,
+              not htmx — it leaves the page for the visit form, which arrives
+              prefilled and marks this row seen when it is saved.
+            {% endcomment %}
+            <a class="btn btn-sm btn-brand"
+               href="{% url 'clinical:encounter_create' %}?appointment={{ row.pk }}">
+              Start {{ terms.encounter|lower }}
+            </a>
+          {% endif %}
           {% include 'scheduling/_cancel_button.html' with row=row %}
         </div>
       {% endfor %}
@@ -95,6 +108,19 @@ and what has already happened.
             <p class="text-xs text-muted"><span class="font-mono">{{ row.patient.code }}</span></p>
           </div>
           <span class="badge badge-ghost badge-sm">{% status_label row.status %}</span>
+          {% if membership.can_view_clinical %}
+            {% comment %}
+              Display only, and never for STAFF — the row is theirs, the money
+              is not. Read through to the visit's bill rather than stored here,
+              so a payment taken at the desk shows up on the next poll without
+              anything having to write to this row (ADR 0010).
+            {% endcomment %}
+            {% if row.bill %}
+              {% include 'billing/_status_badge.html' with status=row.bill.payment_status %}
+            {% elif row.status == 'SEEN' %}
+              <span class="badge badge-ghost badge-sm badge-outline">No {{ terms.invoice|lower }}</span>
+            {% endif %}
+          {% endif %}
           {% if row.resolution_reason %}
             <p class="text-xs text-muted basis-full">{{ row.resolution_reason }}</p>
           {% endif %}

@@ -72,7 +72,7 @@ def _branches(organization):
 def _day_context(request) -> dict:
     on_date = _requested_date(request)
     branch = _selected_branch(request)
-    return {
+    context = {
         **services.day_list(request.organization, on_date=on_date, branch=branch),
         'on_date': on_date,
         'is_today': on_date == timezone.localdate(),
@@ -82,6 +82,14 @@ def _day_context(request) -> dict:
         'branches': _branches(request.organization),
         'poll_seconds': POLL_SECONDS,
     }
+    # Only the roles that may see money get the bills looked up at all, so a
+    # STAFF request cannot leak one through a template that forgot to check
+    # (SPEC §6.1 as amended puts every billing surface behind PRACTITIONER/OWNER
+    # even on a screen STAFF otherwise owns).
+    membership = getattr(request, 'membership', None)
+    if membership is not None and membership.can_view_clinical:
+        context['closed'] = services.with_bills(request.organization, context['closed'])
+    return context
 
 
 def _rows(request):

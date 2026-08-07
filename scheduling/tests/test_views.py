@@ -209,14 +209,271 @@ def test_the_page_polls_only_while_it_is_being_looked_at(client, staff):
     assert reverse('scheduling:day_rows') in body
 
 
-def test_the_day_list_reaches_no_clinical_or_billing_data(client, staff, booking):
-    """STAFF's screen. Nothing on it should tempt a link they cannot follow."""
+def test_staff_reach_no_clinical_or_billing_data_from_the_day_list(
+    client, staff, organization, patient, branch
+):
+    """STAFF's screen stays clinical-free, including its arrived rows.
+
+    The boundary is on the role, not on the screen: the day list now offers the
+    doctor a way into the visit form, and this is the half that must not. An
+    offer STAFF cannot follow is a 403 they were invited to walk into.
+    """
+    with organization_context(organization):
+        services.walk_in(organization, actor=staff, patient=patient, branch=branch)
+
     client.force_login(staff)
     body = client.get(reverse('scheduling:day')).content.decode()
 
+    assert 'Rahima Begum' in body, 'the arrived row this is asserted against is missing'
     assert '/clinical/' not in body
     assert '/billing/' not in body
     assert '/stock/' not in body
+
+
+def test_the_polled_fragment_is_gated_the_same_way_the_page_is(
+    client, staff, organization, patient, branch
+):
+    """The fragment is a second render of the same rows, through a second view.
+
+    Asserted separately because the failure mode is invisible on load: if
+    ``membership`` reached the page's context but not ``day_rows``', the gate
+    would be silently false for everyone and the doctor's "start visit" link
+    would disappear five seconds after he opened the screen — or, the other way
+    round, appear for STAFF on the first poll. Found while browser-checking the
+    swap, where the fragment renders identically for a practitioner.
+    """
+    with organization_context(organization):
+        services.walk_in(organization, actor=staff, patient=patient, branch=branch)
+
+    client.force_login(staff)
+    fragment = client.get(reverse('scheduling:day_rows')).content.decode()
+
+    assert 'Rahima Begum' in fragment, 'the arrived row is missing from the fragment'
+    assert '/clinical/' not in fragment
+    assert '/billing/' not in fragment
+
+
+def test_the_polled_fragment_keeps_the_practitioners_link_and_badges(
+    client, practitioner, organization, seen_with_bill, patient, branch
+):
+    """The other half of the same coupling, from the role that should see them."""
+    with organization_context(organization):
+        services.walk_in(
+            organization, actor=practitioner, patient=patient, branch=branch
+        )
+
+    client.force_login(practitioner)
+    fragment = client.get(reverse('scheduling:day_rows')).content.decode()
+
+    assert f'{reverse("clinical:encounter_create")}?appointment=' in fragment
+    assert 'Unpaid' in fragment
+
+
+def test_a_practitioner_can_start_the_visit_from_an_arrived_row(
+    client, practitioner, organization, patient, branch
+):
+    """The other half. He learns they arrived here, so he acts on it here."""
+    with organization_context(organization):
+        arrived = services.walk_in(
+            organization, actor=practitioner, patient=patient, branch=branch
+        )
+
+    client.force_login(practitioner)
+    body = client.get(reverse('scheduling:day')).content.decode()
+
+    assert f'{reverse("clinical:encounter_create")}?appointment={arrived.pk}' in body
+
+
+def test_only_arrived_rows_offer_to_start_the_visit(
+    client, practitioner, organization, booking
+):
+    """A booked patient is not in the building yet; ARRIVED is the only source
+    state ``transition(to=SEEN)`` accepts, so offering it earlier would be a
+    button that refuses."""
+    client.force_login(practitioner)
+    body = client.get(reverse('scheduling:day')).content.decode()
+
+    assert f'?appointment={booking.pk}' not in body
+
+
+@pytest.fixture
+def seen_with_bill(organization, patient, branch, practitioner):
+    """A visit written from the day list, and the bill it was charged on.
+
+    Built through the models rather than the billing form: what is under test is
+    the read through appointment → encounter → invoice, not form binding.
+    """
+    from decimal import Decimal
+
+    from billing.models import Invoice, InvoiceItem, LineType
+    from billing.services import next_invoice_number
+    from clinical.models import Encounter, EncounterStatus
+
+    with organization_context(organization):
+        appointment = services.walk_in(
+            organization, actor=practitioner, patient=patient, branch=branch
+        )
+        encounter = Encounter.objects.create(
+            organization=organization,
+            patient=patient,
+            practitioner=practitioner,
+            branch=branch,
+            occurred_at=timezone.now(),
+            status=EncounterStatus.FINALIZED,
+            finalized_at=timezone.now(),
+        )
+        services.transition(
+            appointment,
+            to=AppointmentStatus.SEEN,
+            actor=practitioner,
+            encounter=encounter,
+        )
+        invoice = Invoice.objects.create(
+            organization=organization,
+            created_by=practitioner,
+            patient=patient,
+            encounter=encounter,
+            branch=branch,
+            currency=organization.currency,
+            number=next_invoice_number(organization),
+        )
+        InvoiceItem.objects.create(
+            organization=organization,
+            invoice=invoice,
+            line_type=LineType.CONSULTATION,
+            name_snapshot='Consultation fee',
+            quantity=Decimal('1'),
+            unit_price=Decimal('500.00'),
+            sort_order=0,
+        )
+    return appointment, invoice
+
+
+def test_the_row_shows_what_the_visit_was_billed(client, practitioner, seen_with_bill):
+    client.force_login(practitioner)
+    body = client.get(reverse('scheduling:day')).content.decode()
+
+    assert 'Unpaid' in body
+
+
+def test_the_payment_state_is_read_through_and_not_stored(
+    client, practitioner, organization, seen_with_bill
+):
+    """Paying at the desk changes the badge with nothing written to the row.
+
+    The whole reason ADR 0010 kept payment off the appointment: a copy would be
+    right when written and wrong the moment a payment lands.
+    """
+    appointment, invoice = seen_with_bill
+    # From the database, not from the fixture's copy: ``transition`` writes
+    # through a locked re-read, so the instance it was called with is stale.
+    appointment.refresh_from_db()
+    updated_before = appointment.updated_at
+
+    from decimal import Decimal
+
+    from billing.services import record_payment
+
+    with organization_context(organization):
+        record_payment(
+            organization,
+            invoice=invoice,
+            actor=practitioner,
+            amount=Decimal('500.00'),
+            method='CASH',
+        )
+
+    client.force_login(practitioner)
+    body = client.get(reverse('scheduling:day')).content.decode()
+
+    assert 'Paid' in body
+    appointment.refresh_from_db()
+    assert appointment.updated_at == updated_before
+
+
+def test_staff_are_shown_no_payment_state_at_all(client, staff, seen_with_bill):
+    """SPEC §6.1 as amended: every billing surface is PRACTITIONER/OWNER, even
+    on the screen STAFF otherwise owns."""
+    client.force_login(staff)
+    body = client.get(reverse('scheduling:day')).content.decode()
+
+    assert 'Rahima Begum' in body, 'the seen row this is asserted against is missing'
+    assert 'Unpaid' not in body
+    assert 'Paid' not in body
+
+
+def test_a_visit_with_no_bill_says_so_rather_than_looking_paid(
+    client, practitioner, organization, patient, branch
+):
+    """Blank would read as "nothing owing", which is the opposite of the truth."""
+    from clinical.models import Encounter
+
+    with organization_context(organization):
+        appointment = services.walk_in(
+            organization, actor=practitioner, patient=patient, branch=branch
+        )
+        encounter = Encounter.objects.create(
+            organization=organization,
+            patient=patient,
+            practitioner=practitioner,
+            branch=branch,
+            occurred_at=timezone.now(),
+        )
+        services.transition(
+            appointment,
+            to=AppointmentStatus.SEEN,
+            actor=practitioner,
+            encounter=encounter,
+        )
+
+    client.force_login(practitioner)
+    body = client.get(reverse('scheduling:day')).content.decode()
+
+    assert 'No bill' in body
+
+
+def test_the_bills_are_one_query_for_the_whole_day(
+    practitioner,
+    organization,
+    branch,
+    seen_with_bill,
+    django_assert_num_queries,
+):
+    """The lookup annotates a day, it does not walk it.
+
+    Same call as the invoice list's: totals arrive as annotations so the page
+    cost does not grow with the number of patients seen.
+    """
+    from clinical.models import Encounter
+    from patients.models import Patient
+
+    with organization_context(organization):
+        for index in range(4):
+            extra = Patient.objects.create(
+                organization=organization,
+                code=f'P-01{index}',
+                full_name=f'Patient {index}',
+            )
+            appointment = services.walk_in(
+                organization, actor=practitioner, patient=extra, branch=branch
+            )
+            encounter = Encounter.objects.create(
+                organization=organization,
+                patient=extra,
+                practitioner=practitioner,
+                branch=branch,
+                occurred_at=timezone.now(),
+            )
+            services.transition(
+                appointment,
+                to=AppointmentStatus.SEEN,
+                actor=practitioner,
+                encounter=encounter,
+            )
+        closed = services.day_list(organization, on_date=timezone.localdate())['closed']
+        with django_assert_num_queries(2):
+            rows = services.with_bills(organization, closed)
+            assert [row.bill for row in rows].count(None) == 4
 
 
 def test_another_tenants_appointment_is_a_404(

@@ -28,6 +28,7 @@ __all__ = [
     'reschedule',
     'transition',
     'walk_in',
+    'with_bills',
 ]
 
 
@@ -244,9 +245,52 @@ def day_list(organization, *, on_date, branch=None, practitioner=None) -> dict:
     rows = Appointment.objects.for_organization(organization).for_day(
         on_date, branch=branch, practitioner=practitioner
     )
-    rows = rows.select_related('patient', 'practitioner', 'branch')
+    # ``encounter`` is the reverse of a nullable one-to-one, so this is a left
+    # join that costs the two open bands nothing and saves the closed band a
+    # query per row once bills are being shown.
+    rows = rows.select_related('patient', 'practitioner', 'branch', 'encounter')
     return {
         'waiting': rows.waiting(),
         'expected': rows.expected(),
         'closed': rows.closed(),
     }
+
+
+def with_bills(organization, rows) -> list:
+    """Attach each row's bill, read appointment → encounter → invoice.
+
+    Display only. Nothing is copied onto the appointment: payment state is
+    derived from the invoice's own payments (ADR 0008), so reading it through
+    the link is the only way it cannot go stale — which is exactly why ADR 0010
+    kept it off this model.
+
+    One query for the whole day rather than one per row, and evaluating the
+    queryset here is the point: the caller gets a list it can attach to.
+    """
+    # Deferred, like clinical.encounter_detail's: billing depends on clinical,
+    # and scheduling needs only to read what the visit it produced was billed.
+    from billing.models import Invoice, InvoiceState
+
+    rows = list(rows)
+    encounter_ids = [
+        encounter.pk
+        for encounter in (getattr(row, 'encounter', None) for row in rows)
+        if encounter is not None
+    ]
+    bills: dict = {}
+    if encounter_ids:
+        invoices = (
+            Invoice.objects.for_organization(organization)
+            .filter(encounter_id__in=encounter_ids)
+            .exclude(status=InvoiceState.VOID)
+            .with_totals()
+        )
+        # Meta orders newest first, so the first seen for an encounter is the
+        # one ``billing.services.invoice_for_encounter`` would have returned.
+        for invoice in invoices:
+            bills.setdefault(invoice.encounter_id, invoice)
+
+    for row in rows:
+        encounter = getattr(row, 'encounter', None)
+        row.bill = bills.get(encounter.pk) if encounter is not None else None
+    return rows

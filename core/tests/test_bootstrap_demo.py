@@ -72,17 +72,57 @@ def test_rebuilding_tears_down_a_bill_line_that_named_a_batch():
         assert StockBatch.objects.exists()
 
 
+def test_the_demo_opens_the_day_list_on_every_state():
+    """An empty first screen demonstrates nothing, and neither does a uniform one.
+
+    The day view is what a receptionist is shown first, so the loader has to put
+    all five states on today — including the two that are decisions rather than
+    timestamps.
+    """
+    from scheduling.models import AppointmentStatus
+
+    organization = _build()
+
+    with organization_context(organization):
+        today = Appointment.objects.filter(scheduled_date=timezone.localdate())
+        assert {row.status for row in today} == set(AppointmentStatus.values)
+        # Both ways a row reaches the list, so the "Walk-in" label is visible.
+        assert today.filter(source='WALK_IN').exists()
+        assert today.filter(source='BOOKED').exists()
+        # A time and a day part are mutually exclusive, and the demo shows both
+        # kinds of answer rather than inventing precision (ADR 0010).
+        assert today.filter(scheduled_time__isnull=False).exists()
+        assert today.exclude(day_part='').exists()
+
+
+def test_the_seen_rows_show_both_answers_the_payment_column_can_give():
+    """One visit billed and one not, so the column shows a state and its absence."""
+    from scheduling.services import with_bills
+
+    organization = _build()
+
+    with organization_context(organization):
+        seen = Appointment.objects.filter(
+            scheduled_date=timezone.localdate(), seen_at__isnull=False
+        ).select_related('encounter')
+        bills = [row.bill for row in with_bills(organization, seen)]
+
+    assert any(bill is not None for bill in bills)
+    assert any(bill is None for bill in bills)
+
+
 def test_rebuilding_tears_down_an_appointment():
     """Same shape as the batch override, one model later.
 
-    ``Appointment`` PROTECTs the patient and the branch it names, and nothing
-    the loader generates is an appointment yet — so without a staged row the
-    teardown order looks correct right up until the first demo that books one.
+    ``Appointment`` PROTECTs the patient and the branch it names. The loader now
+    books its own, so the ordinary rebuild exercises this — the staged row is
+    kept because it is the one with no encounter, invoice or movement attached,
+    and so fails on the FK order alone rather than on something upstream.
     """
     organization = _build()
 
     with organization_context(organization):
-        Appointment.objects.create(
+        staged = Appointment.objects.create(
             organization=organization,
             patient=Patient.objects.first(),
             branch=Branch.objects.first(),
@@ -92,8 +132,11 @@ def test_rebuilding_tears_down_an_appointment():
     _build('--reset')
 
     assert Organization.objects.filter(slug=DEMO_SLUG).count() == 1
+    # The staged row by pk, not "no appointments at all": the rebuild books its
+    # own, and a teardown that left this one behind would have raised on the
+    # patient it PROTECTs long before this line.
+    assert not Appointment.all_objects.filter(pk=staged.pk).exists()
     with organization_context(Organization.objects.get(slug=DEMO_SLUG)):
-        assert not Appointment.objects.exists()
         assert Patient.objects.exists()
 
 

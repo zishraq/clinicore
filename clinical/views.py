@@ -19,6 +19,8 @@ from clinical.forms import EncounterForm, PrescriptionForm, PrescriptionItemForm
 from clinical.models import Encounter, PrintSize
 from organizations.services import default_branch
 from patients.models import Patient
+from scheduling import services as scheduling_services
+from scheduling.models import Appointment, AppointmentStatus
 
 __all__ = [
     'encounter_create',
@@ -131,10 +133,60 @@ def _selected_patient(form):
     return Patient.objects.filter(pk=raw).first() if raw else None
 
 
+def _requested_appointment(request):
+    """The day-list row this visit is being written from, if there is one.
+
+    Read from the body first: the form carries the row as a hidden field so the
+    link survives the round trip, and a POST has no query string. Scoping is the
+    ambient one on ``Appointment.objects``, so another tenant's pk finds nothing.
+    """
+    raw = request.POST.get('appointment') or request.GET.get('appointment') or ''
+    if not raw.isdigit():
+        return None
+    return Appointment.objects.filter(pk=int(raw)).first()
+
+
+def _prefill_from_appointment(form, appointment) -> None:
+    """The row's own answers beat the form's generic defaults.
+
+    Assigned rather than ``setdefault``: the receptionist already recorded who
+    came, where, and to see whom, and re-answering that is the click this link
+    exists to remove. Every one stays editable — the doctor covering a colleague
+    changes the practitioner, and the visit is his.
+    """
+    form.initial['patient'] = appointment.patient_id
+    form.initial['branch'] = appointment.branch_id
+    if appointment.practitioner_id:
+        form.initial['practitioner'] = appointment.practitioner_id
+
+
+def _mark_seen(request, appointment, encounter, *, actor) -> None:
+    """Consume the day-list row the visit was written from.
+
+    A refusal must not cost the doctor the note. The visit is complete and valid
+    with no appointment at all (ADR 0010), so a row that stopped being arrived
+    while the consultation was being written — cancelled at the desk, or already
+    consumed in another tab — is reported and nothing is rolled back.
+    """
+    try:
+        scheduling_services.transition(
+            appointment, to=AppointmentStatus.SEEN, actor=actor, encounter=encounter
+        )
+    except scheduling_services.AppointmentError:
+        terms = request.organization.terms
+        messages.warning(
+            request,
+            f'The {terms["appointment"].lower()} was not marked '
+            f'{terms["status_seen"].lower()} — it is no longer waiting. '
+            f'The {terms["encounter"].lower()} itself is saved.',
+        )
+
+
 @login_required
 @clinical_access_required
 def encounter_create(request):
     membership = require_membership(request)
+    appointment = _requested_appointment(request)
     form, prescription_form, item_formset = _encounter_form_context(request)
     if request.method != 'POST':
         form.initial.setdefault('occurred_at', timezone.localtime())
@@ -148,6 +200,8 @@ def encounter_create(request):
             patient = Patient.objects.filter(pk=requested_patient).first()
             if patient:
                 form.initial['patient'] = patient.pk
+        if appointment is not None:
+            _prefill_from_appointment(form, appointment)
     elif form.is_valid() and prescription_form.is_valid() and item_formset.is_valid():
         encounter = services.save_encounter(
             request.organization,
@@ -159,6 +213,8 @@ def encounter_create(request):
         messages.success(
             request, _save_and_report(request, encounter, actor=membership.user)
         )
+        if appointment is not None:
+            _mark_seen(request, appointment, encounter, actor=membership.user)
         return redirect('clinical:encounter_detail', pk=encounter.pk)
     return render(
         request,
@@ -168,6 +224,7 @@ def encounter_create(request):
             'prescription_form': prescription_form,
             'item_formset': item_formset,
             'selected_patient': _selected_patient(form),
+            'appointment': appointment,
             'is_create': True,
         },
     )

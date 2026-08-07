@@ -156,10 +156,14 @@ A1/A4/A5 are browser-verified end to end. What each one settled:
   off would look like it worked. `organizations/views.py` binds on
   `request.method` instead. Found by a test, confirmed in a browser.
 
-Appointments (SPEC §6.3) are in progress. Increment 1 is done: the `scheduling`
-app's model, services and tests, plus the terminology keys. **No UI yet** — the
-day view, walk-in and mark-arrived are increment 2. Rules to know before
-touching it, all in `docs/adr/0010-appointments-as-one-day-list.md`:
+Appointments (SPEC §6.3) are built. Increment 1 was the `scheduling` app's model,
+services and tests plus the terminology keys; increment 2 is the screen — the day
+view at `/schedule/`, walk-in creation, mark-arrived, cancel and no-show, start
+visit, the payment column, both navs, and HTMX polling. **Browser-verified end to
+end across two sessions** (STAFF and PRACTITIONER): propagation, both modals, the
+picker and its registration offer inside a modal, start visit → seen, the payment
+badges, and the refusal paths. Rules to know before touching it, all in
+`docs/adr/0010-appointments-as-one-day-list.md`:
 
 - **One model, not two.** `QueueEntry` is struck from SPEC §5 and §6.3's
   "reorder" and "slot templates" go with it. A walk-in is an `Appointment` with
@@ -189,17 +193,68 @@ touching it, all in `docs/adr/0010-appointments-as-one-day-list.md`:
   follow-ups-due list wants an indexed date), and `scheduling.services.reschedule`
   is the only thing that writes it once an appointment exists. That single-writer
   rule is what makes the sync safe, so `test_follow_ups.py` tests it directly.
-- **`bootstrap_demo` teardown grew a line.** `Appointment` PROTECTs the patient
-  and branch, and nothing the loader generates is an appointment — so, like the
-  batch override before it, only a hand-staged row catches a wrong order.
-  `core/tests/test_bootstrap_demo.py` stages one.
+- **`bootstrap_demo` books its own day now.** `_appointments` puts all five
+  states on today, through `scheduling.services` rather than by writing rows, so
+  the demo cannot hold a combination the application would refuse. One seen visit
+  is billed and one is not, because "no bill yet" is the other thing the payment
+  column has to say. `Appointment` PROTECTs the patient and branch, so teardown
+  order still matters; the hand-staged row in
+  `core/tests/test_bootstrap_demo.py` stays as the case with nothing attached.
 
-Two things settled for increment 2 and not yet built: payment status is
-display-only on the row, read through `appointment → encounter → invoice`, and
-it is **hidden from STAFF** because SPEC §6.1 as amended puts every billing
-surface behind PRACTITIONER/OWNER — even though STAFF owns the rest of that
-screen. Scheduling views themselves are `login_required` + `require_membership`,
-the existing any-member posture; no new decorator is needed.
+Increment 2's screen, beyond the CRUD:
+
+- **Nothing in the polled container may hold typed input.** `#day-rows` refetches
+  every 5s, so the walk-in and cancellation forms live in modals in `base.html`'s
+  `modals` block and the row buttons only fetch them. A swap over a half-written
+  cancellation reason gets reported as "it clears what I type".
+  `test_the_polled_fragment_holds_no_typed_input` asserts it rather than trusting
+  it. The poll is guarded by `[document.visibilityState === 'visible']` so tabs
+  left open all day cost nothing.
+- **A page that renders the patient picker owes it the add-patient dialog.**
+  `templates/partials/_patient_picker.html` is now shared by the visit form and
+  the walk-in modal, and `base.html`'s `modals` block is empty by design — so
+  omitting `templates/patients/_add_patient_modal.html` gives an
+  `htmx:targetError` and a dead "add a new patient" offer. The walk-in modal
+  shipped that way past a green suite. The coupling is now asserted by reading
+  the offer's own `hx-target` out of the fragment.
+- **`patient_quick_create` is any-member now**, not PRACTITIONER/OWNER: the
+  receptionist is who registers a walk-in. `require_membership` still runs, so it
+  is exactly as open as `patient_create`. SPEC §6.1 gives STAFF patient creation
+  and the clinical profile is not on that form.
+- **"Start visit" is on the day list, gated by role, not moved off it.** Before
+  this, `ARRIVED → SEEN` was unreachable from anywhere in the app. The doctor
+  learns someone arrived here, so he acts on it here; STAFF is gated out on
+  `can_view_clinical` because an offer they cannot follow is an invitation to a
+  403. The link prefills the visit form from the row and the form carries the row
+  through the POST as a hidden field. **A refusal never costs the note**: a row
+  cancelled mid-consultation saves the visit and warns, because a visit with no
+  appointment is completely valid.
+- **The payment column is a read, hidden by not being looked up.**
+  `scheduling.services.with_bills` reads `appointment → encounter → invoice` in
+  one query for the whole day, and `_day_context` only calls it for a membership
+  with clinical access — so a template that forgot its check has nothing to leak.
+  A seen visit with no bill says "No bill"; blank would read as "nothing owing".
+
+Two things the browser pass taught, both worth keeping:
+
+- **A visibility-guarded poll cannot be observed from a driven tab.** An
+  automated tab reports `visibilityState === 'hidden'`, so the guard suppresses
+  every tick and "did my typed text survive the poll?" passes with no swap ever
+  happening. Force the identical swap by hand — `htmx.ajax` GET of the rows URL
+  into `#day-rows` — or the check is worthless. Done properly, the text survived
+  byte-identical with focus intact.
+- **The polled fragment needed its own tests.** `_rows.html` renders through the
+  page *and* through `day_rows`; if `membership` reached one context and not the
+  other, the role gate would flip five seconds after load. Both roles are now
+  asserted on the fragment, not only on the page.
+
+**Known defect, not ours but reachable from here:** the organization's timezone
+is written and never read (`TIME_ZONE = 'UTC'`, no `timezone.activate`
+anywhere), so absolute datetimes render six hours behind this clinic. Accepting
+a defaulted `occurred_at` is safe — it round-trips — but *correcting* it to the
+true wall-clock time writes a datetime six hours out and on the wrong date. Full
+diagnosis in `docs/MVP-NOTES.md` under "Known defects"; fix it before the next
+datetime-facing feature.
 
 Next: SPEC §11 phases remain suspended. Not deployed.
 
