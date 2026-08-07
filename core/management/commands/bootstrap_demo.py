@@ -24,7 +24,7 @@ from clinical.models import (
     Prescription,
     PrescriptionItem,
 )
-from core.context import organization_context
+from core.context import organization_context, organization_timezone
 from core.models import DocumentSequence
 from inventory import services as inventory
 from inventory.models import (
@@ -200,7 +200,14 @@ class Command(BaseCommand):
         }
         organization.save(update_fields=['branding', 'updated_at'])
 
-        with organization_context(organization):
+        # The clock as well as the scoping: this loader books "today", and
+        # outside a request nothing else would put it on the clinic's calendar.
+        # Between 00:00 and 06:00 in Dhaka the server's date is still yesterday,
+        # so a UTC "today" would seed a day the day list does not open on.
+        with (
+            organization_context(organization),
+            organization_timezone(organization),
+        ):
             branch = BranchModel.objects.create(
                 organization=organization,
                 name='Main Chamber',

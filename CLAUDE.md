@@ -248,13 +248,27 @@ Two things the browser pass taught, both worth keeping:
   other, the role gate would flip five seconds after load. Both roles are now
   asserted on the fragment, not only on the page.
 
-**Known defect, not ours but reachable from here:** the organization's timezone
-is written and never read (`TIME_ZONE = 'UTC'`, no `timezone.activate`
-anywhere), so absolute datetimes render six hours behind this clinic. Accepting
-a defaulted `occurred_at` is safe — it round-trips — but *correcting* it to the
-true wall-clock time writes a datetime six hours out and on the wrong date. Full
-diagnosis in `docs/MVP-NOTES.md` under "Known defects"; fix it before the next
-datetime-facing feature.
+The organization's timezone is now activated per request (SPEC §4, ADR 0011).
+It had been written and never read for the whole MVP, so every datetime rendered
+six hours behind this clinic — and *correcting* a defaulted `occurred_at` to the
+true wall-clock time wrote it six hours out and on the wrong date. Rules:
+
+- **`TIME_ZONE` stays UTC and storage does not move.** `ActiveOrganizationMiddleware`
+  enters `organization_timezone(organization)` beside `organization_context`, on
+  the same reset-in-finally lifecycle — a leaked zone is the timezone equivalent
+  of a cross-tenant leak. Only presentation moves: `localtime`, `localdate`, the
+  template `date` filter, and the two `datetime-local` defaults that read them.
+- **Anything that activates one activates the other.** They are separate managers
+  because scoping needs only a pk while a zone needs the row. `bootstrap_demo` is
+  the second caller and needs it for a real reason: it books "today", and after
+  midnight in Dhaka a UTC "today" seeds a day the day list does not open on.
+- **A UTC-only test proves nothing here.** The default `Organization.timezone` is
+  `'UTC'`, where storage, display and "today" all agree and the bug is invisible.
+  `core/tests/test_organization_timezone.py` runs on `Asia/Dhaka` throughout and
+  pins `timezone.now` to 19:30 UTC — 01:30 next day in Dhaka — so the calendars
+  genuinely disagree. Keep a non-UTC org in any future work on this.
+- **Existing hand-edited datetimes are still wrong** and there is no migration,
+  because nothing tells them apart from values that were always right.
 
 Next: SPEC §11 phases remain suspended. Not deployed.
 

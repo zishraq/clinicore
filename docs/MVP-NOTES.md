@@ -125,7 +125,22 @@ These were cut by the brief itself, not by me:
 
 ## Known defects
 
-### The organization's timezone is written and never read
+### ~~The organization's timezone is written and never read~~ — fixed 2026-08-07
+
+**Fixed the same day it was found.** The middleware now activates the
+organization's zone beside the org context, on the same reset-in-finally
+lifecycle; `TIME_ZONE` stays UTC and only presentation moved. Full reasoning,
+including why the corruption ran the opposite way from how it looked, is in
+[ADR 0011](adr/0011-organization-timezone-per-request.md).
+
+**One thing this did not fix:** datetimes that a user hand-corrected under the
+old behaviour are still six hours out in the database, and there is no migration
+because nothing distinguishes them from values that were always right. Treat any
+hand-edited datetime from before 2026-08-07 as suspect.
+
+The original diagnosis is kept below, because the lesson generalises — a suite
+that only exercises the default configuration can prove nothing about the
+configuration a clinic actually runs.
 
 Found 2026-08-07 while browser-checking the appointments day list.
 
@@ -163,11 +178,12 @@ immune by accident — `timesince` is a duration, and `Appointment.scheduled_tim
 is a naive `TimeField` — which is why this survived that increment's browser
 pass until the visit form was opened from it.
 
-Fix is not a one-liner and was deliberately not folded into the appointments
-work: activate the organization's timezone per request (next to the org context,
-so the two cannot disagree), decide whether `TIME_ZONE` stays UTC, and audit
-every `datetime-local` widget for the render/parse round trip. Until then,
-**treat any hand-edited datetime in existing data as suspect.**
+Fix was deliberately not folded into the appointments work: activate the
+organization's timezone per request (next to the org context, so the two cannot
+disagree), decide whether `TIME_ZONE` stays UTC, and audit every
+`datetime-local` widget for the render/parse round trip. All three were done in
+ADR 0011 — the audit found exactly two such widgets, `Encounter.occurred_at` and
+`GoodsReceipt.received_at`, and both now have round-trip tests.
 
 ## Not done at all
 
