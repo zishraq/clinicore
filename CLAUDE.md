@@ -111,9 +111,11 @@ Rules to know before touching it:
   so only a hand-staged row catches it —
   `core/tests/test_bootstrap_demo.py` stages one.
 
-Not browser-verified: the batch override in a **multi-branch** org. (The demo is
-now two-branch, so this is re-testable; the `hx-include="[name='branch']"` half
-of the options lookup in `_line_branch` still has only tests behind it.)
+The batch override in a **multi-branch** org is now browser-verified too
+(2026-08-08, against the production stack): choosing a branch on the bill form
+fires the `hx-include="[name='branch']"` lookup in `_line_branch` and every line
+gains its "Automatic — earliest expiry first" selector. That was the last part
+of the options lookup with only tests behind it.
 
 The clinic-feedback pass (A1–A6) and the hardening pass (B7–B11) are done, and
 A1/A4/A5 are browser-verified end to end. What each one settled:
@@ -272,7 +274,12 @@ true wall-clock time wrote it six hours out and on the wrong date. Rules:
 
 The pre-deployment slice is done (2026-08-08): static serving, HTTPS posture,
 login rate limiting, logging, CI, and a production compose file. Verified by
-building and running the production stack, not only by tests. Rules to know:
+building and running the production stack, then **signing in and driving the two
+components that fail silently when static serving is wrong** — the medicine
+autocomplete and the invoice line editor — with the network log confirming they
+ran off `item-autocomplete.<hash>.js`, not a fallback. A dynamically added
+invoice row binds its own autocomplete, which is the case a load-time-only bind
+would break. Rules to know:
 
 - **`DEBUG` now defaults to *off*, and settings refuse to import without a real
   `SECRET_KEY` when it is.** The asymmetry is the argument: a dev machine that
