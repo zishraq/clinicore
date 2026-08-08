@@ -1,0 +1,74 @@
+{% load static %}<!doctype html>
+{% comment %}
+Shown by django-axes when too many sign-in attempts fail for one phone number
+from one address. Standalone for the same reason as core/csrf_failure.html:
+this renders for somebody who is by definition not signed in, so it must not
+need a session, a membership, or the organization's palette — and not the CDN
+that styles the rest of the app either.
+
+It says how long the wait is and that the wait ends by itself. A locked-out
+receptionist with no explanation phones whoever set the system up; one with a
+number stops and comes back. It deliberately does not say whether the phone
+number exists, which would turn the lockout page into a way to enumerate staff.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Too many attempts</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f4f7fb;
+      color: #1f2933;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(15, 32, 56, 0.08);
+      padding: 2rem;
+      max-width: 27rem;
+      width: 100%;
+      text-align: center;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+    p { margin: 0 0 1.5rem; line-height: 1.55; color: #52606d; }
+    a.button {
+      display: inline-block;
+      background: #2563eb;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 0.7rem 1.4rem;
+      border-radius: 9px;
+    }
+    a.button:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Too many sign-in attempts</h1>
+    <p>
+      {% comment %}
+      cooloff_timedelta is a real timedelta and renders as "0:15:00", which is
+      not a sentence. widthratio turns it into whole minutes with a built-in
+      tag rather than a filter written for one page.
+      {% endcomment %}
+      Sign-in has been paused for
+      {% if cooloff_timedelta %}
+        {% widthratio cooloff_timedelta.total_seconds 60 1 %} minutes
+      {% else %}a while{% endif %}
+      to protect this account. Please wait, then try again — the pause clears
+      itself, so there is nothing to reset and nobody to call.
+    </p>
+    <a class="button" href="{% url 'accounts:login' %}">Back to sign in</a>
+  </main>
+</body>
+</html>

@@ -1,0 +1,98 @@
+# Lint and test on every push and pull request (SPEC §9).
+#
+# The suite runs against Postgres, not SQLite, and that is the point rather than
+# a detail. Two guarantees in this codebase are row-level locks — gap-free
+# invoice numbering and FEFO stock allocation — and both tests call
+# `pytest.skip` when `connection.vendor != 'postgresql'`. On SQLite they report
+# green without having executed, so before this workflow existed they only ran
+# when somebody remembered to start the compose database first.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A newer push makes an in-flight run irrelevant; don't queue behind it.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Setting POSTGRES_DB is what makes config/settings_test.py hand the database
+  # back to config.settings instead of using in-memory SQLite.
+  POSTGRES_DB: clinicore
+  POSTGRES_USER: clinicore
+  POSTGRES_PASSWORD: clinicore
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: '5432'
+  # config.settings refuses to import without one when DEBUG is off, which it
+  # is by default. Throwaway: it signs nothing that outlives the job.
+  DJANGO_SECRET_KEY: ci-only-key-not-used-outside-github-actions
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clinicore
+          POSTGRES_USER: clinicore
+          POSTGRES_PASSWORD: clinicore
+        ports:
+          - 5432:5432
+        # Without this the job starts connecting before Postgres accepts
+        # connections, and fails on timing rather than on anything real.
+        options: >-
+          --health-cmd "pg_isready -U clinicore -d clinicore"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Format
+        run: ruff format --check .
+
+      - name: Django checks
+        run: python manage.py check
+
+      - name: No unmade migrations
+        # Catches a model edited without makemigrations, which otherwise fails
+        # at deploy time against a schema that no longer matches.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Tests
+        # -rs lists the reason for every skip, so a test quietly opting out is
+        # visible in the log rather than hidden in the dot count.
+        run: python -m pytest -rs
+
+      - name: The Postgres-only tests must have actually run
+        # The guard for this workflow's whole reason to exist. If the database
+        # service is misconfigured or POSTGRES_DB stops being read, the
+        # concurrency tests skip and the suite above still passes — green CI
+        # that has never once exercised a row lock.
+        run: |
+          python -m pytest -rs -q \
+            billing/tests/test_numbering.py \
+            inventory/tests/test_concurrency.py | tee result.txt
+          if grep -qi 'skipped' result.txt; then
+            echo "::error::Concurrency tests skipped — CI is not running on Postgres."
+            exit 1
+          fi

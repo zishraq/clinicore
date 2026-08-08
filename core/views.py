@@ -1,9 +1,42 @@
-"""Landing page. Per-role dashboards proper are SPEC §6.7, not the MVP."""
+"""Landing page and the deployment healthcheck.
+
+Per-role dashboards proper are SPEC §6.7, not the MVP.
+"""
+
+import logging
 
 from django.contrib.auth.decorators import login_required
+from django.db import connection
+from django.http import JsonResponse
 from django.shortcuts import render
 
-__all__ = ['csrf_failure', 'dashboard']
+__all__ = ['csrf_failure', 'dashboard', 'healthz']
+
+logger = logging.getLogger(__name__)
+
+
+def healthz(request):
+    """Liveness for the container healthcheck and any load balancer in front.
+
+    It touches the database on purpose. A process that is accepting sockets
+    while its connection pool is dead is exactly the state a healthcheck exists
+    to catch, and answering 200 from Python alone would report that as healthy
+    and keep it in rotation.
+
+    Unauthenticated, and outside the organization scope — it runs before anyone
+    signs in, so it must not need a session, a membership, or an active
+    organization. It reports no version, no host, and no error detail, because
+    it answers to the public internet unless something upstream says otherwise.
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+    except Exception:
+        # The detail belongs in the log, not the body; see the logging block in
+        # config/settings.py for why this would have gone nowhere before.
+        logger.exception('Healthcheck failed: the database is unreachable.')
+        return JsonResponse({'status': 'error'}, status=503)
+    return JsonResponse({'status': 'ok'})
 
 
 def csrf_failure(request, reason: str = ''):

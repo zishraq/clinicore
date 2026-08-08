@@ -1,86 +1,94 @@
-# MVP notes — what was cut, stubbed, or decided under time pressure
+# Build notes — what is deliberately missing, and what was learned the hard way
 
-One evening's build against `docs/SPEC.md`. The delivery plan in SPEC §11 was
-suspended for this run; blocks 1–8 of the MVP brief were built instead. This
-file is the diff between what exists and what the spec asks for, so the gap is
-documented rather than forgotten.
+The diff between what exists and what `docs/SPEC.md` asks for, so the gap is
+documented rather than forgotten. Everything below is a deliberate omission or a
+recorded trap, not a to-do list.
 
-Everything below is a deliberate omission, not an oversight.
+Substantive reasoning about decisions that were *made* lives in `docs/adr/`;
+this file covers what was **not** built and what keeps biting.
 
-## Explicitly out of scope for the MVP brief
+> This file was substantially rewritten on 2026-08-08. It had been describing a
+> project that stopped before scheduling and inventory, and claimed the
+> terminology map was unmodelled and that there was no `StockBatch`,
+> `StockMovement` or goods receipt. All of that had been built, tested and
+> browser-verified in the meantime. If something here reads as stale again,
+> trust the code and `CLAUDE.md`.
 
-These were cut by the brief itself, not by me:
+## Not built
 
-- **Terminology map and `FieldDefinition`** — `Organization.terminology`
-  (SPEC §5) and the org-level field-definition config are not modelled. The
-  `PrescriptionItem.attributes` JSON column exists and is written, but nothing
-  drives its shape yet.
+### Still genuinely absent
+
 - **`RolePermission` and the custom auth backend** (SPEC §6.1,
-  `docs/phase-0-proposal.md` §3(a)) — replaced by plain role comparisons.
-  Every one is marked `# MVP: replace with permission layer` and they are
-  concentrated in `accounts/permissions.py`; `grep -rn 'MVP: replace with
-  permission layer'` finds all of them.
-- **Inventory** — the `catalog` app now exists (medicines and advice), but stock
-  does not: no `StockBatch`, no `StockMovement`, no goods receipt.
-  `Product.is_stock_tracked` and `is_sellable` are placeholders so Phase 4
-  attaches without a schema change.
-- **Scheduling, queue, inventory, billing, reporting, PWA** — whole apps, not
-  started.
+  `docs/phase-0-proposal.md` §3(a)) — replaced by plain role comparisons. All
+  eight are marked `# MVP: replace with permission layer` and concentrated in
+  `accounts/permissions.py`; `grep -rn 'MVP: replace with permission layer'`
+  finds them. The swap is meant to stay mechanical, and
+  [ADR 0012](adr/0012-authorisation-at-the-view-boundary.md) explains why it
+  must happen at the same layer rather than moving checks downward.
+- **`FieldDefinition`** — the org-level, data-driven field configuration in
+  SPEC §5. The *terminology* half of that section is built
+  (`Organization.terminology`, the context processor, `{% status_label %}`), but
+  nothing drives the **shape** of `PrescriptionItem.attributes`: the column
+  exists and is written, and what goes in it is decided in code.
+- **Reporting** (SPEC §6.7) — the dashboard is a few counts and recent activity,
+  not the per-role reporting screens. No revenue, no stock valuation, no
+  follow-ups-due list, although `follow_up_date` is indexed and waiting.
+- **PWA / offline** — not started.
+- **Attachments and the audit log** — not started. History exists on clinical
+  models only (below), which is not the same thing.
+- **`Membership` has no branch FK.** SPEC §5 wants per-branch access; it is not
+  built, which is why "the practitioner's branch" is inferred from their last
+  encounter in `billing.services.resolve_invoice_branch`.
+- **Pre-commit hooks, the ERD in the README, ADRs 0001–0004, and the
+  `Makefile`** — `make seed` does not exist.
 
-## Where the spec itself was wrong, and was corrected
+### Struck from the spec on purpose
 
-- **SPEC §5 modelled only `Product`.** A prescription has two sections —
-  medicines and advice — and only the first was in the domain model. §5 now
-  carries `AdviceTemplate` and the two-section `PrescriptionItem`, and §6.4
-  carries the unified autocomplete, quick-add, and the two-section print layout.
-  Reasoning in [ADR 0007](adr/0007-catalogs-and-name-snapshots.md).
-- **`name_snapshot` is not optional polish.** Resolving a printed item's name
-  through the live catalog FK means a later rename rewrites prescriptions that
-  were already handed to patients. Every display path reads the snapshot.
+- **`QueueEntry`** and SPEC §6.3's "reorder" and "slot templates". A walk-in is
+  an `Appointment` with `source=WALK_IN`, created already arrived. Two tables
+  that can disagree about whether a patient is still waiting is a worse problem
+  than the one they solve. See
+  [ADR 0010](adr/0010-appointments-as-one-day-list.md).
 
-## Deviations I chose, with reasons
+## Deviations chosen, with reasons
 
 - **Settings are one module, not `base/dev/prod`** (SPEC §4). Everything
-  environment-specific already reads from the environment, so splitting the file
-  later is mechanical. `django-environ` is not installed; `os.environ` with a
-  small `_env_bool` helper does the same job for six settings.
-- **Django 6.0, not 5.x** (SPEC §3). 6.0.7 is what was already installed in the
-  virtualenv. Nothing in the code depends on a 6.0-only API, but
+  environment-specific reads from the environment, so the two deployments differ
+  by `.env` rather than by module and there is nothing left for the split to
+  separate. `django-environ` is not installed; `os.environ` with two small
+  helpers does the same job.
+- **Django 6.0, not 5.x** (SPEC §3). Nothing depends on a 6.0-only API, but
   `CheckConstraint(condition=…)` is 5.1+ syntax (`check=` was removed in 6.0).
-- **No `django-crispy-forms`, no `django-axes`** (SPEC §3, §6.1). Forms are
-  rendered field-by-field in templates with daisyUI classes. **Login is not rate
-  limited** — that is a real security gap against the spec and should be the
-  first dependency added.
+- **No `django-crispy-forms`.** Forms are rendered field-by-field in templates
+  with daisyUI classes.
 - **History is on clinical models only** — `Encounter`, `Prescription`,
   `PrescriptionItem`. SPEC §3 also lists `Patient`; the surface was kept small
   deliberately. See [ADR 0006](adr/0006-encounter-amendments.md), including the
   tenancy caveat: historical tables are **not** organization-scoped and every
   history query must filter on `organization_id` by hand.
 - **No soft delete on `Encounter`.** SPEC §4 lists clinical records as
-  soft-delete; the MVP has no encounter-delete path at all, so the mixin would
-  have been unused columns. `Patient` and `PatientClinicalProfile` do soft
-  delete.
+  soft-delete; there is no encounter-delete path at all, so the mixin would be
+  unused columns. `Patient` and `PatientClinicalProfile` do soft delete.
 - **`Encounter.practitioner` is a FK to `User`, not to `Membership`**
   (`docs/phase-0-proposal.md` §1.3). Simpler while there is one organization per
   session; changing it later is a data migration, so it is worth revisiting
   before real data exists.
 - **Frontend assets come from a CDN.** Tailwind (Play CDN), daisyUI, HTMX, and
   Alpine load from jsDelivr in `templates/base.html`. The proposal called for a
-  Tailwind build step and vendored JS with no CDN; that needs Node in the build,
-  which is deployment work. **The app therefore needs internet access in the
-  browser to look right.** The prescription print view is deliberately exempt —
-  it is standalone, hand-written CSS and renders correctly offline.
+  Tailwind build step and vendored JS with no CDN; that needs Node in the image.
+  **The app therefore needs internet access in the browser to look right.** The
+  print views are deliberately exempt — standalone, hand-written CSS, correct
+  offline. The app's *own* CSS and JS are served locally by WhiteNoise.
 - **Branding is applied as `--cc-*` CSS custom properties, not a compiled
   daisyUI theme.** daisyUI's theme variables are OKLCH triplets, which would
   mean converting hex at request time. `static/css/app.css` consumes the
   `--cc-*` tokens for the handful of brand-coloured classes. Rebranding is still
   a settings change, which is what SPEC §7 asks for.
-- **Tests are minimal by instruction.** The tenant-isolation suite, the STAFF
-  403s, login, an encounter create→finalize round trip, and the amendment and
-  history-isolation suites. No factory-boy (not installed) — fixtures build
-  models directly.
+- **No factory-boy.** Fixtures build models directly.
 
-## Things worth knowing before the next session
+## Traps worth knowing before the next session
+
+### Tenancy and forms
 
 - **`core/forms.py` exists because of a real trap.** `ForeignKey.formfield()`
   reads `Model._default_manager` at *class definition* time, so any `ModelForm`
@@ -88,8 +96,7 @@ These were cut by the brief itself, not by me:
   import — before a request, before any organization is active. Forms with such
   relations set `Meta.formfield_callback = staticmethod(org_scoped_formfield)`,
   which starts from `all_objects.none()` and narrows per organization in
-  `__init__`. Any new form touching an org-owned FK needs the same line. This
-  belongs in ADR 0005's consequences list.
+  `__init__`. Any new form touching an org-owned FK needs the same line.
 - **`Membership` is not an `OrgOwnedModel`.** The middleware queries it to
   *establish* the active organization, so it must be readable before any
   organization is active. It carries an explicit `organization` FK and a plain
@@ -100,6 +107,13 @@ These were cut by the brief itself, not by me:
 - **`dosage` is nullable, deliberately.** Advice has no dose, and empty string
   would read as "none recorded" rather than "not applicable". This is the single
   `# noqa: DJ001` in the codebase.
+- **`request.POST or None` is wrong for a checkbox-only form.** An unticked
+  checkbox posts nothing, so the QueryDict is empty and falsy, and the usual
+  idiom silently rebuilds the form unbound and saves nothing — turning a feature
+  off would look like it worked. Bind on `request.method` instead.
+
+### The frontend
+
 - **The prescription autocomplete is the most JS-dependent thing in the repo**,
   and every one of its bugs was invisible to the test suite. Three worth
   remembering: `hx-vals="js:{q: event.target.value}"` throws once a `delay:` is
@@ -111,82 +125,102 @@ These were cut by the brief itself, not by me:
   removed from the DOM posts nothing, which Django's default `has_changed()`
   reads as a filled-in row, so `PrescriptionItemForm` judges emptiness by
   content instead.
-- **Four bugs found by opening a browser, not by tests**, all invisible to the
-  test suite because they were about rendering rather than status codes:
-  multi-line `{# … #}` is not a Django comment and rendered as visible text on
-  the print page; `{% block %}` does not cross an `{% include %}`, so the
-  topbar's page title and action buttons never rendered; and the HTMX search
-  pushed a partial-only URL into the address bar that broke on reload; and the
-  encounter history labelled an amendment as "Created". Keep looking at the
-  actual pages — and note that a **multi-line `{# … #}` is not a Django
-  comment**, which has now caused two of those four.
+- **Bugs found by opening a browser, not by tests**, all invisible to the suite
+  because they were about rendering rather than status codes: multi-line
+  `{# … #}` is not a Django comment and rendered as visible text on the print
+  page (twice); `{% block %}` does not cross an `{% include %}`, so the topbar's
+  title and action buttons never rendered; the HTMX search pushed a
+  partial-only URL into the address bar that broke on reload; and the encounter
+  history labelled an amendment as "Created". Keep looking at actual pages.
+- **`templates/base.html` bottom padding is load-bearing**: `pb-24 sm:pb-24
+  lg:pb-6`. Tailwind emits responsive variants after base utilities, so a bare
+  `pb-24` loses to `sm:p-6` from 640px up and the fixed bottom nav covers the
+  foot of every scrollable page, submit buttons included.
+  `core/tests/test_layout.py` is a canary, not a proof.
+- **Nothing inside a polled container may hold typed input.** `#day-rows`
+  refetches every 5s, so the walk-in and cancellation forms live in modals. A
+  swap over a half-written cancellation reason gets reported as "it clears what
+  I type".
+- **A visibility-guarded poll cannot be observed from a driven browser tab.** An
+  automated tab reports `visibilityState === 'hidden'`, so the guard suppresses
+  every tick and "did my typed text survive the poll?" passes with no swap ever
+  having happened. Force the identical swap by hand or the check is worthless.
+
+### Deployment
+
 - **Docker maps Postgres to host port 5433**, not 5432, because 5432 was already
   in use on the dev machine. Inside the compose network it is still `db:5432`.
+- **Compose derives the project name from the directory**, so `docker-compose.yml`
+  and `docker-compose.prod.yml` would both be project "clinicore" and both
+  resolve `postgres_data` to the *same volume* — production silently adopting
+  the development database, demo patients and all. The prod file pins
+  `name: clinicore-prod` for this reason. Found by running both in one
+  directory.
+- **`.env` must stay in `.dockerignore`.** `COPY . .` otherwise bakes a real
+  `SECRET_KEY` and database password into an image layer, where they survive in
+  the history even if a later step deletes the file. Observed in an image built
+  here before the entry was added.
+- **`collectstatic` is not optional now.** WhiteNoise's manifest storage
+  resolves `{% static %}` through `staticfiles.json`; a missing entry raises at
+  render time. That is the intended trade — the failure it replaced was three JS
+  files 404ing while the CDN kept the page looking correct, so the patient
+  picker and invoice line editor were dead on a page that appeared fine.
 
-## Known defects
+## Lessons
 
-### ~~The organization's timezone is written and never read~~ — fixed 2026-08-07
+### A suite that only tests the default configuration proves nothing
 
-**Fixed the same day it was found.** The middleware now activates the
-organization's zone beside the org context, on the same reset-in-finally
-lifecycle; `TIME_ZONE` stays UTC and only presentation moved. Full reasoning,
-including why the corruption ran the opposite way from how it looked, is in
-[ADR 0011](adr/0011-organization-timezone-per-request.md).
+The organization's timezone was written and never read for the whole MVP —
+`Organization.timezone` existed, `bootstrap_demo` wrote `Asia/Dhaka` to it, and
+no code called `timezone.activate`. Every datetime rendered six hours behind the
+clinic. Fixed in [ADR 0011](adr/0011-organization-timezone-per-request.md).
 
-**One thing this did not fix:** datetimes that a user hand-corrected under the
-old behaviour are still six hours out in the database, and there is no migration
-because nothing distinguishes them from values that were always right. Treat any
-hand-edited datetime from before 2026-08-07 as suspect.
+The lesson generalises well beyond timezones, which is why it is kept here:
 
-The original diagnosis is kept below, because the lesson generalises — a suite
-that only exercises the default configuration can prove nothing about the
-configuration a clinic actually runs.
+- **The bug was invisible because the default `Organization.timezone` is
+  `'UTC'`,** where storage, display and "today" all agree. Every test passed.
+  `core/tests/test_organization_timezone.py` now runs on `Asia/Dhaka` throughout
+  and pins `timezone.now` to 19:30 UTC — 01:30 next day in Dhaka — so the
+  calendars genuinely disagree. **Keep a non-UTC org in any future work here.**
+- **The corruption ran the opposite way from how it looked.** Accepting the
+  wrong-looking default was *safe*: render and parse both used UTC, so the value
+  round-tripped. **Correcting** the field was what wrote bad data — a doctor
+  seeing "02:06 PM" at eight in the evening fixes it to `20:06`, which was
+  parsed as UTC and stored as 02:06 the *following day* in Dhaka. A clinic that
+  never looked at the clock kept good data by doing nothing.
+- **Existing hand-edited datetimes are still wrong.** There is no migration,
+  because nothing distinguishes them from values that were always right. Treat
+  any hand-corrected datetime from before 2026-08-07 as suspect.
 
-Found 2026-08-07 while browser-checking the appointments day list.
+### "No configuration" is not the same as "sensible defaults"
 
-`config/settings.py` sets `TIME_ZONE = 'UTC'` with `USE_TZ = True`.
-`Organization.timezone` exists, is populated (`bootstrap_demo` writes
-`Asia/Dhaka`), and is **read by nothing** — `grep -rn 'timezone.activate'`
-returns no hits, and no middleware activates a per-request timezone alongside
-the organization context. So every aware datetime renders in UTC, and for this
-clinic that is six hours behind the wall clock.
+There was no `LOGGING` block at all until 2026-08-08, and the assumption that
+Django's defaults would cover it was wrong in two different directions:
 
-Observed: the new-visit form defaulted `occurred_at` to `2026-08-07T14:06`
-while the browser clock read 20:07 Asia/Dhaka.
+- Application warnings — including the bad-timezone warning above, which exists
+  precisely so a misconfigured tenant is noticed — reached stderr only through
+  `logging.lastResort`, the fallback for when no handler exists anywhere. That
+  writes the bare message: no timestamp, no level, no logger name.
+- **Unhandled 500s were lost entirely.** `django.request` propagates to the
+  `django` logger, which Django's defaults give a console handler filtered by
+  `require_debug_true` and an `AdminEmailHandler` with `ADMINS = []`. Because
+  handlers existed, `lastResort` never fired; because both dropped the record,
+  nothing was written anywhere at all.
 
-**This corrupts data; it is not a display nicety.** The mechanism is worth
-stating exactly, because it is the opposite way round from what it looks like:
+`core/tests/test_logging.py` guards both by reading what the *configured*
+handlers emit. Note that `caplog` cannot test this — it attaches a handler of
+its own, so it measures pytest rather than the settings.
 
-- **Accepting the default is safe.** Render and parse both use UTC, so the value
-  round-trips. Encounter 104 was saved by accepting `14:06` and stored
-  `14:06+00:00`, which is 20:06 Dhaka — the correct instant.
-- **Correcting the field is what writes bad data.** A doctor who sees "02:06 PM"
-  at eight in the evening will fix it to `20:06`. That is parsed as UTC and
-  stored as `20:06+00:00` = **02:06 the following day** in Dhaka: wrong by six
-  hours and on the wrong date.
+### A library's default can be wrong for your model and say nothing
 
-So the corruption is triggered by a conscientious user correcting what is
-plainly wrong on screen, from entirely correct input — which is the failure mode
-the standing "never silently write wrong data" principle exists to catch. It
-also gets worse the further the deployment is from UTC, and a clinic that never
-notices the display will keep the *right* data by doing nothing.
+`django-axes` defaults `AXES_USERNAME_FORM_FIELD` to
+`get_user_model().USERNAME_FIELD`, which is `phone` here — but
+`AuthenticationForm` names its field `username` whatever the model calls it.
+Left at the default, axes found no key it recognised and recorded **every**
+attempt as `username=None`, silently collapsing the lockout key to the IP alone:
+one attacker locking out the entire clinic.
 
-Blast radius is every absolute datetime, not just this form: `Encounter.
-occurred_at`, `finalized_at`, `Invoice.issued_at`, `Payment.received_at`,
-stock movement timestamps, and history rows. The appointments day list is mostly
-immune by accident — `timesince` is a duration, and `Appointment.scheduled_time`
-is a naive `TimeField` — which is why this survived that increment's browser
-pass until the visit form was opened from it.
-
-Fix was deliberately not folded into the appointments work: activate the
-organization's timezone per request (next to the org context, so the two cannot
-disagree), decide whether `TIME_ZONE` stays UTC, and audit every
-`datetime-local` widget for the render/parse round trip. All three were done in
-ADR 0011 — the audit found exactly two such widgets, `Encounter.occurred_at` and
-`GoodsReceipt.received_at`, and both now have round-trip tests.
-
-## Not done at all
-
-CI (`.github/workflows/ci.yml`), pre-commit hooks, the ERD in the README,
-ADRs 0001–0004, `.env.example`, deployment (gunicorn, Caddy, WhiteNoise,
-backups), attachments, audit log, and the `Makefile`.
+Nothing user-visible changes when this is wrong. The lockout still fires, at the
+wrong granularity. It was caught by printing `AccessAttempt` rows during the
+first browser-shaped check, and is now pinned by
+`accounts/tests/test_login_lockout.py`.

@@ -12,3 +12,12 @@ staticfiles
 media
 docs
 *.md
+
+# Secrets. `COPY . .` will otherwise bake a developer's real SECRET_KEY and
+# database password into an image layer, where they survive in the history even
+# if a later step deletes the file — and travel to anyone who can pull it.
+# Configuration reaches the container through env_file at run time, never
+# through the build. Observed: an image built here contained a full .env.
+.env
+.env.*
+!.env.example

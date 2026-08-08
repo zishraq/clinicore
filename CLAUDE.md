@@ -270,7 +270,54 @@ true wall-clock time wrote it six hours out and on the wrong date. Rules:
 - **Existing hand-edited datetimes are still wrong** and there is no migration,
   because nothing tells them apart from values that were always right.
 
-Next: SPEC §11 phases remain suspended. Not deployed.
+The pre-deployment slice is done (2026-08-08): static serving, HTTPS posture,
+login rate limiting, logging, CI, and a production compose file. Verified by
+building and running the production stack, not only by tests. Rules to know:
+
+- **`DEBUG` now defaults to *off*, and settings refuse to import without a real
+  `SECRET_KEY` when it is.** The asymmetry is the argument: a dev machine that
+  forgets `DJANGO_DEBUG=true` looks broken and gets fixed in seconds; a
+  deployment that forgets it serves tracebacks quietly. `docker-compose.yml`
+  sets it; bare `manage.py` runs need it exported. `settings_test.py` declares a
+  throwaway key before its star-import for the same reason.
+- **WhiteNoise means `collectstatic` is mandatory.** Manifest storage resolves
+  `{% static %}` through `staticfiles.json` and raises on a missing entry.
+  `settings_test.py` overrides back to plain storage — without that, every
+  template rendering `{% static %}` fails. That trade is deliberate: the failure
+  it replaces was three JS files 404ing with `DEBUG=False` while the CDN kept
+  the page looking correct, so the patient picker and invoice lines were dead on
+  a page that appeared to have loaded fine.
+- **`SECURE_PROXY_SSL_HEADER` is opt-in via `DJANGO_BEHIND_PROXY` and must
+  stay that way.** `X-Forwarded-Proto` is client-supplied; trusting it with
+  nothing upstream overwriting it defeats every `is_secure()` decision below it.
+  The same flag switches axes to reading `X-Forwarded-For`.
+- **`django-axes` needed `AXES_USERNAME_FORM_FIELD = 'username'`.** It defaults
+  to the *model's* `USERNAME_FIELD` (`phone`), but `AuthenticationForm` always
+  names its field `username`. Left at the default it recorded every attempt as
+  `username=None` and the lockout key collapsed to the IP — one attacker locking
+  out the whole clinic. Nothing visible changes when it is wrong.
+- **"No LOGGING" was two different silences, and the bigger one was 500s.**
+  App warnings reached stderr bare via `logging.lastResort`; `django.request`
+  errors were dropped entirely, because the `django` logger *had* handlers
+  (a `require_debug_true` console and an `AdminEmailHandler` with no `ADMINS`)
+  so `lastResort` never fired. `core/tests/test_logging.py` reads what the
+  configured handlers emit — `caplog` cannot test this, it measures pytest.
+- **`docker-compose.prod.yml` pins `name: clinicore-prod`.** Without it both
+  compose files are project "clinicore" and share `postgres_data`, so
+  production adopts the dev database. **`.env` is in `.dockerignore`** because
+  `COPY . .` otherwise bakes the real key and password into an image layer;
+  both were observed, not theorised.
+- **CI's reason to exist is Postgres.** The invoice-numbering and FEFO tests
+  `pytest.skip` on SQLite — green without executing — so the workflow fails
+  explicitly if either skips.
+- **Authorisation is at the view boundary by decision**, not by oversight;
+  services take `actor` for attribution and check nothing. `docs/adr/0012-*`
+  states what that obliges every new view to do — including HTMX partials, which
+  are URLs.
+
+Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
+`RolePermission`, attachments and the audit log are the remaining gaps. Deployable
+now, but never actually deployed anywhere.
 
 ## Standing rules
 

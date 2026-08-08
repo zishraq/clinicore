@@ -1,9 +1,19 @@
-# Pinned to what the MVP actually imports. The uv + pyproject + uv.lock setting
-# proposed in docs/phase-0-proposal.md §3(l) lands with the deployment work.
+# Pinned to what the project actually imports. The uv + pyproject + uv.lock
+# setting proposed in docs/phase-0-proposal.md §3(l) is still outstanding.
 Django==6.0.7
 psycopg[binary]==3.2.3
 # Revision history on clinical models; see docs/adr/0006-encounter-amendments.md
 django-simple-history==3.13.0
+# Serves STATIC_ROOT from the application process, which is what makes
+# `gunicorn config.wsgi` a complete deployment with no static file server in
+# front. brotli writes the .br siblings at collectstatic time.
+whitenoise[brotli]==6.9.0
+# Login rate limiting (SPEC §3, §6.1). Database-backed, so a lockout holds
+# across gunicorn workers and survives a restart.
+django-axes==8.0.0
+
+# Production
+gunicorn==23.0.0
 
 # Development and CI
 pytest==9.1.1

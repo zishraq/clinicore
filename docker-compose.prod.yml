@@ -1,0 +1,95 @@
+# Production stack. Deliberately a separate file from docker-compose.yml rather
+# than an override of it: the dev file bind-mounts the source tree, runs
+# runserver, hardcodes a password and migrates on boot, and every one of those
+# is wrong here. A shared base with overrides would leave those defaults one
+# forgotten `-f` away from being live.
+#
+#   cp .env.example .env      # then fill in DJANGO_SECRET_KEY and POSTGRES_PASSWORD
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml run --rm web python manage.py migrate
+#
+# Put a TLS-terminating reverse proxy in front and set DJANGO_BEHIND_PROXY.
+# Static files are served by the app itself through WhiteNoise, so the proxy
+# needs no rules beyond forwarding.
+
+# Its own project namespace, which is load-bearing rather than cosmetic. Compose
+# derives the project name from the directory, so without this both files are
+# project "clinicore" and both resolve `postgres_data` to the same volume: the
+# production stack silently adopts whatever the development one initialised,
+# including its password and its synthetic demo patients. Found by running the
+# two in one directory, where it surfaced as an authentication failure — the
+# harmless end of a range that also contains "production is now serving the
+# demo database".
+name: clinicore-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    # No credentials in this file. `${VAR:?message}` fails the command with
+    # that message when the variable is unset, so a missing password stops the
+    # deployment instead of silently starting Postgres with a default one.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Not published. Nothing outside the compose network has any business
+    # reaching the database, and the dev file's 5433 mapping is a convenience
+    # that becomes an exposure here.
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    # No command override: the image's gunicorn CMD is the production one.
+    #
+    # Migrations are not run on boot, on purpose. With more than one replica
+    # every one of them would race the same migration, and a schema change that
+    # fails at three in the morning would leave a crash-looping container
+    # rather than a deployment that stopped and waited. Run them as the
+    # explicit step in the header comment, before or after, but consciously.
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Overrides whatever .env says: `db` is the hostname on this network, and
+      # a stale POSTGRES_HOST from a developer's file is a confusing failure.
+      POSTGRES_HOST: db
+      POSTGRES_PORT: '5432'
+    ports:
+      # Bound to the loopback interface, so only the reverse proxy on this host
+      # can reach it. Publishing 0.0.0.0 would put the app on the internet
+      # beside the proxy rather than behind it.
+      - '127.0.0.1:${WEB_PORT:-8000}:8000'
+    # No bind mount. The image contains the code and the collected static
+    # files; mounting the host over /app would replace both, and would shadow
+    # the staticfiles/ manifest that WhiteNoise needs to render any page.
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # No curl in python:3.12-slim, and installing one for this would be a
+      # package to patch forever. urllib is already present.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen(
+              'http://localhost:8000/healthz', timeout=5).status == 200 else 1)
+      interval: 30s
+      timeout: 10s
+      # Generous, because this only has to come up once and a slow first boot
+      # under migration should not be restarted out from under itself.
+      start_period: 30s
+      retries: 3
+
+volumes:
+  postgres_data:

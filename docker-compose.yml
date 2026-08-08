@@ -1,5 +1,7 @@
-# Local development stack: Django + Postgres. No Caddy, no gunicorn, no
-# production settings — deployment is a separate job (docs/MVP-NOTES.md).
+# Local development stack: Django + Postgres, runserver, a bind mount, and a
+# throwaway password. Production is docker-compose.prod.yml — a separate file,
+# not an override, so none of those defaults can leak into a deployment that
+# forgot a `-f` flag.
 services:
   db:
     image: postgres:16-alpine
