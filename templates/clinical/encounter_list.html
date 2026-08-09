@@ -42,15 +42,16 @@
       <tbody>
         {% for encounter in encounters %}
           <tr class="hover cursor-pointer" onclick="window.location='{% url 'clinical:encounter_detail' encounter.pk %}'">
-            <td data-label="Date">{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
-            <td class="font-medium" data-label="Patient">
+            <td data-label="Date" data-card="meta">{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
+            {# The patient is what you scan for, so it is the card's heading. #}
+            <td class="font-medium" data-label="Patient" data-card="title">
               {{ encounter.patient.full_name }}
               {% if not encounter.is_locked %}
                 <span class="badge badge-warning badge-outline badge-sm ml-2">{{ terms.status_draft }}</span>
               {% endif %}
             </td>
-            <td data-label="Practitioner">{{ encounter.practitioner.full_name }}</td>
-            <td data-label="Branch">{{ encounter.branch.name }}</td>
+            <td data-label="Practitioner" data-card="meta">{{ encounter.practitioner.full_name }}</td>
+            <td data-label="Branch" data-card="meta">{{ encounter.branch.name }}</td>
           </tr>
         {% endfor %}
       </tbody>

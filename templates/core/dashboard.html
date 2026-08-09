@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load terminology %}
+{% load terminology formatting %}
 
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
@@ -43,7 +43,7 @@ usually empty stops being read.
           {% for product in stock_alerts.below_reorder.rows %}
             <li class="flex justify-between gap-3">
               <a class="link truncate" href="{% url 'inventory:product_stock' product.pk %}">{{ product.name }}</a>
-              <span class="tabular-nums text-muted whitespace-nowrap">{{ product.annotated_on_hand|floatformat:'-2' }} / {{ product.reorder_level|floatformat:'-2' }}</span>
+              <span class="tabular-nums text-muted whitespace-nowrap">{{ product.annotated_on_hand|qty }} / {{ product.reorder_level|qty }}</span>
             </li>
           {% endfor %}
         </ul>
@@ -73,7 +73,7 @@ usually empty stops being read.
           {% for batch in stock_alerts.expired.rows %}
             <li class="flex justify-between gap-3">
               <a class="link truncate" href="{% url 'inventory:product_stock' batch.product_id %}">{{ batch.product.name }}</a>
-              <span class="tabular-nums text-muted whitespace-nowrap">{{ batch.on_hand|floatformat:'-2' }} left</span>
+              <span class="tabular-nums text-muted whitespace-nowrap">{{ batch.on_hand|qty }} left</span>
             </li>
           {% endfor %}
         </ul>
@@ -93,9 +93,9 @@ usually empty stops being read.
       <tbody>
         {% for encounter in recent_encounters %}
           <tr class="hover">
-            <td data-label="Patient"><a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ encounter.patient.full_name }}</a></td>
-            <td data-label="When">{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
-            <td data-label="Practitioner">{{ encounter.practitioner.full_name }}</td>
+            <td data-label="Patient" data-card="title"><a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ encounter.patient.full_name }}</a></td>
+            <td data-label="When" data-card="meta">{{ encounter.occurred_at|date:'d M Y, H:i' }}</td>
+            <td data-label="Practitioner" data-card="meta">{{ encounter.practitioner.full_name }}</td>
             {# Draft only. A finished visit is the ordinary case and says nothing. #}
             <td>
               {% if not encounter.is_locked %}

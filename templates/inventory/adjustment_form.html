@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load formatting %}
 
 {% block title %}Adjust {{ batch.product.name }}{% endblock %}
 {% block page_title %}{{ terms.adjustment }} — {{ batch.product.name }}{% endblock %}
@@ -18,7 +19,7 @@
     </div>
     <div>
       <dt class="text-xs text-muted uppercase tracking-wide">On hand</dt>
-      <dd class="mt-1 font-semibold tabular-nums">{{ batch.on_hand }}</dd>
+      <dd class="mt-1 font-semibold tabular-nums">{{ batch.on_hand|qty }}</dd>
     </div>
   </dl>
 

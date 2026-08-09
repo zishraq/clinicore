@@ -1,20 +1,61 @@
-{# Mobile only: the sidebar collapses into a drawer, so the primary destinations move to the thumb zone. #}
+{% comment %}
+Mobile only: the sidebar collapses into a drawer, so the primary destinations
+move to the thumb zone.
+
+Icons are inline SVG rather than a font or a sprite — five paths are smaller
+than any icon dependency, they inherit `currentColor` so the active state needs
+no second rule, and there is nothing extra to load on a clinic's connection.
+Each is 24×24 with a 1.75 stroke, drawn to read at 22px.
+
+`aria-hidden` on every one: the label underneath is the accessible name, and a
+screen reader announcing "calendar Appointments" is worse than "Appointments".
+{% endcomment %}
 <nav class="btm-nav lg:hidden z-20 border-t border-black/5 bg-[var(--cc-surface)]">
   <a href="{% url 'core:dashboard' %}" class="{% if request.resolver_match.view_name == 'core:dashboard' %}active text-[var(--cc-primary)]{% endif %}">
+    {# Squares: a summary made of separate panels. #}
+    <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+      <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+    </svg>
     <span class="btm-nav-label">Dashboard</span>
   </a>
   <a href="{% url 'patients:list' %}" class="{% if 'patients' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+    {# Two people: the register, not one record. #}
+    <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="9" cy="8" r="3.25"/>
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0"/>
+      <path d="M16.5 5.5a3.25 3.25 0 0 1 0 6"/>
+      <path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>
+    </svg>
     <span class="btm-nav-label">Patients</span>
   </a>
   {# Ungated: STAFF works the day list all day, and it is the reason they are here. #}
   <a href="{% url 'scheduling:day' %}" class="{% if 'scheduling' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+    {# Calendar: the day, which is what this screen is. #}
+    <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="16" rx="2"/>
+      <path d="M3 10h18M8 3v4M16 3v4"/>
+    </svg>
     <span class="btm-nav-label">{{ terms.appointment_plural }}</span>
   </a>
   {% if membership.can_view_clinical %}
     <a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+      {# Clipboard: the note taken during the consultation. #}
+      <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/>
+        <rect x="9" y="2.5" width="6" height="3.5" rx="1"/>
+        <path d="M9 12h6M9 16h4"/>
+      </svg>
       <span class="btm-nav-label">{{ terms.encounter_plural }}</span>
     </a>
     <a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+      {# Receipt, torn edge and all: the thing the patient is handed. #}
+      <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 3.5h14v17l-2.3-1.6-2.35 1.6-2.35-1.6-2.35 1.6L7.3 18.9 5 20.5z"/>
+        <path d="M9 8h6M9 12h6"/>
+      </svg>
       <span class="btm-nav-label">{{ terms.invoice_plural }}</span>
     </a>
   {% endif %}

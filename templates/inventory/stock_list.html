@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load formatting %}
 
 {% block title %}{{ terms.stock }}{% endblock %}
 {% block page_title %}{{ terms.stock }}{% endblock %}
@@ -41,14 +42,17 @@
       <tbody>
         {% for product in products %}
           <tr class="hover cursor-pointer" onclick="window.location='{% url 'inventory:product_stock' product.pk %}{% if branch %}?branch={{ branch.pk }}{% endif %}'">
-            <td class="font-medium" data-label="Product">{{ product.name }}</td>
-            <td data-label="Unit">{{ product.unit|default:'—' }}</td>
-            <td class="font-mono text-sm" data-label="Code">{{ product.sku|default:'—' }}</td>
-            <td class="text-right tabular-nums font-semibold" data-label="On hand">{{ product.annotated_on_hand }}</td>
+            <td class="font-medium" data-label="Product" data-card="title">{{ product.name }}</td>
+            <td data-label="Unit" data-card="meta">{{ product.unit|default:'—' }}</td>
+            <td class="font-mono text-sm" data-label="Code" data-card="meta">{{ product.sku|default:'—' }}</td>
+            {# On hand is the reason this screen exists; it keeps its label. #}
+            <td class="text-right tabular-nums font-semibold" data-label="On hand">{{ product.annotated_on_hand|qty }}</td>
             <td class="text-right tabular-nums text-muted" data-label="Reorder at">
-              {% if product.reorder_level %}{{ product.reorder_level }}{% else %}—{% endif %}
+              {% if product.reorder_level %}{{ product.reorder_level|qty }}{% else %}—{% endif %}
             </td>
-            <td class="text-right">
+            {# meta so the action rides the unit/code line instead of taking a #}
+            {# row of its own; on a phone the whole card already opens this. #}
+            <td class="text-right" data-card="meta">
               <a href="{% url 'inventory:product_stock' product.pk %}" class="btn btn-xs btn-brand-ghost">{{ terms.batch_plural }}</a>
             </td>
           </tr>

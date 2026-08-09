@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load terminology %}
+{% load terminology formatting %}
 
 {% block title %}{{ product.name }} — {{ terms.stock|lower }}{% endblock %}
 {% block page_title %}{{ product.name }}{% endblock %}
@@ -12,12 +12,12 @@
 <div class="grid gap-4 sm:grid-cols-3 mb-6">
   <div class="card-surface rounded-xl p-5">
     <p class="text-xs text-muted uppercase tracking-wide">On hand</p>
-    <p class="text-3xl font-semibold tabular-nums mt-1">{{ on_hand }}</p>
+    <p class="text-3xl font-semibold tabular-nums mt-1">{{ on_hand|qty }}</p>
     <p class="text-xs text-muted mt-1">{{ product.unit|default:'units' }}</p>
   </div>
   <div class="card-surface rounded-xl p-5">
     <p class="text-xs text-muted uppercase tracking-wide">Usable</p>
-    <p class="text-3xl font-semibold tabular-nums mt-1">{{ usable }}</p>
+    <p class="text-3xl font-semibold tabular-nums mt-1">{{ usable|qty }}</p>
     <p class="text-xs text-muted mt-1">Expired stock excluded</p>
   </div>
   <div class="card-surface rounded-xl p-5">
@@ -71,7 +71,7 @@
                 {% else %}—{% endif %}
               </td>
               <td class="text-right tabular-nums" data-label="Cost">{{ batch.cost_price }}</td>
-              <td class="text-right tabular-nums font-semibold" data-label="On hand">{{ batch.on_hand }}</td>
+              <td class="text-right tabular-nums font-semibold" data-label="On hand">{{ batch.on_hand|qty }}</td>
               <td class="text-right">
                 <a href="{% url 'inventory:adjustment_create' batch.pk %}" class="btn btn-xs btn-brand-ghost">Adjust</a>
               </td>
@@ -101,7 +101,7 @@
               <td data-label="Type">{% status_label movement.movement_type %}</td>
               <td class="font-mono text-sm" data-label="Lot">{{ movement.batch.lot_number|default:'—' }}</td>
               <td class="text-right tabular-nums font-semibold {% if movement.quantity < 0 %}text-[var(--cc-danger)]{% endif %}">
-                {{ movement.quantity }}
+                {{ movement.quantity|qty }}
               </td>
               <td class="text-sm" data-label="Reason">{{ movement.reason|default:'—' }}</td>
               <td class="text-sm" data-label="By">{{ movement.created_by.full_name|default:'—' }}</td>

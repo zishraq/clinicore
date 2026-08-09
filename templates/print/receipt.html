@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static formatting %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -223,7 +223,7 @@
       {% for item in items %}
         <tr>
           <td class="name">{{ item.name_snapshot }}</td>
-          <td class="num">{{ item.quantity }}</td>
+          <td class="num">{{ item.quantity|qty }}</td>
           <td class="num">{{ item.unit_price }}</td>
           <td class="num">{{ item.discount }}</td>
           <td class="num">{{ item.line_total }}</td>

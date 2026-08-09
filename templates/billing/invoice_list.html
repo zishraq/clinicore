@@ -57,13 +57,20 @@
       <tbody>
         {% for invoice in invoices %}
           <tr class="hover cursor-pointer" onclick="window.location='{% url 'billing:invoice_detail' invoice.pk %}'">
-            <td class="font-mono" data-label="Number">{{ invoice.number }}</td>
-            <td data-label="Date">{{ invoice.issued_at|date:'d M Y' }}</td>
-            <td class="font-medium" data-label="Patient">{{ invoice.patient.full_name }}</td>
+            {% comment %}
+              The number and the date identify themselves; the three money
+              columns do not, so they keep their labels. An unlabelled "89.50"
+              next to an unlabelled "0.00" is a guess, and this is a bill.
+            {% endcomment %}
+            <td class="font-mono" data-label="Number" data-card="meta">{{ invoice.number }}</td>
+            <td data-label="Date" data-card="meta">{{ invoice.issued_at|date:'d M Y' }}</td>
+            <td class="font-medium" data-label="Patient" data-card="title">{{ invoice.patient.full_name }}</td>
             <td class="text-right tabular-nums" data-label="Total">{{ invoice.amount_due }}</td>
             <td class="text-right tabular-nums" data-label="Paid">{{ invoice.amount_paid }}</td>
             <td class="text-right tabular-nums font-semibold" data-label="Balance">{{ invoice.balance }}</td>
-            <td>
+            {# meta so the badge rides the number/date line: it is one word, and #}
+            {# a full row for "Unpaid" is the widest thing saying the least. #}
+            <td data-card="meta">
               {% include 'billing/_status_badge.html' with status=invoice.payment_status %}
             </td>
           </tr>

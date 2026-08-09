@@ -55,13 +55,27 @@
  *
  * A `td` with no `data-label` (an actions cell, a badge) renders full width with
  * no heading, which is what those want anyway.
+ *
+ * Two opt-in annotations make the card compact, because one labelled row per
+ * column is honest but enormous — a five-column patient list gave a card five
+ * rows tall and fitted one and a half patients on a phone screen, which is a
+ * list you cannot skim:
+ *
+ *   data-card="title"  the identifying cell. A heading: full width, no label,
+ *                      because "Name: Rahima Rahman" is a label nobody needed.
+ *   data-card="meta"   secondary cells. Condensed onto a shared line, label
+ *                      dropped, muted.
+ *
+ * Anything unannotated keeps the labelled full-width row, which is the right
+ * default: it is what a number needs. "89.50" with no label is a mystery, so
+ * money and counts stay labelled and only the self-evident things — a code, an
+ * age, a phone number, a date — become meta.
  */
 @media (max-width: 639px) {
   /* `table.` on the element: daisyUI ships `table.table { display: table }`,
    * which outranks a bare class and left the element a table with block rows. */
   table.table-cards,
   table.table-cards tbody,
-  table.table-cards tr,
   table.table-cards td {
     display: block;
     width: 100%;
@@ -71,7 +85,16 @@
     display: none;
   }
 
+  /* The row is a wrapping flex container so that meta cells can share a line
+   * while everything else spans it. `column-gap` rather than a separator glyph
+   * on purpose: an empty cell is set to `display: none` below, and a `::before`
+   * separator would still render against its hidden neighbour — a stray
+   * middot leading a line, for a cell that had nothing to say. */
   table.table-cards tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.75rem;
     background-color: var(--cc-surface);
     border: 1px solid rgb(0 0 0 / 0.08);
     border-radius: 0.75rem;
@@ -80,6 +103,9 @@
   }
 
   table.table-cards td {
+    /* Full width unless something opts out; this is what keeps every
+     * unannotated table rendering exactly as it did before. */
+    flex: 0 0 100%;
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -96,6 +122,47 @@
     font-size: 0.75rem;
     text-align: left;
     flex: 0 0 auto;
+  }
+
+  /* The card has three tiers, and `order` puts the cells in them regardless of
+   * which column they happen to be in: title, then every meta, then the
+   * labelled rows. Reordering the `td`s in the template instead would drag the
+   * desktop table's column order along with it, and that order is fine — a
+   * patient list leads with the code, an invoice list with the number, and the
+   * status badge sits last where a wide table wants it.
+   *
+   * Without the tiers a meta simply keeps its DOM position, so the invoice
+   * status badge — the last column — landed on a line of its own beneath the
+   * balance, inline but alone, which is the widest possible way to say
+   * "Unpaid". */
+  table.table-cards td[data-card='title'] {
+    order: -2;
+    display: block;
+    text-align: left;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    padding: 0.1rem 0 0.2rem;
+  }
+
+  /* Secondary cells: inline, small, muted, no label. `flex: 0 1 auto` lets
+   * several share a line and wrap to the next when they run out of room. */
+  table.table-cards td[data-card='meta'] {
+    order: -1;
+    flex: 0 1 auto;
+    width: auto;
+    display: block;
+    text-align: left;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--cc-text-muted);
+    padding: 0 0 0.1rem;
+  }
+
+  /* Both annotations drop the heading — that is the point of them. */
+  table.table-cards td[data-card='title'][data-label]::before,
+  table.table-cards td[data-card='meta'][data-label]::before {
+    content: none;
   }
 
   /* An empty cell is a column that had nothing to say for this row. */
@@ -159,24 +226,51 @@
     padding-right: 0.75rem;
   }
 
-  /* Five destinations in 375px. daisyUI sizes the labels for a roomier bar, so
-   * "Dashboard", "Patients" and "Appointments" ran into each other with no gap
-   * — legible only if you already knew what they said. Smaller type, a little
-   * padding, and each label truncated inside its own cell instead of spilling
-   * into its neighbour. */
+  /* Five destinations in 375px, which is 75px each before padding.
+   *
+   * The labels used to be truncated with an ellipsis, which is the wrong answer
+   * twice over: "Appointment…" is not a word, and the longest label is the one
+   * a receptionist needs most. An icon carries the recognition instead, so the
+   * text can be small enough to fit whole — 0.625rem renders "Appointments" at
+   * about 62px, inside the ~67px a cell has after padding.
+   *
+   * `overflow: hidden` stays as a backstop: the labels come from the
+   * terminology map, so a clinic can rename Appointments to something longer,
+   * and clipping is a better failure than a nav bar pushed sideways. */
   .btm-nav > * {
-    padding-left: 0.25rem;
-    padding-right: 0.25rem;
+    padding-left: 0.125rem;
+    padding-right: 0.125rem;
     min-width: 0;
+    gap: 0.1rem;
   }
 
   .btm-nav .btm-nav-label {
-    font-size: 0.6875rem;
-    line-height: 1.1;
+    font-size: 0.625rem;
+    line-height: 1.15;
     max-width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+/* The nav icons are sized outside the phone media query: the bar itself is
+ * `lg:hidden`, so it is on show from 640 to 1023px too, where the labels are
+ * roomy but the icons still need a size. */
+@media (max-width: 1023px) {
+  .btm-nav .btm-nav-icon {
+    width: 1.375rem;
+    height: 1.375rem;
+    flex: 0 0 auto;
+  }
+
+  /* daisyUI centres the label on a bar with no icon; with one, the pair reads
+   * better pushed together and lifted slightly off the home indicator. */
+  .btm-nav > * {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
   }
 
   /* Menu rows: the sidebar links and the Log out item in the user dropdown.

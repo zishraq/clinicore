@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load formatting %}
 
 {% block title %}{{ invoice.number }}{% endblock %}
 {% block page_title %}{{ invoice.number }}{% endblock %}
@@ -30,7 +31,7 @@
             <tr>
               {# name_snapshot, never the live catalog row: a renamed product must not rewrite this bill. #}
               <td class="font-medium" data-label="Item">{{ item.name_snapshot }}</td>
-              <td class="text-right tabular-nums" data-label="Qty">{{ item.quantity }}</td>
+              <td class="text-right tabular-nums" data-label="Qty">{{ item.quantity|qty }}</td>
               <td class="text-right tabular-nums" data-label="Unit price">{{ item.unit_price }}</td>
               <td class="text-right tabular-nums" data-label="Discount">{{ item.discount }}</td>
               <td class="text-right tabular-nums" data-label="Total">{{ item.line_total }}</td>
