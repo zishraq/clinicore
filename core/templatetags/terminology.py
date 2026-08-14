@@ -11,7 +11,7 @@ from organizations.models import DEFAULT_TERMINOLOGY
 
 register = template.Library()
 
-__all__ = ['register', 'status_label']
+__all__ = ['register', 'role_label', 'status_label']
 
 
 @register.simple_tag(takes_context=True)
@@ -25,3 +25,15 @@ def status_label(context, status) -> str:
     """
     terms = context.get('terms') or DEFAULT_TERMINOLOGY
     return terms.get(f'status_{str(status).lower()}') or str(status).title()
+
+
+@register.simple_tag(takes_context=True)
+def role_label(context, role) -> str:
+    """Label for a stored role, e.g. ``OWNER`` → "Administrator".
+
+    Not ``get_role_display``: that reads the label off the enum, which is a
+    code-level default. Roles are a user-facing word for a domain concept, so
+    they come from the organization's map like every other one (SPEC §5).
+    """
+    terms = context.get('terms') or DEFAULT_TERMINOLOGY
+    return terms.get(f'role_{str(role).lower()}') or str(role).title()

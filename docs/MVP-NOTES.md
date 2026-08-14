@@ -42,6 +42,24 @@ this file covers what was **not** built and what keeps biting.
 - **Pre-commit hooks, the ERD in the README, ADRs 0001–0004, and the
   `Makefile`** — `make seed` does not exist.
 
+### Left out on purpose, and recorded as a decision
+
+- **Password reset by email.** There is no `PasswordResetView`, no SMTP
+  configuration, and no "forgot your password" link, and that is a decision
+  rather than an oversight —
+  [ADR 0013](adr/0013-user-management-without-email.md). `User.email` is
+  optional and never verified, phone is the identifier, and a self-hosted box
+  has no mail sending: an SMTP dependency that fails silently is worse than no
+  feature, because the user is told to check an inbox nothing will ever reach.
+  Recovery is an administrator setting a temporary password on the team screen
+  and reading it out, with `User.must_change_password` forcing a replacement.
+  Adding real email later is additive and moves nothing.
+- **A permission matrix screen.** Three fixed roles and a dropdown. SPEC §6.1
+  asks for per-organization `RolePermission` rows; a UI for editing them is
+  configuration a five-person clinic will get wrong rather than a feature it
+  wants. Still listed as genuinely absent above, because the *data-driven* half
+  is what is missing, not the screen.
+
 ### Struck from the spec on purpose
 
 - **`QueueEntry`** and SPEC §6.3's "reorder" and "slot templates". A walk-in is
@@ -100,7 +118,17 @@ this file covers what was **not** built and what keeps biting.
 - **`Membership` is not an `OrgOwnedModel`.** The middleware queries it to
   *establish* the active organization, so it must be readable before any
   organization is active. It carries an explicit `organization` FK and a plain
-  manager.
+  manager. **The team screen is therefore the one surface where a forgotten
+  `.filter(organization=…)` shows another clinic's staff instead of an empty
+  page.** Every lookup there goes through `services.organization_members`, which
+  takes the organization as an argument precisely so it cannot be omitted
+  silently, and `accounts/tests/test_team.py` asserts both the list and the
+  by-pk routes directly.
+- **A `disabled` form field is a server-side guard, not decoration.** Django
+  ignores submitted data for one and uses the initial value instead, which is
+  what stops an administrator demoting themselves with a hand-built POST
+  (`MemberUpdateForm`). Worth knowing before someone "fixes" it into a
+  `clean_role` refusal that a disabled field could never reach anyway.
 - **The admin reads through `all_objects`** (`core/admin.py`). Registering an
   org-owned model with a plain `ModelAdmin` will raise on the changelist —
   subclass `OrgOwnedAdmin`.

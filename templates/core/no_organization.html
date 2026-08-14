@@ -5,10 +5,16 @@
 {% block anon_content %}
 <div class="min-h-screen flex items-center justify-center p-4">
   <div class="card-surface rounded-2xl p-8 max-w-md text-center">
-    <h1 class="text-xl font-semibold">No active organization</h1>
+    <h1 class="text-xl font-semibold">No access</h1>
+    {% comment %}
+      Two different situations, one message on purpose: an account that has not
+      been added to a clinic yet, and one whose access was withdrawn on the team
+      screen. Telling them apart would only matter to somebody who already knows
+      which of the two they are.
+    {% endcomment %}
     <p class="text-sm text-muted mt-2">
-      Your account is not a member of any active clinic yet. Ask the owner to add
-      you, then sign in again.
+      Your account cannot use any clinic on this system. Ask an administrator to
+      give you access, then sign in again.
     </p>
     <form method="post" action="{% url 'accounts:logout' %}" class="mt-6">
       {% csrf_token %}

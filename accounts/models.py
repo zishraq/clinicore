@@ -14,7 +14,11 @@ __all__ = ['Membership', 'Role', 'User', 'UserManager']
 
 
 class Role(models.TextChoices):
-    OWNER = 'OWNER', 'Owner'
+    # The stored values never move (SPEC §5): only the label is configurable,
+    # and it comes from the organization's terminology map at render time —
+    # ``{% role_label %}``, not ``get_role_display``. These labels are the
+    # fallback for the admin and for anything rendered without an organization.
+    OWNER = 'OWNER', 'Administrator'
     PRACTITIONER = 'PRACTITIONER', 'Practitioner'
     STAFF = 'STAFF', 'Staff'
 
@@ -58,6 +62,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False, help_text='Django admin access.')
     date_joined = models.DateTimeField(default=timezone.now)
+    # Set whenever somebody other than the account holder chose the password —
+    # registration and an administrator's reset. There is no email-based reset
+    # here (docs/adr/0013-user-management-without-email.md), so a temporary
+    # password is read out loud and this flag is what stops it staying in use.
+    must_change_password = models.BooleanField(default=False)
 
     objects = UserManager()
 

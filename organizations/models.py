@@ -53,7 +53,8 @@ def default_branding() -> dict:
 # SPEC §5 terminology map. Every user-facing word for a domain concept comes
 # from here, so a clinic that says "Consultation" or "Appointment" is relabelled
 # by editing data — stored values, field names, and URLs never move.
-# ``status_*`` keys are looked up as ``status_<stored value lowercased>``.
+# ``status_*`` keys are looked up as ``status_<stored value lowercased>``, and
+# ``role_*`` keys as ``role_<stored role lowercased>``.
 DEFAULT_TERMINOLOGY = {
     'encounter': 'Visit',
     'encounter_plural': 'Visits',
@@ -118,6 +119,18 @@ DEFAULT_TERMINOLOGY = {
     'adjustment': 'Adjustment',
     # Stored movement types, rendered through {% status_label %} like any other
     # stored value.
+    # Roles. The stored values are OWNER / PRACTITIONER / STAFF and do not
+    # move; only these labels reach a screen, via {% role_label %}.
+    # "Administrator" rather than "Owner": the job is adding people and setting
+    # the clinic's defaults, and "owner" claims more authority than that — it
+    # reads as the person who owns the practice, who may well not be the person
+    # holding the account.
+    'role_owner': 'Administrator',
+    'role_practitioner': 'Practitioner',
+    'role_staff': 'Staff',
+    # The people who work here. "User" is a software word; a clinic has a team.
+    'member': 'Team member',
+    'member_plural': 'Team',
     'status_purchase': 'Received',
     'status_sale': 'Sold',
     'status_dispense': 'Dispensed',

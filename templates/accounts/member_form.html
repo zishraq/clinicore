@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if member %}Edit {{ member.user.full_name }}{% else %}Add someone{% endif %}{% endblock %}
+{% block page_title %}{% if member %}Edit {{ member.user.full_name }}{% else %}Add someone to the {{ terms.member_plural|lower }}{% endif %}{% endblock %}
+
+{% block content %}
+<form method="post" class="card-surface rounded-xl p-6 max-w-lg space-y-4">
+  {% csrf_token %}
+  {% for error in form.non_field_errors %}
+    <p class="text-sm text-[var(--cc-danger)]">{{ error }}</p>
+  {% endfor %}
+  {% for field in form %}
+    <div>
+      <label class="label" for="{{ field.id_for_label }}">
+        <span class="label-text">{{ field.label }}</span>
+      </label>
+      {{ field }}
+      {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
+      {% for error in field.errors %}
+        <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <div class="flex gap-3 pt-4">
+    <button type="submit" class="btn btn-brand">Save</button>
+    <a href="{% url 'accounts:member_list' %}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+
+{% comment %}
+  Not shown on your own row: "read it out to them" reads as nonsense about
+  yourself, and you have Change your password on your own account page.
+{% endcomment %}
+{% if member and member.user_id != user.pk %}
+  <p class="text-sm text-muted mt-4 max-w-prose">
+    Forgotten their password?
+    <a href="{% url 'accounts:member_reset_password' member.pk %}" class="link">Set a temporary one</a>
+    and read it out to them.
+  </p>
+{% elif member %}
+  <p class="text-sm text-muted mt-4 max-w-prose">
+    <a href="{% url 'accounts:password_change' %}" class="link">Change your own password</a>
+    on your account page.
+  </p>
+{% endif %}
+{% endblock %}

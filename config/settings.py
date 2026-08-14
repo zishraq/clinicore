@@ -92,6 +92,9 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.ActiveOrganizationMiddleware',
+    # After the organization is active, so the password screen it redirects to
+    # still renders with the clinic's chrome and clock.
+    'accounts.middleware.ForcePasswordChangeMiddleware',
     # Last, per django-axes: it turns the PermissionDenied raised by the
     # backend into the lockout response, so everything else has already run.
     'axes.middleware.AxesMiddleware',

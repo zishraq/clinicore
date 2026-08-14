@@ -322,6 +322,64 @@ would break. Rules to know:
   states what that obliges every new view to do — including HTMX partials, which
   are URLs.
 
+User management is built (2026-08-09) — the last blocker before handover, and
+invisible for the whole MVP because `bootstrap_demo` created every account that
+had ever signed in. New screens live in `accounts`: `/team/` (list, add, edit,
+reset password, remove/restore access, ADMINISTRATOR only) and `/profile/` plus
+`/profile/password/` (any signed-in account, whatever its role). **Browser-
+verified end to end**: add a receptionist → sign in as her → change her password
+→ administrator resets it → sign in with the temporary one → forced change →
+dashboard, plus remove/restore access and the STAFF 403 on `/team/`. Rules to
+know before touching it, all in
+`docs/adr/0013-user-management-without-email.md`:
+
+- **`OWNER` is still the stored value; "Administrator" is a label.** `role_owner`
+  / `role_practitioner` / `role_staff` joined `terminology`, `{% role_label %}`
+  renders them, and `Role.OWNER`'s enum label moved too so the admin and any
+  organization-less render agree. `get_role_display` in a template is now a bug —
+  it reads the code-level default and ignores the clinic's map. Renaming the
+  column would have been a data migration plus every `Role.OWNER` call site, for
+  a change of wording.
+- **There is no password reset by email, and that is the decision.** Email is
+  optional and never verified, phone is the identifier, and a self-hosted box
+  has no mail sending — an SMTP dependency that fails silently tells the user to
+  check an inbox nothing will reach. Recovery is an administrator typing a
+  temporary password and reading it out, with `User.must_change_password` and
+  `accounts.middleware.ForcePasswordChangeMiddleware` making sure it cannot
+  survive. That middleware exempts exactly three URLs — the password screen,
+  logout, login — because a redirect that catches its own destination is a trap
+  with no exit.
+- **Deactivation is `Membership.is_active`, never `User.is_active`.** One
+  practitioner at two clinics holds one account with two memberships, so losing
+  access at one must not touch their login at the other. Nothing is ever
+  hard-deleted: visits, bills and stock movements carry the user as `created_by`
+  and `actor`. The consequence a deactivated account meets is
+  `core/no_organization.html`, which is reachable in normal operation now.
+- **The self-guard is the whole guard.** An administrator cannot demote or
+  deactivate themselves, and that alone keeps one active administrator per
+  organization without counting anything — the only account that could remove
+  the last one is that account. The demotion half is `disabled=True` on the role
+  field, which Django enforces server-side by ignoring submitted data, so it is
+  not decoration and a `clean_role` refusal could never fire.
+- **`Membership` has no automatic org filter**, so `/team/` is the one surface
+  where a forgotten `.filter(organization=…)` shows another clinic's staff
+  rather than an empty page. Everything goes through
+  `services.organization_members(organization)`, and `test_team.py` asserts the
+  list *and* the by-pk routes.
+- **An existing phone number is refused, not joined.** Attaching an existing
+  account to a second organization would tell the administrator the name behind
+  a number they guessed. The form says the number is in use and names nothing.
+- **`update_session_auth_hash` is not optional.** Saving a password rotates the
+  hash the session is keyed on; without it the change signs you out on the next
+  request, which reads as the change having failed.
+
+Two things the browser pass caught that the suite had passed over: the role
+dropdown on the add form opened on **Administrator** (`Role`'s first member), so
+it now carries `initial=Role.STAFF` with a test; and `PasswordChangeForm`'s own
+labels ("Old password", "New password confirmation") are relabelled in
+`accounts.views._plain_password_form` rather than by subclassing, so Django keeps
+owning the password rules and the mismatch check.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, attachments and the audit log are the remaining gaps. Deployable
 now, but never actually deployed anywhere.

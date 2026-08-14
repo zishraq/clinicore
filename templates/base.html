@@ -57,6 +57,7 @@
             <div tabindex="0" role="button" class="btn btn-ghost btn-sm normal-case max-w-[12rem] truncate">{{ user.full_name }}</div>
             <ul tabindex="0" class="dropdown-content menu bg-[var(--cc-surface)] rounded-box z-30 w-56 p-2 shadow">
               <li class="menu-title text-xs">{{ user.phone }}</li>
+              <li><a href="{% url 'accounts:profile' %}">Your account</a></li>
               {% comment %}
                 The button is the menu item and the form sits outside the list,
                 joined by the HTML `form` attribute. Wrapping the button in a

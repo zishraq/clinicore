@@ -276,9 +276,9 @@ class Command(BaseCommand):
             '(expected, waiting, seen, no-show, cancelled)'
         )
         self.stdout.write('\n  Sign in with any of these (password below):')
-        self.stdout.write('    01711000001  Owner        Dr Ayesha Karim')
-        self.stdout.write('    01711000002  Practitioner Dr Sabbir Ahmed')
-        self.stdout.write('    01711000003  Staff        Nadia Sultana')
+        self.stdout.write('    01711000001  Administrator Dr Ayesha Karim')
+        self.stdout.write('    01711000002  Practitioner  Dr Sabbir Ahmed')
+        self.stdout.write('    01711000003  Staff         Nadia Sultana')
         self.stdout.write(f'\n  Password: {DEMO_PASSWORD}\n')
 
     def _reset(self):

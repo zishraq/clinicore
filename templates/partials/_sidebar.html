@@ -1,3 +1,4 @@
+{% load terminology %}
 {# Nav is role-filtered here AND permission-checked in the views; hiding a link is presentation, not access control. #}
 <aside class="w-64 min-h-full bg-[var(--cc-surface)] border-r border-black/5 flex flex-col">
   <div class="px-5 py-5 border-b border-black/5">
@@ -30,9 +31,12 @@
     {% endif %}
     {% if membership.is_owner %}
       <li>
-        <details {% if 'organizations' in request.resolver_match.namespaces %}open{% endif %}>
+        {# The team screen lives in the accounts namespace, so the group opens on its url_name rather than on a namespace alone. #}
+        <details {% if 'organizations' in request.resolver_match.namespaces or 'member' in request.resolver_match.url_name %}open{% endif %}>
           <summary>Settings</summary>
           <ul>
+            {# Lives in the accounts app, but it is a settings job and belongs where an administrator looks for one. #}
+            <li><a href="{% url 'accounts:member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">{{ terms.member_plural }}</a></li>
             <li><a href="{% url 'organizations:billing_settings' %}" class="{% if request.resolver_match.url_name == 'billing_settings' %}active{% endif %}">Billing</a></li>
             <li><a href="{% url 'organizations:feature_settings' %}" class="{% if request.resolver_match.url_name == 'feature_settings' %}active{% endif %}">Features</a></li>
           </ul>
@@ -43,6 +47,7 @@
 
   <div class="p-3 border-t border-black/5 text-xs text-[var(--cc-text-muted)]">
     {{ user.full_name }}<br>
-    <span class="badge badge-ghost badge-sm mt-1">{{ membership.get_role_display }}</span>
+    {# Not get_role_display: that reads the enum's label, which is a code-level default. See core/templatetags/terminology.py. #}
+    <span class="badge badge-ghost badge-sm mt-1">{% role_label membership.role %}</span>
   </div>
 </aside>

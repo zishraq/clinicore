@@ -95,6 +95,36 @@ def test_relabelling_does_not_touch_stored_values(
     assert encounter.status == EncounterStatus.DRAFT
 
 
+def test_the_owner_role_is_called_administrator_on_screen(client, organization, owner):
+    """The stored value stays ``OWNER``; only the label moved.
+
+    "Owner" claimed more authority than the job has — it reads as the person who
+    owns the practice, who may well not be whoever holds the account. Renaming
+    the column instead would have meant a data migration and touching every
+    ``Role.OWNER`` in the codebase for a change of wording.
+    """
+    response = _sign_in(client, owner).get(reverse('accounts:member_list'))
+    body = response.content.decode()
+
+    # Anchored on the cell: the fixture's own *name* is "Owner User", and a
+    # bare substring check would pass on that and prove nothing.
+    assert 'data-label="Role">Administrator' in body
+    assert 'data-label="Role">Owner' not in body
+    assert organization.memberships.get(user=owner).role == 'OWNER'
+
+
+def test_a_clinic_can_relabel_its_roles(client, organization, owner):
+    organization.terminology = {'role_owner': 'Manager', 'member_plural': 'Staff list'}
+    organization.save(update_fields=['terminology'])
+
+    response = _sign_in(client, owner).get(reverse('accounts:member_list'))
+    body = response.content.decode()
+
+    assert 'data-label="Role">Manager' in body
+    assert 'Staff list' in body
+    assert 'Administrator' not in body
+
+
 def test_amend_label_is_configurable_on_a_locked_encounter(
     client, organization, practitioner, encounter
 ):
