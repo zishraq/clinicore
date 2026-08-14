@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Clinicore container health every two minutes
+
+[Timer]
+# Starts two minutes after boot so the stack has a chance to come up on its own
+# after a power cut before anything starts restarting it.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

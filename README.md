@@ -80,6 +80,28 @@ no rules beyond forwarding. `GET /healthz` is an unauthenticated liveness check
 that touches the database — a process accepting sockets with a dead connection
 pool is exactly the state it exists to catch.
 
+### Running it unattended
+
+`deploy/` holds the operational layer, and **[docs/RUNBOOK.md](docs/RUNBOOK.md)**
+is written for whoever looks after the box rather than for a developer: is it
+running, how to restart it, what to do when the site is down, how to restore, how
+to deploy an update, and what to say to the clinic meanwhile.
+
+- **Surviving a power cut** takes three things, and only one is in the compose
+  file: `restart: unless-stopped` for a crash, `systemctl enable docker` for the
+  reboot, and `deploy/heal.sh` on a timer for a container that is *running but
+  unhealthy* — which Docker records and never acts on.
+- **Nightly encrypted backups** of the database and the photographs
+  (`deploy/backup.sh`), rotated 30 daily / 12 monthly, pushed off-box with
+  rclone. Encrypted with `age` to a **public key**, so the server cannot decrypt
+  its own backups if it is stolen.
+- **A monthly restore check** (`deploy/verify-restore.sh`) loads the newest
+  backup into a scratch database and asserts it contains a clinic. A backup
+  nobody has restored is a guess.
+- **The dashboard shows administrators the age of the last successful backup**
+  and shouts when it is stale. There is no email on the box, so a job that
+  quietly stopped three weeks ago has nowhere else to report itself.
+
 ### Backups: `pg_dump` alone is no longer enough
 
 Visits can carry photographs, which live in the `media_data` Docker volume and

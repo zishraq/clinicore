@@ -11,6 +11,12 @@
 # Put a TLS-terminating reverse proxy in front and set DJANGO_BEHIND_PROXY.
 # Static files are served by the app itself through WhiteNoise, so the proxy
 # needs no rules beyond forwarding.
+#
+# Surviving a power cut unattended takes three things, and only two of them are
+# in this file. `restart: unless-stopped` below covers a crash; `systemctl
+# enable docker` covers the reboot and is a host step docs/RUNBOOK.md spells
+# out; deploy/heal.sh covers a container that is running but unhealthy, which
+# Docker itself will never act on. All three, or the box comes back half up.
 
 # Its own project namespace, which is load-bearing rather than cosmetic. Compose
 # derives the project name from the directory, so without this both files are
@@ -81,8 +87,18 @@ services:
     # section of README.md.
     volumes:
       - media_data:/app/media
+      # Written on the host by deploy/backup.sh, read by the dashboard so an
+      # administrator sees how old the last successful backup is. A bind mount
+      # rather than a named volume because the *producer is the host*: the
+      # backup scripts run outside every container, and the one failure most
+      # worth recording is the one where the app itself is down. Read-only, so
+      # nothing in the app can flatter its own backup status.
+      - ${STATUS_DIR:-./run}:/app/run:ro
     depends_on:
       db:
+        # Not just "started". Postgres accepts connections some seconds after
+        # the container exists, and web against a database that is not ready
+        # yet is a crash loop on every power cut — which here is most weeks.
         condition: service_healthy
     healthcheck:
       # No curl in python:3.12-slim, and installing one for this would be a

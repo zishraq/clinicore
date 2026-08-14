@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the Clinicore backup nightly
+
+[Timer]
+# 02:15 local time. After midnight so it covers a full clinic day, and not on
+# the hour because every other cron on earth runs then.
+OnCalendar=*-*-* 02:15:00
+# Power cuts are routine here: if the box was off at 02:15, run the backup once
+# it comes back rather than skipping that night entirely. This is the single
+# most important line in this file.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

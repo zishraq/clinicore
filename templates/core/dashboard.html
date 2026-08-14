@@ -5,6 +5,52 @@
 {% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
+{% comment %}
+  Backup health, administrators only, above everything else.
+
+  There is no email on the clinic's server, so a backup job that stopped three
+  weeks ago has nowhere to announce itself — and that quiet failure, not a
+  dramatic one, is the realistic way this clinic loses its records. Silent while
+  backups are fresh; a banner the moment they are not.
+
+  Rendered from core.backups, which reports "never run" for a missing or
+  unreadable status file rather than assuming the best.
+{% endcomment %}
+{% if backup %}
+  {% if backup.level != 'ok' %}
+    <div class="card-surface rounded-xl p-5 mb-4 border-l-4
+                {% if backup.level == 'danger' %}border-l-[var(--cc-danger)]{% else %}border-l-[var(--cc-warning)]{% endif %}">
+      <p class="font-semibold {% if backup.level == 'danger' %}text-[var(--cc-danger)]{% endif %}">
+        {% if backup.level == 'danger' %}Backups are not running{% else %}Check the backups{% endif %}
+      </p>
+      <p class="text-sm mt-1">
+        {{ backup.summary }}
+        {% if backup.last_success %}
+          Last good backup: {{ backup.last_success|date:'d M Y, H:i' }}
+          ({{ backup.age_hours }} hours ago).
+        {% endif %}
+      </p>
+      <p class="text-xs text-muted mt-2">
+        Nothing you can fix from this screen — send this message to whoever
+        looks after the server. The steps are in the runbook under
+        “Backups stopped running”.
+      </p>
+    </div>
+  {% endif %}
+  {% if restore_check.level != 'ok' %}
+    <div class="card-surface rounded-xl p-5 mb-4 border-l-4 border-l-[var(--cc-warning)]">
+      <p class="font-semibold">Backups are unproven</p>
+      <p class="text-sm mt-1">
+        {{ restore_check.summary }}
+        {% if restore_check.last_success %}
+          Last successful test restore: {{ restore_check.last_success|date:'d M Y' }}.
+        {% endif %}
+        A backup nobody has restored is a guess.
+      </p>
+    </div>
+  {% endif %}
+{% endif %}
+
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
   <div class="card-surface rounded-xl p-5">
     <p class="text-sm text-muted">Patients</p>

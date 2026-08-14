@@ -1,0 +1,11 @@
+[Unit]
+Description=Prove monthly that a Clinicore backup restores
+
+[Timer]
+# 03:30 on the 5th: after that month's backups exist, and well clear of the
+# nightly run so the two never contend for the database.
+OnCalendar=*-*-05 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

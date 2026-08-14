@@ -1,0 +1,10 @@
+[Unit]
+Description=Restart any Clinicore container Docker has marked unhealthy
+Documentation=file:///opt/clinicore/docs/RUNBOOK.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/clinicore/deploy/heal.sh
+TimeoutStartSec=300

@@ -1,0 +1,10 @@
+[Unit]
+Description=Clinicore monthly restore check (proves the backups actually load)
+Documentation=file:///opt/clinicore/docs/RUNBOOK.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/clinicore/deploy/verify-restore.sh
+TimeoutStartSec=3600

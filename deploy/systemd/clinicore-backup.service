@@ -1,0 +1,15 @@
+[Unit]
+Description=Clinicore nightly backup (database + photographs, encrypted)
+Documentation=file:///opt/clinicore/docs/RUNBOOK.md
+# Docker must be up; the script talks to the running stack.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/clinicore/deploy/backup.sh
+# Nothing here should ever hang the box overnight. If a dump or an upload
+# wedges, fail loudly and let the dashboard show a stale backup.
+TimeoutStartSec=3600
+# The script writes its own failure status before exiting, so systemd's only
+# job is to record the exit and stop.

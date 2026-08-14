@@ -282,6 +282,13 @@ if DEBUG:
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Where deploy/backup.sh and deploy/verify-restore.sh leave their results. The
+# box has no email, so this file is the only way a backup job that stopped three
+# weeks ago can announce itself — core.backups reads it and the dashboard shows
+# administrators the age. Mounted read-only in docker-compose.prod.yml; a
+# missing directory is normal in development and reports as "never run".
+BACKUP_STATUS_DIR = Path(os.environ.get('BACKUP_STATUS_DIR', BASE_DIR / 'run'))
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'

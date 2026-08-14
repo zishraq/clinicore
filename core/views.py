@@ -75,6 +75,15 @@ def _dashboard_context(request) -> dict:
     from patients.models import Patient
 
     context = {'patient_count': Patient.objects.count()}
+    # Administrators only, and on the landing page rather than behind a settings
+    # link: this box sends no email, so the dashboard is the only place a backup
+    # that stopped three weeks ago can be noticed before it is needed.
+    # MVP: replace with permission layer
+    if request.membership.is_owner:
+        from core.backups import backup_status, restore_check_status
+
+        context['backup'] = backup_status()
+        context['restore_check'] = restore_check_status()
     # MVP: replace with permission layer
     if request.membership.can_view_clinical:
         today = timezone.localdate()

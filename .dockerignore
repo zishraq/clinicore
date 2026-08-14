@@ -12,6 +12,10 @@ staticfiles
 media
 docs
 *.md
+# Host-side operations: backups, the healer, systemd units. These run on the
+# box against the Docker socket, never inside a container, so shipping them in
+# the image would only be a copy that can drift from the one being used.
+deploy
 
 # Secrets. `COPY . .` will otherwise bake a developer's real SECRET_KEY and
 # database password into an image layer, where they survive in the history even

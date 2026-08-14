@@ -506,9 +506,68 @@ wrapping flex line from `sm` up. Also settled:
   this pass. `core/tests/test_template_comments.py` catches it every time; run
   it after touching a template rather than only at the end.
 
+The operational layer landed 2026-08-15: `deploy/` plus `docs/RUNBOOK.md`, aimed
+at one small box in Bangladesh where power cuts are routine and the two
+operators are the author and the doctor's son, who is capable but not a
+developer. **Drill-verified end to end**, including a full restore from deleted
+volumes. Rules to know:
+
+- **Three things survive a power cut and only one is in the compose file.**
+  `restart: unless-stopped` covers a crash, `systemctl enable docker` covers the
+  reboot (a host step, in the runbook), and `deploy/heal.sh` on a two-minute
+  timer covers *running but unhealthy*, which Docker records and never acts on.
+  Confirmed in the drill: stopping the database left web `state=running
+  health=unhealthy` for as long as it was left alone.
+- **Gunicorn already restarts hung workers.** `--timeout` does it, so the healer
+  exists for the container-level case only. Chosen over `willfarrell/autoheal`,
+  which wants the Docker socket in a third-party image; systemd was already
+  running the backup timers, so this is one mechanism on the box rather than two.
+- **The Dockerfile CMD is shell form now, and `exec` is load-bearing.** Without
+  it gunicorn is a child of `sh`, `sh` is PID 1, and PID 1 does not forward
+  SIGTERM — `compose stop` would wait out the timeout and kill in-flight
+  requests. The shell form also makes `GUNICORN_WORKERS` real; `.env.example`
+  had documented it against a hardcoded `--workers 3` since the production
+  slice.
+- **Backups are `age` to a public key, not a passphrase.** Only the public key
+  is on the box, so a stolen server cannot read its own backups. Chosen over
+  restic/borg deliberately: restic is better engineering, but the artifact is an
+  opaque repository, and the restore here is done at night by someone who is not
+  a developer. An ordinary file that `age -d | pg_restore` consumes beats
+  dedup at this size.
+- **The private key is the single point of total data loss**, and the runbook
+  says so in those words at the top of the restore section. Two copies before
+  the first backup runs: password manager and printed in the clinic safe.
+- **Both halves, every night.** A database dump alone restores a clinic whose
+  visits are intact and whose photographs are all missing, with nothing erroring.
+- **A failed run must never advance `last_success`.** Both scripts re-read the
+  previous value on failure, because the dashboard reads that field and nothing
+  else — overwriting it would turn every failure into a green dashboard, which
+  is the exact silence the feature exists to break.
+- **Backup status is a file, not a database row.** The scripts run on the host,
+  and writing through `manage.py` would mean a backup could only record itself
+  while the app was up — "the night the app was down" is the run whose outcome
+  matters most. Mounted read-only at `/app/run`, so the app cannot flatter its
+  own status. `core/backups.py` reports *never run* for anything missing,
+  malformed or truncated: a fresh box must not look healthy.
+- **`deploy/verify-restore.sh` needs the private key on the box to run
+  unattended**, which weakens the stolen-server property. The trade is stated in
+  the script and the runbook: an unverified backup is the larger risk, but
+  running it by hand monthly with the key on a USB stick is the safer option and
+  either is a decision to write down.
+
+What the drill actually proved (`scratchpad/opsdrill`, a throwaway clone on its
+own compose project): backup → `down -v` (both volumes destroyed) → `up -d` →
+`restore.sh` → 15 patients, 10 visits and 1 photo all back, the app answering,
+a practitioner signing in and seeing the list, and **the restored photograph
+serving real JPEG bytes at 1067x1600** — the half of the backup a database-only
+restore would have silently lost. Two runbook bugs were found by doing it: the
+restore section assumed the stack already existed, and assumed it was running.
+Both are now written down.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
-gaps. Deployable now, but never actually deployed anywhere.
+gaps. Deployable now, and now operable — but still never actually deployed
+anywhere.
 
 ## Standing rules
 

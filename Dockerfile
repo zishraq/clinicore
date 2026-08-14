@@ -50,8 +50,26 @@ EXPOSE 8000
 
 # Production default. docker-compose.yml replaces this with runserver.
 # Migrations are deliberately not run here — see docker-compose.prod.yml.
-CMD ["gunicorn", "config.wsgi:application", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "3", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+#
+# Shell form so GUNICORN_WORKERS is read at run time. `.env.example` has
+# documented that variable since the production slice landed and the CMD
+# hardcoded 3, so setting it did nothing — a configuration knob that silently
+# does nothing is worse than no knob.
+#
+# `exec` matters: without it gunicorn runs as a child of /bin/sh, sh becomes
+# PID 1, and PID 1 does not forward SIGTERM. `docker compose stop` would then
+# wait the full timeout and kill the container instead of letting gunicorn
+# finish in-flight requests — a restart during surgery hours dropping whatever
+# was mid-save.
+#
+# --timeout is the piece that makes a hung worker self-healing: gunicorn's
+# master kills and replaces any worker silent for this long, which covers the
+# common wedge without anything watching from outside (see deploy/heal.sh for
+# the container-level case it does not cover).
+CMD ["sh", "-c", "exec gunicorn config.wsgi:application \
+     --bind 0.0.0.0:8000 \
+     --workers ${GUNICORN_WORKERS:-3} \
+     --timeout ${GUNICORN_TIMEOUT:-30} \
+     --graceful-timeout 30 \
+     --access-logfile - \
+     --error-logfile -"]

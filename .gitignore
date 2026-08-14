@@ -231,3 +231,7 @@ theme/static/css/dist/
 .claude/settings.local.json
 /.venv_clinicore/
 202?-*-*-*.txt
+
+# Backup status written by deploy/*.sh and read by the dashboard. Host state,
+# never committed.
+/run/
