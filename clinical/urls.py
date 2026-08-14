@@ -27,4 +27,18 @@ urlpatterns = [
         views.prescription_print,
         name='prescription_print',
     ),
+    # The only route to an uploaded file. MEDIA_URL is deliberately served by
+    # nothing, so these three are the whole surface — see
+    # docs/adr/0014-encounter-photos-served-through-a-view.md.
+    path(
+        'encounters/<int:pk>/photos/',
+        views.encounter_photo_upload,
+        name='photo_upload',
+    ),
+    path('photos/<int:pk>/', views.encounter_photo, name='photo'),
+    path(
+        'photos/<int:pk>/delete/',
+        views.encounter_photo_delete,
+        name='photo_delete',
+    ),
 ]

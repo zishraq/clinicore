@@ -19,11 +19,13 @@ from billing.services import next_invoice_number, record_payment
 from catalog.models import AdviceTemplate, Product
 from clinical.models import (
     Encounter,
+    EncounterPhoto,
     EncounterStatus,
     ItemType,
     Prescription,
     PrescriptionItem,
 )
+from clinical.services import delete_photo
 from core.context import organization_context, organization_timezone
 from core.models import DocumentSequence
 from inventory import services as inventory
@@ -305,6 +307,14 @@ class Command(BaseCommand):
             DocumentSequence.all_objects.filter(organization=organization).delete()
             PrescriptionItem.all_objects.filter(organization=organization).delete()
             Prescription.all_objects.filter(organization=organization).delete()
+            # Row by row, and before the encounters that CASCADE them. The
+            # loader seeds no photographs — no binaries in this repository — but
+            # one uploaded by hand while looking at the demo would otherwise be
+            # cascaded away as a row and left behind as a file, because Django
+            # has not deleted files with models since 1.3. A queryset delete
+            # here would do exactly that; ``delete_photo`` removes both.
+            for photo in EncounterPhoto.all_objects.filter(organization=organization):
+                delete_photo(photo)
             Encounter.all_objects.filter(organization=organization).delete()
             # After the encounters (whose FK to an appointment is SET_NULL) and
             # before the patients and branches an appointment PROTECTs. Nothing

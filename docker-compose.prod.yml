@@ -67,9 +67,20 @@ services:
       # can reach it. Publishing 0.0.0.0 would put the app on the internet
       # beside the proxy rather than behind it.
       - '127.0.0.1:${WEB_PORT:-8000}:8000'
-    # No bind mount. The image contains the code and the collected static
-    # files; mounting the host over /app would replace both, and would shadow
-    # the staticfiles/ manifest that WhiteNoise needs to render any page.
+    # No bind mount for the code. The image contains it and the collected
+    # static files; mounting the host over /app would replace both, and would
+    # shadow the staticfiles/ manifest that WhiteNoise needs to render any
+    # page.
+    #
+    # Uploaded patient photographs are the one thing that must outlive the
+    # image, so they get a named volume rather than a host path: a bind mount
+    # would tie the deployment to a directory layout on that particular box,
+    # and anything written inside the container is lost on the next
+    # `up --build`. **This volume is part of the backup set** — a pg_dump alone
+    # restores rows pointing at files that no longer exist. See the deployment
+    # section of README.md.
+    volumes:
+      - media_data:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -93,3 +104,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

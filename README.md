@@ -80,6 +80,28 @@ no rules beyond forwarding. `GET /healthz` is an unauthenticated liveness check
 that touches the database — a process accepting sockets with a dead connection
 pool is exactly the state it exists to catch.
 
+### Backups: `pg_dump` alone is no longer enough
+
+Visits can carry photographs, which live in the `media_data` Docker volume and
+**not** in the database. A nightly `pg_dump` now captures rows that point at
+files it does not contain, so restoring it produces a clinic whose visits are
+all intact and every photograph is missing — with no error anywhere, because
+nothing is corrupt. The rows are fine. The pictures are gone.
+
+The backup set is both:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db \
+    pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > clinicore-db.sql.gz
+
+docker run --rm -v clinicore-prod_media_data:/media -v "$PWD":/backup alpine \
+    tar czf /backup/clinicore-media.tar.gz -C /media .
+```
+
+Uploaded files are never served from a URL — they go through a permission-checked
+view, so there is no `/media/` route to protect. See
+[ADR 0014](docs/adr/0014-encounter-photos-served-through-a-view.md).
+
 ## What's in it
 
 - **Multi-tenant by construction.** Every business row carries an

@@ -34,8 +34,15 @@ this file covers what was **not** built and what keeps biting.
   not the per-role reporting screens. No revenue, no stock valuation, no
   follow-ups-due list, although `follow_up_date` is indexed and waiting.
 - **PWA / offline** — not started.
-- **Attachments and the audit log** — not started. History exists on clinical
-  models only (below), which is not the same thing.
+- **The audit log** — not started. History exists on clinical models only
+  (below), which is not the same thing.
+- **Attachments beyond photographs on a visit.** `clinical.EncounterPhoto`
+  covers SPEC §5's `Attachment` only where it points at an encounter and only
+  for images: PDFs are refused on content, and there is no `access_level`
+  because the whole clinical app is already one role gate. Attachments on a
+  **patient** — an ID card, a signed consent form — are genuinely absent, and
+  adding them is a second model rather than a change to this one. See
+  [ADR 0014](adr/0014-encounter-photos-served-through-a-view.md).
 - **`Membership` has no branch FK.** SPEC §5 wants per-branch access; it is not
   built, which is why "the practitioner's branch" is inferred from their last
   encounter in `billing.services.resolve_invoice_branch`.
@@ -193,6 +200,26 @@ this file covers what was **not** built and what keeps biting.
   render time. That is the intended trade — the failure it replaced was three JS
   files 404ing while the CDN kept the page looking correct, so the patient
   picker and invoice line editor were dead on a page that appeared fine.
+- **A `pg_dump` is no longer a complete backup, and nothing will tell you.**
+  Visit photographs live in the `media_data` volume; the database only holds
+  rows pointing at them. Restore the dump on its own and every visit is intact
+  with every photograph missing — no error, no corruption, nothing to notice
+  until someone looks for a lab report. The backup set is the dump **and** the
+  volume, and the tested restore SPEC §8 asks for has to cover both. Commands
+  are in the README's deployment section;
+  [ADR 0014](adr/0014-encounter-photos-served-through-a-view.md) has the
+  reasoning.
+- **`MEDIA_URL` is routed by nothing, deliberately, in every mode.** Photographs
+  are served by `clinical.views.encounter_photo` behind login, a role check and
+  organization scoping. Adding `if settings.DEBUG: urlpatterns += static(...)`
+  looks like a development convenience and is the bug: development would stop
+  exercising the protected view, so a missing decorator there would first show
+  up in production. `core/tests/test_media_not_served.py` is the canary.
+- **The prod volume needs its mount point to exist in the image.** Docker seeds
+  a fresh named volume from the image directory's ownership, so `/app/media` is
+  created in the Dockerfile *before* the `chown` — otherwise the mount point is
+  root-owned and the non-root user cannot write a single upload. Silent until
+  the first photograph.
 
 ## Lessons
 

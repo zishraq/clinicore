@@ -145,4 +145,97 @@
     <p class="text-sm text-muted mt-3">No items prescribed.</p>
   {% endif %}
 </section>
+
+{% comment %}
+  Photographs of the patient, or of documents they brought in. One concept and
+  one word — the clinic picks it via the `photo` terminology key.
+
+  Every `src` here is the protected view, never a media path: MEDIA_URL is
+  routed nowhere, so there is no other URL that would work. Full size opens in
+  a new tab rather than a lightbox, because a photographed lab report is read
+  by pinch-zooming it, and the browser does that better than anything hand-
+  rolled would.
+{% endcomment %}
+<section class="card-surface rounded-xl p-6 mt-4">
+  <h2 class="font-semibold">{{ terms.photo_plural }}</h2>
+
+  {% if photos %}
+    {% comment %}
+      3 across at 375px is a ~110px thumbnail — big enough to recognise, small
+      enough that six photos do not push the prescription off the screen.
+
+      loading="lazy" matters here: these are full-size images shown small, so a
+      long visit should not fetch every one of them at once.
+    {% endcomment %}
+    <ul class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-4">
+      {% for photo in photos %}
+        <li class="relative">
+          <a href="{% url 'clinical:photo' photo.pk %}" target="_blank" rel="noopener">
+            <img src="{% url 'clinical:photo' photo.pk %}"
+                 alt="{{ photo.caption|default:terms.photo }}"
+                 loading="lazy"
+                 class="aspect-square w-full rounded-lg object-cover bg-base-200">
+          </a>
+          {# Always visible, never hover-revealed: a phone has no hover. #}
+          <button type="button"
+                  class="btn btn-xs btn-circle bg-[var(--cc-danger)] text-white border-none absolute top-1 right-1"
+                  onclick="delete_photo_{{ photo.pk }}.showModal()"
+                  aria-label="Delete {{ terms.photo|lower }}"
+                  title="Delete {{ terms.photo|lower }}">&times;</button>
+          {% if photo.caption %}
+            <p class="mt-1 text-xs text-muted truncate" title="{{ photo.caption }}">{{ photo.caption }}</p>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-sm text-muted mt-3">No {{ terms.photo_plural|lower }} yet.</p>
+  {% endif %}
+
+  <form method="post" action="{% url 'clinical:photo_upload' encounter.pk %}"
+        enctype="multipart/form-data"
+        class="mt-4 flex flex-col sm:flex-row sm:items-end gap-2">
+    {% csrf_token %}
+    <div class="flex-1">
+      <label class="block text-sm text-muted mb-1" for="{{ photo_form.photos.id_for_label }}">Add {{ terms.photo_plural|lower }}</label>
+      {{ photo_form.photos }}
+    </div>
+    <div class="flex-1">
+      <label class="block text-sm text-muted mb-1" for="{{ photo_form.caption.id_for_label }}">Description (optional)</label>
+      {{ photo_form.caption }}
+    </div>
+    <button type="submit" class="btn btn-brand shrink-0">Upload</button>
+  </form>
+  <p class="mt-2 text-xs text-muted">
+    One description covers everything in a single upload. Large photos are
+    resized automatically.
+  </p>
+</section>
+{% endblock %}
+
+{% block modals %}
+  {% comment %}
+    Deleting removes the file as well as the row, so it gets a confirmation
+    (SPEC §7). One dialog per photo, which is cheap at these numbers and needs
+    no JavaScript to decide which one it is about.
+  {% endcomment %}
+  {% for photo in photos %}
+    <dialog id="delete_photo_{{ photo.pk }}" class="modal">
+      <div class="modal-box">
+        <h3 class="font-semibold text-lg">Delete this {{ terms.photo|lower }}?</h3>
+        <p class="py-3 text-sm">
+          {% if photo.caption %}“{{ photo.caption }}”. {% endif %}
+          The image file is deleted too, and this cannot be undone.
+        </p>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn btn-ghost">Cancel</button></form>
+          <form method="post" action="{% url 'clinical:photo_delete' photo.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn bg-[var(--cc-danger)] text-white border-none">Delete</button>
+          </form>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+  {% endfor %}
 {% endblock %}

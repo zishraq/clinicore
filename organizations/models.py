@@ -72,6 +72,12 @@ DEFAULT_TERMINOLOGY = {
     # The verb for leaving draft. Composed with `encounter` at the call site
     # ("Finish visit") so relabelling the record relabels the button.
     'finish': 'Finish',
+    # Photographs on a visit. One model covers the patient and the documents
+    # they bring in, so there is one word rather than "photo" and "document" —
+    # a clinic that mostly photographs referral letters maps these to
+    # "Document" and the whole feature relabels. See clinical.EncounterPhoto.
+    'photo': 'Photo',
+    'photo_plural': 'Photos',
     # Scheduling. One day list covers booked patients and walk-ins alike, so
     # there is one word for the row rather than "appointment" and "queue entry".
     'appointment': 'Appointment',

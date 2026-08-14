@@ -380,9 +380,72 @@ labels ("Old password", "New password confirmation") are relabelled in
 `accounts.views._plain_password_form` rather than by subclassing, so Django keeps
 owning the password rules and the mismatch check.
 
+Visit photographs are built (2026-08-14) — the first thing in this repo that
+stores a file. `clinical.EncounterPhoto`: the patient, or a document they
+brought in, uploaded from the visit form *or* the visit detail page, thumbnailed
+in a grid, tapped to open full size, deleted with a confirmation. **Browser-
+verified end to end** against the live stack: two photos uploaded, both rendered,
+one opened full size, one deleted (row and file), a non-image refused, EXIF
+rotation applied, `/media/<real path>` 404ing while the served URL worked, and
+STAFF 403ing on all three URLs. Rules to know, all in
+`docs/adr/0014-encounter-photos-served-through-a-view.md`:
+
+- **`MEDIA_URL` is routed by nothing, in every mode including `DEBUG`.** Adding
+  `if settings.DEBUG: urlpatterns += static(...)` is the bug this is guarding
+  against: development would stop exercising the protected view, so a missing
+  decorator there would first appear in production, where the direct route is
+  gone. `core/tests/test_media_not_served.py` fails if the route comes back.
+  `photo.image.url` in a template is a bug; templates use
+  `{% url 'clinical:photo' photo.pk %}`.
+- **Re-encoding is a security control, not a disk one.** Every upload is decoded
+  by Pillow and re-emitted as JPEG, so the stored bytes are always ours. Files
+  are served same-origin, so an SVG or an HTML page named `.jpg` would otherwise
+  be stored XSS against a session that reads every patient record. Neither
+  survives the round trip.
+- **`ImageOps.exif_transpose` is not optional and no status-code test can catch
+  it.** Phones record orientation in EXIF rather than rotating pixels; without
+  it every portrait photo is stored sideways and the bytes are valid either way.
+  EXIF is then dropped rather than copied, which takes GPS coordinates off every
+  stored file.
+- **Validation is on the form, never the view.** A rejected file has to come back
+  as a field error with the consultation note still typed in. Losing a
+  half-written visit because one photo was 12 MB is worse than the thing being
+  prevented.
+- **`.open('rb')`, never `.path`.** `.path` raises on any non-filesystem storage,
+  so that one call is what keeps SPEC §10's move to S3 a settings change.
+- **`bootstrap_demo --reset` deletes photos row by row.** `Encounter` CASCADEs
+  them, so a queryset delete never raises — it silently orphans the *files*. The
+  loader seeds none (no binaries in the repo), so only the hand-staged row in
+  `core/tests/test_bootstrap_demo.py` catches it; that test was confirmed to fail
+  against a queryset teardown before being kept.
+- **A `pg_dump` is no longer a complete backup.** Photos live in the `media_data`
+  volume; restoring the database alone gives every visit intact with every
+  photograph missing, and nothing errors. README and MVP-NOTES both say so.
+- **`/app/media` is created in the Dockerfile before the `chown`.** Docker seeds
+  a fresh named volume from the image directory's ownership; without the mkdir
+  the mount point is root-owned and the non-root user cannot write an upload.
+- **`conftest.py` points `MEDIA_ROOT` at `tmp_path` for every test, autouse.**
+  Found the hard way: the tenant-isolation builders had been writing real files
+  into the repository's `media/`. Nothing fails when a test writes a file, so
+  this has to be global rather than per-module.
+
+Two judgement calls worth not re-litigating: `capture="environment"` was
+considered and **dropped** — it forces the camera and removes the gallery, which
+breaks photographing a referral letter now and attaching it later; plain
+`accept="image/*"` still offers the camera in the Android picker. And `MAX_EDGE`
+is 1600, not 2000, because a photographed report is read by pinch-zooming on a
+phone rather than printed; raising it is a one-line change in `clinical/images.py`
+if the clinic ever complains.
+
+Known, not fixed: **daisyUI's `.toast` sets `white-space: nowrap` on a
+full-width fixed container**, so any message longer than the viewport runs off
+the *left* edge and its beginning is unreadable — worst on a phone. Pre-existing
+and app-wide; the photo rejection message was shortened to stop making it worse,
+but the component itself still needs a pass.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
-`RolePermission`, attachments and the audit log are the remaining gaps. Deployable
-now, but never actually deployed anywhere.
+`RolePermission`, patient-level attachments and the audit log are the remaining
+gaps. Deployable now, but never actually deployed anywhere.
 
 ## Standing rules
 

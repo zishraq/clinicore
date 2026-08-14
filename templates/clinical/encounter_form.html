@@ -13,7 +13,11 @@
 {% block page_title %}{% if is_create %}New {{ terms.encounter|lower }}{% elif is_amendment %}{{ terms.amend }} {{ terms.encounter|lower }}{% else %}Edit {{ terms.encounter|lower }}{% endif %}{% endblock %}
 
 {% block content %}
-<form method="post" class="space-y-4 max-w-5xl">
+{% comment %}
+  multipart because the photo control posts with the rest of the consultation:
+  a visit being created has no saved row to attach a file to yet.
+{% endcomment %}
+<form method="post" enctype="multipart/form-data" class="space-y-4 max-w-5xl">
   {% csrf_token %}
 
   {% if appointment %}
@@ -60,7 +64,8 @@
       {# Rendered ahead of the loop and skipped inside it: it is a search box, not a field. #}
       {% include 'clinical/_patient_picker.html' %}
       {% for field in form %}
-        {% if field.name != 'change_reason' and field.name != 'patient' %}
+        {# photos/photo_caption have their own section below. #}
+        {% if field.name != 'change_reason' and field.name != 'patient' and field.name != 'photos' and field.name != 'photo_caption' %}
           <div class="{% if field.name in 'chief_complaint examination assessment plan' %}sm:col-span-2{% endif %}">
             <label class="label" for="{{ field.id_for_label }}">
               <span class="label-text">{{ field.label }}</span>
@@ -118,6 +123,49 @@
         </div>
       {% endfor %}
     </div>
+  </section>
+
+  {% comment %}
+    Photographs taken during the consultation. On a phone, accept="image/*"
+    puts the camera in the picker alongside the gallery — deliberately not
+    `capture`, which forces the camera and removes the gallery, breaking the
+    case where the letter was photographed earlier and is attached now.
+
+    Files ride along with this POST and are attached once the visit is saved.
+    A rejected file comes back as an error on this field with everything else
+    still typed in, which is why the validation is on the form and not in the
+    view.
+  {% endcomment %}
+  <section class="card-surface rounded-xl p-6">
+    <h2 class="font-semibold">{{ terms.photo_plural }}</h2>
+    <p class="text-sm text-muted mb-4">
+      The patient, or a document they brought in. Large photos are resized
+      automatically.
+    </p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="label" for="{{ form.photos.id_for_label }}">
+          <span class="label-text">Choose or take {{ terms.photo_plural|lower }}</span>
+        </label>
+        {{ form.photos }}
+        {% for error in form.photos.errors %}
+          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+        {% endfor %}
+      </div>
+      <div>
+        <label class="label" for="{{ form.photo_caption.id_for_label }}">
+          <span class="label-text">Description (optional)</span>
+        </label>
+        {{ form.photo_caption }}
+        <p class="text-xs text-muted mt-1">Covers everything in this upload.</p>
+      </div>
+    </div>
+    {% if encounter %}
+      <p class="text-xs text-muted mt-3">
+        Already-uploaded {{ terms.photo_plural|lower }} are on the
+        <a class="link" href="{% url 'clinical:encounter_detail' encounter.pk %}">{{ terms.encounter|lower }} page</a>.
+      </p>
+    {% endif %}
   </section>
 
   {% comment %}

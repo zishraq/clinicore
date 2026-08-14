@@ -5,6 +5,8 @@ Prescription items are free text: there is no catalog in the MVP, so
 FK when the catalog app lands (docs/MVP-NOTES.md).
 """
 
+from uuid import uuid4
+
 from django.conf import settings
 from django.db import models
 from simple_history.models import HistoricalRecords
@@ -13,11 +15,13 @@ from core.models import OrgOwnedModel
 
 __all__ = [
     'Encounter',
+    'EncounterPhoto',
     'EncounterStatus',
     'ItemType',
     'Prescription',
     'PrescriptionItem',
     'PrintSize',
+    'encounter_photo_path',
 ]
 
 
@@ -104,6 +108,53 @@ class Encounter(OrgOwnedModel):
         silently. ``is_locked`` is what decides whether a reason is required.
         """
         return True
+
+
+def encounter_photo_path(instance, filename: str) -> str:
+    """Where an uploaded photograph is stored, ignoring what it was called.
+
+    ``filename`` is user-supplied and discarded on purpose: it is the one part
+    of an upload an attacker fully controls, and a caption is where a human
+    name for the picture belongs. The organization id in the path is for
+    operations — per-tenant disk usage, a targeted restore, an attributable
+    stray file — and is **never** access control. Nothing serves this path;
+    ``clinical.views.encounter_photo`` is the only way to read the bytes.
+    """
+    return (
+        f'encounters/{instance.organization_id}/{instance.encounter_id}/'
+        f'{uuid4().hex}.jpg'
+    )
+
+
+class EncounterPhoto(OrgOwnedModel):
+    """A photograph taken during a visit: the patient, or a document they brought.
+
+    Deliberately not SPEC §5's ``Attachment``. That is a wider thing — files on
+    a patient *or* an encounter, with an access level — and this one holds an
+    ``ImageField`` whose validation refuses PDFs outright, so the wider name
+    would promise lab-report attachments the model cannot accept. The
+    user-facing word comes from the ``photo`` terminology key, so a clinic that
+    says "Images" or "Documents" relabels without any of this moving.
+    """
+
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.CASCADE, related_name='photos'
+    )
+    # Always JPEG, always a generated name; see encounter_photo_path and
+    # clinical/images.py. Deleting a row does not delete the file — Django
+    # stopped doing that in 1.3 — so removal goes through
+    # services.delete_photo, which does both.
+    image = models.ImageField(upload_to=encounter_photo_path, max_length=200)
+    caption = models.CharField(max_length=140, blank=True)
+
+    class Meta:
+        # Oldest first: a set of photographs reads in the order they were taken,
+        # which for a multi-page document is the page order.
+        ordering = ['created_at', 'id']
+        indexes = [models.Index(fields=['encounter', 'created_at'])]
+
+    def __str__(self) -> str:
+        return self.caption or f'Photo {self.pk}'
 
 
 class Prescription(OrgOwnedModel):

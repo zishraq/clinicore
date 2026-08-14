@@ -8,17 +8,99 @@ from django import forms
 
 from accounts.models import Role, User
 from catalog.models import AdviceTemplate, Product
+from clinical.images import ImageRejected, normalize_image
 from clinical.models import Encounter, ItemType, Prescription, PrescriptionItem
 from core.forms import org_scoped_formfield
 from organizations.models import DEFAULT_TERMINOLOGY
 from organizations.services import active_branches
 from patients.models import Patient
 
-__all__ = ['EncounterForm', 'PrescriptionForm', 'PrescriptionItemFormSet']
+__all__ = [
+    'EncounterForm',
+    'PhotoUploadForm',
+    'PrescriptionForm',
+    'PrescriptionItemFormSet',
+]
 
 _INPUT = {'class': 'input input-bordered w-full'}
 _TEXTAREA = {'class': 'textarea textarea-bordered w-full', 'rows': 3}
 _SELECT = {'class': 'select select-bordered w-full'}
+_FILE = {'class': 'file-input file-input-bordered w-full'}
+
+#: Per submission. Django's DATA_UPLOAD_MAX_NUMBER_FILES (100) is the global
+#: backstop; this is the number a person could plausibly mean to send at once,
+#: and refusing 60 with a sentence beats accepting them and timing out.
+MAX_FILES_PER_UPLOAD = 10
+
+
+class MultipleFileInput(forms.ClearableFileInput):
+    """``<input multiple>``. Django's stock widget refuses to render one."""
+
+    allow_multiple_selected = True
+
+
+class MultipleImageField(forms.FileField):
+    """Several photographs at once, cleaned to a list of stored-ready JPEGs.
+
+    Validation lives here rather than in the view because a rejected file must
+    come back as a field error on a redisplayed form — with the consultation
+    note still typed into it. A doctor losing the note because a photograph was
+    12 MB is a worse bug than the one being prevented.
+    """
+
+    widget = MultipleFileInput
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('required', False)
+        kwargs.setdefault(
+            'widget',
+            # No `capture` attribute, deliberately. It forces the camera and
+            # removes the gallery, which breaks a normal flow: a photograph
+            # taken of a referral letter while the doctor is with someone else,
+            # attached afterwards. accept="image/*" still offers the camera in
+            # the Android picker.
+            MultipleFileInput(attrs={**_FILE, 'accept': 'image/*'}),
+        )
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        if not data:
+            return []
+        files = data if isinstance(data, (list, tuple)) else [data]
+        # An empty file input posts a single empty value; drop those before
+        # counting, or "no photos" reads as one unreadable file.
+        files = [item for item in files if item]
+        if len(files) > MAX_FILES_PER_UPLOAD:
+            raise forms.ValidationError(
+                f'{len(files)} photos at once is too many — '
+                f'{MAX_FILES_PER_UPLOAD} is the limit per upload.'
+            )
+        normalized = []
+        for item in files:
+            super().clean(item, initial)
+            try:
+                normalized.append(normalize_image(item))
+            except ImageRejected as rejected:
+                raise forms.ValidationError(str(rejected)) from None
+        return normalized
+
+
+class PhotoUploadForm(forms.Form):
+    """The standalone upload on the visit detail page.
+
+    The same two fields also live on ``EncounterForm``, because a visit being
+    written up has no saved encounter to attach a photograph to yet — there,
+    they ride along with the one big POST and are attached after it saves.
+    """
+
+    photos = MultipleImageField()
+    caption = forms.CharField(
+        required=False,
+        max_length=140,
+        widget=forms.TextInput(
+            attrs={**_INPUT, 'placeholder': 'Blood report, X-ray, rash on left arm…'}
+        ),
+    )
 
 
 def _practitioner_users(organization):
@@ -41,6 +123,18 @@ class EncounterForm(forms.ModelForm):
                 'rows': 2,
                 'placeholder': 'What is being corrected, and why?',
             }
+        ),
+    )
+    # Also not model fields. A visit being created has no row to hang a
+    # photograph on yet, so the files travel with the same POST and the view
+    # attaches them once the encounter exists. Cleaning them here is what keeps
+    # a rejected file from costing the typed note.
+    photos = MultipleImageField()
+    photo_caption = forms.CharField(
+        required=False,
+        max_length=140,
+        widget=forms.TextInput(
+            attrs={**_INPUT, 'placeholder': 'Blood report, X-ray, rash on left arm…'}
         ),
     )
 
@@ -91,6 +185,9 @@ class EncounterForm(forms.ModelForm):
         # "Follow up date" was a date the clinic wrote down and never saw again.
         # It books an appointment now, so it is named after what it produces.
         self.fields['follow_up_date'].label = f'Next {terms["appointment"].lower()}'
+        # The clinic's own word for these, so an org that mostly photographs
+        # referral letters can call them Documents (SPEC §5).
+        self.fields['photos'].label = terms['photo_plural']
         reason.help_text = (
             f'Saved in the {one} history. '
             f'Needed once the {one} is no longer a {terms["status_draft"].lower()}.'

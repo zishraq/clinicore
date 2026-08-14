@@ -165,3 +165,34 @@ def test_every_tracked_product_priced_and_levelled():
         assert tracked.exists()
         assert not tracked.filter(sale_price__lte=Decimal('0')).exists()
         assert not tracked.filter(reorder_level__lt=Decimal('0')).exists()
+
+
+def test_reset_deletes_a_hand_uploaded_photo_and_its_file(settings, tmp_path):
+    """The loader seeds no photographs, so only a staged row catches this.
+
+    ``Encounter`` CASCADEs its photos, which means a queryset teardown never
+    raises — it just leaves the image files behind, orphaned under a media
+    directory nothing can name them from any more. A silent disk leak rather
+    than a loud FK error, which is why it needs a test of its own.
+    """
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
+    from clinical.models import Encounter, EncounterPhoto
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    organization = _build()
+
+    with organization_context(organization):
+        staged = EncounterPhoto(
+            organization=organization, encounter=Encounter.objects.first()
+        )
+        staged.image.save('probe.jpg', ContentFile(b'not really a jpeg'), save=False)
+        staged.save()
+    name = staged.image.name
+    assert default_storage.exists(name)
+
+    _build('--reset')
+
+    assert not EncounterPhoto.all_objects.filter(pk=staged.pk).exists()
+    assert not default_storage.exists(name), 'the row went, the file stayed behind'

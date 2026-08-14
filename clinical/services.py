@@ -5,13 +5,16 @@ an actor and a reason, never a silent overwrite (SPEC §6.4). Rationale and the
 tenancy caveat on historical tables: docs/adr/0006-encounter-amendments.md.
 """
 
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from clinical.models import Encounter, EncounterStatus, Prescription
+from clinical.models import Encounter, EncounterPhoto, EncounterStatus, Prescription
 
 __all__ = [
     'AmendmentReasonRequired',
+    'attach_photos',
+    'delete_photo',
     'encounter_revisions',
     'finalize_encounter',
     'prescription_for',
@@ -184,3 +187,47 @@ def revision_timeline(organization, encounter: Encounter) -> list[dict]:
             }
         )
     return timeline
+
+
+def attach_photos(encounter: Encounter, images, *, actor, caption: str = ''):
+    """Store already-normalized JPEG bytes against a visit.
+
+    ``images`` comes from ``clinical.forms.MultipleImageField``, which has
+    already decoded, downscaled and re-encoded every file — a rejection has to
+    reach the practitioner as a form error while the consultation note is still
+    on screen, so it cannot happen down here.
+
+    ``caption`` applies to the whole batch. Three photographs of one lab report
+    share one description, which is what an upload usually is; a file input set
+    to ``multiple`` has nowhere to put a caption per file anyway.
+    """
+    photos = []
+    for data in images:
+        photo = EncounterPhoto(
+            organization_id=encounter.organization_id,
+            encounter=encounter,
+            caption=caption,
+            created_by=actor,
+        )
+        # The name is discarded by encounter_photo_path, which generates its
+        # own; save=False so the row is written once, below, rather than twice.
+        photo.image.save('upload.jpg', ContentFile(data), save=False)
+        photo.save()
+        photos.append(photo)
+    return photos
+
+
+def delete_photo(photo: EncounterPhoto) -> None:
+    """Remove the row and the file behind it.
+
+    File first: the reverse order risks deleting the only pointer to a file the
+    storage then refuses to remove, leaving bytes on disk that nothing in the
+    application can ever name again. A row briefly outliving its file is the
+    recoverable direction — it renders as one broken thumbnail.
+
+    Hard delete, not the SPEC §4 soft delete for clinical records: a
+    soft-deleted row pointing at a file that has been erased claims to hold
+    something it does not.
+    """
+    photo.image.delete(save=False)
+    photo.delete()

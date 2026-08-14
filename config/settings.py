@@ -263,6 +263,25 @@ if DEBUG:
     }
     WHITENOISE_AUTOREFRESH = True
 
+# --- Media -----------------------------------------------------------------
+#
+# Patient photographs. WhiteNoise serves STATIC_ROOT and nothing else, and
+# **nothing routes MEDIA_URL — in any mode, including DEBUG.** That asymmetry
+# with static is the whole design: these are clinical records, so they are
+# fetched through `clinical.views.encounter_photo` behind login, a role check
+# and organization scoping, and a guessable URL that skips all three is a data
+# leak. Serving /media/ in development only would mean development never
+# exercises the protected view, so the leak ships unnoticed.
+#
+# MEDIA_URL exists because FileField.url is built from it; rendering
+# `photo.image.url` into a template is a bug. core/tests/test_media_not_served.py
+# asserts the path 404s, so a later "fix" that adds static() to config/urls.py
+# fails the suite instead of going live.
+#
+# See docs/adr/0014-encounter-photos-served-through-a-view.md.
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'

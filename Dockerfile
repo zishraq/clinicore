@@ -32,6 +32,13 @@ COPY . .
 RUN DJANGO_SECRET_KEY=build-time-only-not-a-secret \
     python manage.py collectstatic --noinput --clear
 
+# Created before the chown, and that order is load-bearing. docker-compose.prod
+# mounts a named volume here, and Docker seeds a fresh volume from the image's
+# directory *including its ownership*. If this path does not exist in the
+# image, Docker creates the mount point as root and the non-root user below
+# cannot write a single upload — silent until the first photo.
+RUN mkdir -p /app/media
+
 # Runs as a normal user: an application that never writes to its own code has
 # no reason to be able to. uid 1000 matches the usual host user, so the
 # development bind mount stays writable.

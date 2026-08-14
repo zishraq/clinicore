@@ -8,15 +8,21 @@ a 403 rather than a hidden template block (SPEC §6.1).
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from accounts.permissions import clinical_access_required, require_membership
 from clinical import services
-from clinical.forms import EncounterForm, PrescriptionForm, PrescriptionItemFormSet
-from clinical.models import Encounter, EncounterStatus, PrintSize
+from clinical.forms import (
+    EncounterForm,
+    PhotoUploadForm,
+    PrescriptionForm,
+    PrescriptionItemFormSet,
+)
+from clinical.models import Encounter, EncounterPhoto, EncounterStatus, PrintSize
 from organizations.services import default_branch
 from patients.models import Patient
 from scheduling import services as scheduling_services
@@ -28,6 +34,9 @@ __all__ = [
     'encounter_finalize',
     'encounter_history',
     'encounter_list',
+    'encounter_photo',
+    'encounter_photo_delete',
+    'encounter_photo_upload',
     'encounter_update',
     'prescription_item_row',
     'prescription_print',
@@ -89,6 +98,8 @@ def encounter_detail(request, pk: int):
             'medicines': [item for item in items if not item.is_advice],
             'advice_items': [item for item in items if item.is_advice],
             'invoice': invoice_for_encounter(request.organization, encounter),
+            'photos': encounter.photos.all(),
+            'photo_form': PhotoUploadForm(),
         },
     )
 
@@ -98,8 +109,13 @@ def _encounter_form_context(request, encounter=None):
     organization = request.organization
     prescription = services.prescription_for(encounter) if encounter else None
     data = request.POST or None
+    # The form is multipart now. `or None` is safe here where it would not be
+    # for a checkbox-only form: a consultation always posts text fields, so an
+    # empty POST means no POST rather than "everything was left blank".
+    files = request.FILES or None
     form = EncounterForm(
         data,
+        files,
         instance=encounter,
         organization=organization,
         requires_reason=bool(encounter and encounter.is_locked),
@@ -171,6 +187,28 @@ def _prefill_from_appointment(form, appointment) -> None:
     form.initial['branch'] = appointment.branch_id
     if appointment.practitioner_id:
         form.initial['practitioner'] = appointment.practitioner_id
+
+
+def _attach_form_photos(request, encounter, form, *, actor) -> None:
+    """Store any photographs that rode along with the consultation form.
+
+    Runs after the encounter is saved, because a photograph needs a row to hang
+    on and a visit being created has none yet. The files were already decoded
+    and re-encoded by ``MultipleImageField.clean``, so nothing here can fail on
+    a bad upload — a rejection happened while the note was still on screen.
+    """
+    images = form.cleaned_data.get('photos') or []
+    if not images:
+        return
+    services.attach_photos(
+        encounter,
+        images,
+        actor=actor,
+        caption=form.cleaned_data.get('photo_caption', ''),
+    )
+    terms = request.organization.terms
+    label = terms['photo'] if len(images) == 1 else terms['photo_plural']
+    messages.success(request, f'{len(images)} {label.lower()} added.')
 
 
 def _book_follow_up(request, encounter, *, actor) -> None:
@@ -246,6 +284,7 @@ def encounter_create(request):
         messages.success(
             request, _save_and_report(request, encounter, actor=membership.user)
         )
+        _attach_form_photos(request, encounter, form, actor=membership.user)
         if appointment is not None:
             _mark_seen(request, appointment, encounter, actor=membership.user)
         _book_follow_up(request, encounter, actor=membership.user)
@@ -303,6 +342,7 @@ def encounter_update(request, pk: int):
                 if is_amendment
                 else _save_and_report(request, saved, actor=membership.user),
             )
+            _attach_form_photos(request, saved, form, actor=membership.user)
             # Also on edit: a follow-up date added or moved on a saved visit is
             # the same intention as one set while writing it.
             _book_follow_up(request, saved, actor=membership.user)
@@ -399,3 +439,85 @@ def prescription_print(request, pk: int):
             'now': timezone.localtime(),
         },
     )
+
+
+#: Long enough that a grid of thumbnails is not refetched on every visit to the
+#: page. `private` is the load-bearing half: `public` would let a shared proxy
+#: hold a patient's photograph, which is the leak this view exists to prevent.
+PHOTO_CACHE_CONTROL = 'private, max-age=3600'
+
+
+@login_required
+@clinical_access_required
+def encounter_photo(request, pk: int):
+    """Serve one photograph's bytes.
+
+    This is the only way to read an uploaded file: MEDIA_URL is routed nowhere,
+    in any mode, so there is no second path that skips these three checks
+    (docs/adr/0014-encounter-photos-served-through-a-view.md). Cross-tenant is
+    structural rather than a remembered filter — ``EncounterPhoto.objects`` is
+    the organization-scoped default manager, so another clinic's pk is a 404
+    here for the same reason it is everywhere else (ADR 0005).
+    """
+    photo = get_object_or_404(EncounterPhoto, pk=pk)
+    response = FileResponse(
+        # .open(), never .path: the latter raises on any storage that is not a
+        # local filesystem, and this line is what keeps SPEC §10's move to S3 a
+        # settings change rather than a rewrite.
+        photo.image.open('rb'),
+        content_type='image/jpeg',
+        # The uploaded name was discarded at upload; this one is generated for
+        # the same reason. as_attachment is left False so the browser renders
+        # it inline and a phone gets native pinch-zoom.
+        filename=f'photo-{photo.pk}.jpg',
+    )
+    response.headers['Cache-Control'] = PHOTO_CACHE_CONTROL
+    return response
+
+
+@login_required
+@clinical_access_required
+@require_POST
+def encounter_photo_upload(request, pk: int):
+    """Add photographs to a saved visit, from the detail page."""
+    membership = require_membership(request)
+    encounter = get_object_or_404(Encounter, pk=pk)
+    terms = request.organization.terms
+    form = PhotoUploadForm(request.POST, request.FILES)
+    if not form.is_valid():
+        # Post-redirect-get like every other write here. There is no typed note
+        # at risk on this form, so a message beats re-rendering a page whose
+        # other half is a saved record.
+        for error in form.errors.get('photos', []):
+            messages.error(request, error)
+    else:
+        images = form.cleaned_data['photos']
+        if not images:
+            messages.info(request, f'No {terms["photo_plural"].lower()} were chosen.')
+        else:
+            services.attach_photos(
+                encounter,
+                images,
+                actor=membership.user,
+                caption=form.cleaned_data['caption'],
+            )
+            label = terms['photo'] if len(images) == 1 else terms['photo_plural']
+            messages.success(request, f'{len(images)} {label.lower()} added.')
+    return redirect('clinical:encounter_detail', pk=encounter.pk)
+
+
+@login_required
+@clinical_access_required
+@require_POST
+def encounter_photo_delete(request, pk: int):
+    """Remove one photograph, row and file.
+
+    PRACTITIONER/ADMINISTRATOR only — which ``clinical_access_required`` already
+    is, so upload, view and delete share one gate and STAFF never reaches the
+    visit page that offers them.
+    """
+    photo = get_object_or_404(EncounterPhoto, pk=pk)
+    encounter_pk = photo.encounter_id
+    services.delete_photo(photo)
+    messages.success(request, f'{request.organization.terms["photo"]} deleted.')
+    return redirect('clinical:encounter_detail', pk=encounter_pk)

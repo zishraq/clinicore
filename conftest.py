@@ -20,6 +20,19 @@ def _clean_organization_context():
     assert get_active_organization_id() is None
 
 
+@pytest.fixture(autouse=True)
+def _isolated_media_root(settings, tmp_path):
+    """No test writes into the repository's own media/ directory.
+
+    Autouse and global rather than per-module, because the failure is silent:
+    a test that saves a ``FileField`` leaves real files behind, nothing fails,
+    and they accumulate in a working tree until someone notices stray uploads
+    under a path no row points at. Found exactly that way — the tenant-isolation
+    builders had been writing one-pixel images into media/ for real.
+    """
+    settings.MEDIA_ROOT = str(tmp_path / 'media')
+
+
 @pytest.fixture
 def organization(db) -> Organization:
     return Organization.objects.create(name='Northside Clinic', slug='northside')

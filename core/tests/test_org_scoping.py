@@ -10,13 +10,19 @@ from decimal import Decimal
 
 import pytest
 from django.apps import apps
+from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from accounts.models import Membership, Role, User
 from billing.models import Invoice, InvoiceItem, LineType, Payment
 from billing.services import next_invoice_number
 from catalog.models import AdviceTemplate, Product
-from clinical.models import Encounter, Prescription, PrescriptionItem
+from clinical.models import (
+    Encounter,
+    EncounterPhoto,
+    Prescription,
+    PrescriptionItem,
+)
 from core.context import organization_context
 from core.exceptions import ActiveOrganizationRequired
 from core.models import DocumentSequence, OrgOwnedModel
@@ -32,6 +38,14 @@ from patients.models import Patient, PatientClinicalProfile
 from scheduling.models import Appointment
 
 pytestmark = pytest.mark.django_db
+
+#: Smallest thing that is unambiguously an image file, for builders that only
+#: need a FileField to be non-empty.
+_ONE_PIXEL_GIF = (
+    b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!'
+    b'\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00'
+    b'\x00\x02\x02D\x01\x00;'
+)
 
 
 def _build_branch(organization):
@@ -81,6 +95,18 @@ def _build_appointment(organization):
         branch=_build_branch(organization),
         scheduled_date=timezone.localdate(),
     )
+
+
+def _build_encounter_photo(organization):
+    photo = EncounterPhoto(
+        organization=organization, encounter=_build_encounter(organization)
+    )
+    # A one-pixel GIF, so this builder needs neither Pillow nor a fixture file:
+    # what is being tested is the row's scoping, not the image pipeline
+    # (clinical/tests/test_photos.py covers that).
+    photo.image.save('probe.jpg', ContentFile(_ONE_PIXEL_GIF), save=False)
+    photo.save()
+    return photo
 
 
 def _build_prescription(organization):
@@ -199,6 +225,7 @@ BUILDERS = {
     'catalog.AdviceTemplate': _build_advice_template,
     'catalog.Product': _build_product,
     'clinical.Encounter': _build_encounter,
+    'clinical.EncounterPhoto': _build_encounter_photo,
     'clinical.Prescription': _build_prescription,
     'clinical.PrescriptionItem': _build_prescription_item,
     'core.DocumentSequence': _build_document_sequence,
