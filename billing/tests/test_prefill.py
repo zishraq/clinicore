@@ -117,18 +117,78 @@ def test_advice_is_never_a_charge(organization, branch, practitioner, visit):
         )
 
 
-def test_an_untracked_recommendation_is_not_prefilled(
+def test_a_recommendation_the_clinic_does_not_sell_is_not_prefilled(
     organization, branch, practitioner, visit
 ):
-    """Recommended but not dispensed here — there is no shelf it comes off."""
+    """Recommended but bought elsewhere. ``is_sellable`` is what says so.
+
+    This used to assert that an *untracked* product was not prefilled, which
+    conflated two flags: not stocking something is not the same as not selling
+    it. Under that rule every quick-added medicine — untracked, because nobody
+    receipts stock mid-consultation — was silently missing from the bill.
+    """
     with organization_context(organization):
-        product = _product(organization, 'Vitamin D drops', is_stock_tracked=False)
+        product = _product(
+            organization,
+            'Vitamin D drops',
+            is_sellable=False,
+            is_stock_tracked=False,
+        )
     _prescribe(organization, visit, product, dosage='5 drops')
 
     with organization_context(organization):
         assert (
             services.prescribed_product_lines(organization, visit, branch=branch) == []
         )
+
+
+def test_an_untracked_but_sellable_product_is_prefilled(
+    organization, branch, practitioner, visit
+):
+    """The quick-add case, and the reason the rule changed.
+
+    No ledger exists for an untracked product, so there is no stock level that
+    could refuse it — the only question is whether the clinic sells the thing.
+    """
+    with organization_context(organization):
+        product = _product(
+            organization,
+            'Paracetamol 500mg',
+            is_sellable=True,
+            is_stock_tracked=False,
+        )
+    _prescribe(organization, visit, product, dosage='1 tablet')
+
+    with organization_context(organization):
+        lines = services.prescribed_product_lines(organization, visit, branch=branch)
+
+    assert _names(lines) == ['Paracetamol 500mg']
+
+
+def test_a_quick_added_medicine_reaches_the_bill(
+    organization, branch, practitioner, visit
+):
+    """End to end on the defaults, which is where the bug actually lived.
+
+    Built through ``quick_add_product`` rather than by setting flags by hand:
+    the whole failure was that the defaults it leaves behind were wrong, so a
+    test that spells the flags out would have kept passing throughout.
+    """
+    from catalog.services import quick_add_product
+
+    with organization_context(organization):
+        product = quick_add_product(
+            organization, actor=practitioner, name='Cetirizine 10mg'
+        )
+        assert product.is_sellable and not product.is_stock_tracked
+    _prescribe(organization, visit, product, dosage='1 tablet')
+
+    with organization_context(organization):
+        lines = services.prescribed_product_lines(organization, visit, branch=branch)
+
+    assert _names(lines) == ['Cetirizine 10mg']
+    # Priced on the bill, not in the consultation — see docs/MVP-NOTES.md.
+    assert lines[0]['unit_price'] == Decimal('0.00')
 
 
 def test_a_stocked_but_unsellable_product_is_not_prefilled(

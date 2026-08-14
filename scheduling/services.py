@@ -25,6 +25,7 @@ __all__ = [
     'IllegalTransition',
     'book',
     'day_list',
+    'nearest_booked_days',
     'reschedule',
     'schedule_follow_up',
     'transition',
@@ -299,6 +300,32 @@ def day_list(
     # bills are being shown.
     rows = rows.select_related('patient', 'practitioner', 'branch', 'encounter')
     return rows.with_status(status).matching(search).chronological()
+
+
+def nearest_booked_days(organization, *, on_date, branch=None) -> dict:
+    """The closest day either side of ``on_date`` that actually has rows.
+
+    Exists for the empty state. A day list with nothing on it is
+    indistinguishable from a day list that failed to load, and the receptionist
+    reads it as "the system has lost my bookings" — so the empty state has to be
+    able to say where they are. Two cheap indexed lookups, and only run when the
+    day came back empty.
+
+    Returns ``{'previous': date|None, 'next': date|None}``. Both None means the
+    clinic genuinely has no appointments anywhere, which is a different sentence.
+    """
+    rows = Appointment.objects.for_organization(organization)
+    if branch is not None:
+        rows = rows.filter(branch=branch)
+    dates = rows.values_list('scheduled_date', flat=True)
+    return {
+        'previous': dates.filter(scheduled_date__lt=on_date)
+        .order_by('-scheduled_date')
+        .first(),
+        'next': dates.filter(scheduled_date__gt=on_date)
+        .order_by('scheduled_date')
+        .first(),
+    }
 
 
 def with_bills(organization, rows) -> list:

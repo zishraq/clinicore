@@ -161,13 +161,16 @@
 
   {% if photos %}
     {% comment %}
-      3 across at 375px is a ~110px thumbnail — big enough to recognise, small
-      enough that six photos do not push the prescription off the screen.
+      Two across on a phone, not three. Three gave a 93px tile, and a delete
+      control big enough for a thumb would have covered half of it; at 375px two
+      columns is a ~143px tile that carries a 44px button in the corner without
+      hiding the picture. Four and six from `sm` up, where the tiles are small
+      because the screen is wide rather than because space is short.
 
       loading="lazy" matters here: these are full-size images shown small, so a
       long visit should not fetch every one of them at once.
     {% endcomment %}
-    <ul class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-4">
+    <ul class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-4">
       {% for photo in photos %}
         <li class="relative">
           <a href="{% url 'clinical:photo' photo.pk %}" target="_blank" rel="noopener">
@@ -176,9 +179,20 @@
                  loading="lazy"
                  class="aspect-square w-full rounded-lg object-cover bg-base-200">
           </a>
-          {# Always visible, never hover-revealed: a phone has no hover. #}
+          {% comment %}
+            Always visible, never hover-revealed: a phone has no hover.
+
+            Sized with plain utilities rather than `btn btn-xs btn-circle`.
+            app.css grows `.btn-xs` to a 44px *height* below sm while
+            `.btn-circle` keeps a 24px width, and the two fought: the control
+            rendered as a distorted pill and measured 23px across. An explicit
+            square is predictable at both ends — 44px for a thumb, 24px for a
+            mouse.
+          {% endcomment %}
           <button type="button"
-                  class="btn btn-xs btn-circle bg-[var(--cc-danger)] text-white border-none absolute top-1 right-1"
+                  class="absolute top-1 right-1 h-11 w-11 sm:h-6 sm:w-6 rounded-full
+                         inline-flex items-center justify-center leading-none
+                         text-xl sm:text-sm bg-[var(--cc-danger)] text-white shadow"
                   onclick="delete_photo_{{ photo.pk }}.showModal()"
                   aria-label="Delete {{ terms.photo|lower }}"
                   title="Delete {{ terms.photo|lower }}">&times;</button>

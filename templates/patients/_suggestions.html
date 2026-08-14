@@ -31,13 +31,20 @@ this is someone else".
   <div class="border-t border-black/10 mt-1 pt-1">
     {% comment %}
       Opens the modal in base.html's modals block. hx-get fills the modal body
-      first, seeded with the typed name; the dialog is only shown once that
+      first, seeded with what was typed; the dialog is only shown once that
       content has landed, so it never flashes empty.
+
+      `seed_field` is "phone" when the query is a number and "full_name"
+      otherwise (patients/phone.py). Searching by number and registering the
+      miss was putting the number into the name — and because every screen with
+      a picker comes through here, it was doing so on all of them.
+      patient_quick_create repeats the check, so this is the tidy path rather
+      than the only guard.
     {% endcomment %}
     <button type="button" data-add-patient
             class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] text-[var(--cc-primary)]"
             hx-get="{% url 'patients:quick_create' %}"
-            hx-vals='{"full_name": "{{ query|escapejs }}"}'
+            hx-vals='{"{{ seed_field }}": "{{ query|escapejs }}"}'
             hx-target="#add-patient-body"
             hx-swap="innerHTML"
             hx-on::after-request="document.getElementById('add_patient_modal').showModal()">

@@ -50,6 +50,9 @@ class Product(OrgOwnedModel):
         default=Decimal('0.00'),
         help_text='Prefilled when this is added to a bill.',
     )
+    # Stays False. Quick-add happens with a patient in the room and nobody is
+    # booking in a goods receipt at that moment, so a product that defaulted to
+    # tracked would start life with a ledger nothing has ever posted to.
     is_stock_tracked = models.BooleanField(
         default=False, help_text='Count this product in and out of stock.'
     )
@@ -62,9 +65,15 @@ class Product(OrgOwnedModel):
         default=Decimal('0.00'),
         help_text='Warn when stock falls to or below this. Zero means no alert.',
     )
+    # Defaults True because the clinic sells most of what it prescribes, and
+    # because this is what quick-add gets: a medicine created mid-consultation
+    # with the default off never reached the bill raised from that same visit,
+    # which read as the bill being broken. "Recommended, bought elsewhere" is
+    # the exception, so it is the box you tick rather than the one you forget.
+    # A default for new rows only — existing products keep their flags.
     is_sellable = models.BooleanField(
-        default=False,
-        help_text='False for things recommended but not dispensed here.',
+        default=True,
+        help_text='Untick for things recommended but not dispensed here.',
     )
     is_active = models.BooleanField(default=True)
 

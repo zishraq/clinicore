@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from core.managers import AliveOrgScopedManager
 from core.models import OrgOwnedModel, SoftDeleteModel
+from patients.phone import dial_string
 
 __all__ = ['Patient', 'PatientClinicalProfile', 'Sex']
 
@@ -78,6 +79,17 @@ class Patient(OrgOwnedModel, SoftDeleteModel):
         if self.approx_age_years is not None:
             return f'~{self.approx_age_years} yrs'
         return '—'
+
+    @property
+    def dial(self) -> str:
+        """``phone`` with its separators removed, for a ``tel:`` href.
+
+        A property rather than a template filter because ``phone`` is a free
+        text field — "01712 345678" and "(017) 12345678" are both things a
+        receptionist types — and a ``tel:`` link built from the raw value is
+        unreliable. Display still shows what was typed.
+        """
+        return dial_string(self.phone)
 
 
 class PatientClinicalProfile(OrgOwnedModel):

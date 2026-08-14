@@ -29,18 +29,32 @@ templates/scheduling/_rows.html.
   actions reach them by name with hx-include.
 {% endcomment %}
 <form method="get" class="card-surface rounded-xl p-4 mb-6 flex flex-wrap items-end gap-3">
-  <div>
+  {% comment %}
+    One control, not two. The arrows used to sit in their own group after the
+    date field, which read as an unrelated pair of buttons; either side of the
+    field they are obviously "the day before" and "the day after" it. Today
+    stays alongside because it is the same kind of move.
+  {% endcomment %}
+  {% comment %}
+    Full width on a phone, natural width from sm up. The four controls are
+    285px of fixed content and 375px minus the card's padding leaves 327px, so
+    on one nowrap line "Today" was clipped by the right edge. The date input
+    takes the slack instead and Today wraps under it when it has to.
+  {% endcomment %}
+  <div class="w-full sm:w-auto">
     <label class="label py-1" for="day-date"><span class="label-text text-xs">Day</span></label>
-    <input type="date" id="day-date" name="date" value="{{ on_date|date:'Y-m-d' }}"
-           onchange="this.form.submit()"
-           class="input input-bordered">
-  </div>
-
-  <div class="flex gap-2">
-    <a class="btn btn-ghost btn-sm" href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">‹</a>
-    <a class="btn btn-sm {% if is_today %}btn-disabled{% else %}btn-ghost{% endif %}"
-       href="?{% if branch %}branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">Today</a>
-    <a class="btn btn-ghost btn-sm" href="?date={{ next_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">›</a>
+    <div class="flex flex-wrap items-center gap-1">
+      <a class="btn btn-ghost btn-square shrink-0" aria-label="Previous day"
+         href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">‹</a>
+      <input type="date" id="day-date" name="date" value="{{ on_date|date:'Y-m-d' }}"
+             onchange="this.form.submit()"
+             class="input input-bordered flex-1 min-w-0 sm:flex-none">
+      <a class="btn btn-ghost btn-square shrink-0" aria-label="Next day"
+         href="?date={{ next_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">›</a>
+      {# Own line on a phone; sharing one left the date input clipped. #}
+      <a class="btn shrink-0 w-full sm:w-auto {% if is_today %}btn-disabled{% else %}btn-ghost{% endif %}"
+         href="?{% if branch %}branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">Today</a>
+    </div>
   </div>
 
   <div>
@@ -54,7 +68,7 @@ templates/scheduling/_rows.html.
   </div>
 
   <div class="flex-1 min-w-[12rem]">
-    <label class="label py-1" for="day-search"><span class="label-text text-xs">Find</span></label>
+    <label class="label py-1" for="day-search"><span class="label-text text-xs">Search</span></label>
     <input type="search" id="day-search" name="q" value="{{ search }}"
            placeholder="Name or phone" class="input input-bordered w-full">
   </div>

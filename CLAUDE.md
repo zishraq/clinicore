@@ -443,6 +443,69 @@ the *left* edge and its beginning is unreadable — worst on a phone. Pre-existi
 and app-wide; the photo rejection message was shortened to stop making it worse,
 but the component itself still needs a pass.
 
+A URL smoke walk exists now (2026-08-14) and is the coverage that was genuinely
+missing: 559 tests asserted specific behaviours and **none asserted that a page
+simply loads**, so a view could 500 for everyone and stay green.
+`core/tests/test_url_smoke.py` enumerates the URLconf itself, resolves each
+pattern's arguments from seeded data, GETs it as OWNER / PRACTITIONER / STAFF,
+and fails only on 5xx — 200/302/403/404/405 are all legitimate. Rules:
+
+- **Discovery is automatic; argument sources are declared.** `pk` means a
+  different model in nearly every namespace, and a wrong guess is a 404 that
+  looks like a pass. `_argument_sources()` maps URL name → row, and
+  `test_every_parameterised_url_declares_its_arguments` fails when a new view
+  with a `<int:pk>` arrives without an entry. That pairing is what makes a new
+  view covered the day it lands rather than when someone remembers.
+- **`client.raise_request_exception = False` is load-bearing.** Left at the
+  default the client re-raises, so the walk dies on the first broken page and
+  reports one traceback instead of listing every page that is down.
+- **Both a populated and an empty organization are walked.** The populated one
+  is built by `bootstrap_demo`, so it keeps seeing realistic rows for new tables
+  without a second seeding path. The empty one catches empty-state crashes,
+  whose first victim is always a real clinic's first morning.
+- It currently walks **66 of 66** non-admin patterns with none skipped (51×200,
+  4×302, 11×405). `test_the_walk_actually_reaches_most_of_the_application`
+  asserts that floor, so a regression in argument resolution cannot turn the
+  whole file into a silent no-op. Verified against a deliberately planted 500.
+
+**`migrate --check` joined the standing verification list** for the same reason:
+`clinical_encounterphoto` 500'd on correct code because a local SQLite database
+had never had migration 0006 applied. The suite and Docker build fresh
+databases, so nothing else can catch it. Run it against **each** database you
+use — the SQLite one and the Postgres one fall behind independently.
+
+The 2026-08-14 responsive pass fixed the day list, which was genuinely broken at
+375px: one `flex flex-wrap items-center` line gave the middle column ~195px, so
+`truncate` ate patient names to "Imra…" while the action buttons sat on top of
+meta text that had wrapped to five lines. It is now a two-column grid below `sm`
+(time | identity, actions spanning both on their own row) and the original
+wrapping flex line from `sm` up. Also settled:
+
+- **The phone number is a button, not an underlined number.** It read as data in
+  the grey meta line and was being missed; confirming bookings by phone is the
+  main use of the screen. Still a `tel:` link, now `btn-sm btn-brand-ghost` with
+  an icon, and it moved into the actions group where it belongs.
+- **The photo grid is 2 columns on a phone, not 3.** A 93px tile could not carry
+  a thumb-sized delete control without hiding the picture; 135px can. The delete
+  button is sized with plain utilities rather than `btn-xs btn-circle`, which
+  fought each other — app.css grows `.btn-xs` to 44px *height* while
+  `.btn-circle` holds a 24px width, and the result measured 23px across. Now a
+  true 44px square on a phone, 24px from `sm` up.
+- **The topbar user name became an icon below `sm`.** Spelled out it took ~110px
+  of a 375px bar and was what truncated the page title to "Appointm…" — and,
+  worse, the patient's name to "Jahangir H…" on every visit page.
+- **`resize_window` silently does nothing in this harness and headless Chrome
+  clamps its viewport at ~500px.** The only way to see a true 375 is to render
+  the page inside a precisely-sized same-origin iframe, which establishes a real
+  CSS viewport (`100vw` resolves to the iframe width). `scratchpad/sweep.sh`
+  saves each page's HTML with its asset URLs absolutised and shoots it at 375 /
+  768 / 1024. **Screenshot, do not measure** — the bottom-nav bug, the truncated
+  names and two rendered `{# … #}` comments were all invisible to measurement
+  and obvious in a picture.
+- **A multi-line `{# … #}` renders to the page**, and it happened twice more in
+  this pass. `core/tests/test_template_comments.py` catches it every time; run
+  it after touching a template rather than only at the end.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployable now, but never actually deployed anywhere.
@@ -465,7 +528,24 @@ gaps. Deployable now, but never actually deployed anywhere.
   and seed data only.
 - No new dependency without asking. No scope beyond the current phase.
 - Never commit real patient data, real clinic branding, or a `.env` file.
-- Tests and CI stay green. Run `ruff` and `pytest` before declaring work done.
+- Tests and CI stay green. **Run all five before declaring work done**, every
+  session:
+
+  ```bash
+  ruff check . && ruff format --check .
+  python manage.py check
+  python manage.py makemigrations --check --dry-run
+  python manage.py migrate --check          # ← the local database, not the code
+  python -m pytest                          # on Postgres; see Commands below
+  ```
+
+  `migrate --check` is the odd one out and the reason the list is explicit. The
+  other four inspect the *code*; this one inspects **the database you are
+  actually developing against**, and exits non-zero when it is behind. Nothing
+  else can catch that: the suite and Docker both build fresh databases, so an
+  unapplied migration is invisible everywhere except the browser, where it
+  surfaces as `OperationalError: no such table`. That has now happened twice —
+  the second time to `clinical_encounterphoto`, on correct code.
 - **Verify interactive features in a browser before reporting them done.**
   Tests that assert status codes do not prove a UI works. Four bugs have
   shipped past green tests this way.
@@ -502,7 +582,14 @@ docker compose exec web python manage.py migrate
 docker compose exec web python manage.py bootstrap_demo --reset   # synthetic demo data
 ruff check . && ruff format --check .
 python manage.py check
+python manage.py makemigrations --check --dry-run   # is the code ahead of the migrations?
+python manage.py migrate --check                    # is this database behind the migrations?
 ```
 
 Outside Docker the project runs on SQLite (`POSTGRES_DB` unset) against the
 `.venv_clinicore` virtualenv. `make seed` and a `Makefile` do not exist yet.
+
+**Run `migrate --check` against each database you use.** They are separate
+files: the SQLite one from a bare `manage.py` run and the Postgres one behind
+`docker compose` fall behind independently, and a migration applied to one says
+nothing about the other.

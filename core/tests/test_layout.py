@@ -42,6 +42,27 @@ def test_the_card_annotations_have_css_behind_them(tier):
     assert f"[data-card='{tier}']" in css
 
 
+#: All three are required together, and each is individually easy to mistake
+#: for redundant. Verified in a browser at a true 375px viewport: without them
+#: a long message renders at left:-159px, i.e. 159px off the left edge.
+TOAST_DECLARATIONS = ('min-width: 0', 'white-space: normal', 'max-width: min(')
+
+
+@pytest.mark.parametrize('declaration', TOAST_DECLARATIONS)
+def test_the_toast_override_survives_a_tidy_up(declaration):
+    """daisyUI's ``.toast`` is nowrap **and** ``min-width: fit-content``.
+
+    Right-anchored, so a message wider than the viewport grows *leftwards* off
+    the screen and its opening words — the subject of the sentence — cannot be
+    read. ``min-width: 0`` is the one that looks most droppable and is the one
+    that matters most: min-width outranks max-width, so removing it silently
+    restores the bug while leaving a cap in the file that appears to handle it.
+    """
+    css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text()
+    toast_block = css.split('#toasts {')[1].split('}')[0]
+    assert declaration in toast_block
+
+
 def test_the_patient_list_names_a_card_title(client, practitioner, organization):
     """The other half of that coupling, from the markup side.
 

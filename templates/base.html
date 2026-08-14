@@ -53,10 +53,27 @@
 
           <div class="flex flex-wrap items-center gap-2 order-last basis-full sm:order-none sm:basis-auto">{% block page_actions %}{% endblock %}</div>
 
+          {% comment %}
+            The name becomes an icon below `sm`. Spelled out it takes about
+            110px of a 375px bar, which is what was truncating the page title to
+            "Appointm…" and, worse, the patient's name to "Jahangir H…" on every
+            visit page. Whose account this is matters far less on a phone than
+            what you are looking at, and the name is still the first line of the
+            menu this opens.
+          {% endcomment %}
           <div class="dropdown dropdown-end">
-            <div tabindex="0" role="button" class="btn btn-ghost btn-sm normal-case max-w-[12rem] truncate">{{ user.full_name }}</div>
+            <div tabindex="0" role="button"
+                 class="btn btn-ghost btn-sm normal-case max-w-[12rem] truncate"
+                 aria-label="{{ user.full_name }}">
+              <span class="hidden sm:inline">{{ user.full_name }}</span>
+              <svg class="w-5 h-5 sm:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.25"/>
+                <path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>
+              </svg>
+            </div>
             <ul tabindex="0" class="dropdown-content menu bg-[var(--cc-surface)] rounded-box z-30 w-56 p-2 shadow">
-              <li class="menu-title text-xs">{{ user.phone }}</li>
+              {# Carries the name for the phone layout, where the trigger is an icon. #}
+              <li class="menu-title text-xs">{{ user.full_name }} · {{ user.phone }}</li>
               <li><a href="{% url 'accounts:profile' %}">Your account</a></li>
               {% comment %}
                 The button is the menu item and the form sits outside the list,

@@ -614,12 +614,19 @@ def stock_levels(organization, *, branch=None, query: str = ''):
 
 
 def sellable_now(organization, products, *, branch=None) -> set[int]:
-    """Which of ``products`` could actually be sold off the shelf right now.
+    """Which of ``products`` could actually be sold right now.
 
-    Sellable, stock tracked, and with usable stock left — expired lots do not
-    count, since only a WASTAGE may move them. Reorder level is deliberately
-    ignored: it is a purchasing signal, not a sellability one, and a clinic can
-    still sell its last two boxes.
+    Sellable, and — **only if it is stock tracked** — with usable stock left.
+    Expired lots do not count, since only a WASTAGE may move them. Reorder level
+    is deliberately ignored: it is a purchasing signal, not a sellability one,
+    and a clinic can still sell its last two boxes.
+
+    The two flags mean different things and conflating them was a bug. An
+    untracked product has no ledger to violate, so stock cannot be a reason to
+    refuse it — requiring ``is_stock_tracked`` here meant a medicine quick-added
+    mid-consultation (untracked, because nobody receipts stock with a patient in
+    the room) never appeared on the bill raised from that visit. ``is_sellable``
+    is the flag that says whether the clinic sells the thing at all.
 
     Returns primary keys, and annotates rather than looping, so the caller pays
     one query however long the prescription is. Used by the bill prefill (A5).
@@ -629,9 +636,9 @@ def sellable_now(organization, products, *, branch=None) -> set[int]:
         return set()
     rows = (
         Product.objects.for_organization(organization)
-        .filter(pk__in=identifiers, is_sellable=True, is_stock_tracked=True)
+        .filter(pk__in=identifiers, is_sellable=True)
         .annotate(annotated_on_hand=_product_on_hand(branch=branch, usable_only=True))
-        .filter(annotated_on_hand__gt=ZERO)
+        .filter(Q(is_stock_tracked=False) | Q(annotated_on_hand__gt=ZERO))
         .values_list('pk', flat=True)
     )
     return set(rows)

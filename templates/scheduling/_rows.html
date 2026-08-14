@@ -13,19 +13,34 @@ carries its own state as a badge and offers only the actions that apply to it.
 {% if rows %}
   <div class="space-y-2">
     {% for row in rows %}
-      <div class="card-surface rounded-xl p-3 flex flex-wrap items-center gap-3
+      {% comment %}
+        Two layouts, one markup. Below `sm` this is a two-column grid — time in
+        column one, identity in column two, actions spanning both on a row of
+        their own. From `sm` up it becomes the original wrapping flex line and
+        every grid utility here goes inert.
+
+        It was a single `flex flex-wrap items-center` line at every width, and at
+        375px that gave the middle column about 195px: `truncate` ate the patient
+        name down to "Imra…" while the action buttons, still vertically centred,
+        landed on top of meta text that had wrapped to five lines. The grid is
+        what lets the meta wrap freely instead of being truncated, because it no
+        longer has to share a line with the buttons.
+      {% endcomment %}
+      <div class="card-surface rounded-xl p-3
+                  grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-2
+                  sm:flex sm:flex-wrap sm:items-center sm:gap-3
                   {% if row.status == 'ARRIVED' %}border-l-4 border-l-[var(--cc-primary)]{% endif %}
                   {% if row.is_closed %}opacity-60{% endif %}">
-        <p class="w-20 text-sm font-medium whitespace-nowrap">{{ row.when_display }}</p>
+        <p class="text-sm font-medium whitespace-nowrap sm:w-20">{{ row.when_display }}</p>
 
-        <div class="flex-1 min-w-0">
-          <p class="font-medium truncate">
+        <div class="min-w-0 sm:flex-1">
+          {# Wraps rather than truncates: "Anik…" is worse than two lines. #}
+          <p class="font-medium">
             {{ row.patient.full_name }}
             <span class="badge badge-ghost badge-sm ml-1">{% status_label row.status %}</span>
           </p>
           <p class="text-xs text-muted">
             <span class="font-mono">{{ row.patient.code }}</span>
-            {% if row.patient.phone %}· {{ row.patient.phone }}{% endif %}
             {% if row.practitioner %}· {{ row.practitioner.full_name }}{% else %}· Unassigned{% endif %}
             {% if row.status == 'ARRIVED' %}· waiting {{ row.arrived_at|timesince }}{% endif %}
           </p>
@@ -35,60 +50,117 @@ carries its own state as a badge and offers only the actions that apply to it.
           {% endif %}
         </div>
 
-        {% if membership.can_view_clinical and row.status == 'SEEN' %}
-          {% comment %}
-            Display only, and never for STAFF — the row is theirs, the money is
-            not. Read through to the visit's bill rather than stored here, so a
-            payment taken at the desk shows on the next poll (ADR 0010).
-          {% endcomment %}
-          {% if row.bill %}
-            {% include 'billing/_status_badge.html' with status=row.bill.payment_status %}
-          {% else %}
-            <span class="badge badge-ghost badge-sm badge-outline">No {{ terms.invoice|lower }}</span>
-          {% endif %}
-        {% endif %}
-
         {% comment %}
-          No typed input, so these post straight from the swapped container and
-          swap it back — the row changes state without a page reload.
+          The actions, including calling. On a phone this is `col-span-2`, so a
+          full-width row below the identity rather than a set of buttons
+          competing with it for 195px. `.btn-sm` already grows to a 44px target
+          below `sm` (static/css/app.css).
+
+          None of these hold typed input, so they post straight from the polled
+          container and swap it back.
         {% endcomment %}
-        {% if row.status == 'BOOKED' or row.status == 'NO_SHOW' %}
-          <button type="button" class="btn btn-sm btn-brand"
-                  hx-post="{% url 'scheduling:mark_arrived' row.pk %}"
-                  hx-include="[name='date'],[name='branch'],[name='status'],[name='q']"
-                  hx-target="#day-rows"
-                  hx-swap="innerHTML">Arrived</button>
-        {% endif %}
-        {% if row.status == 'BOOKED' %}
-          <button type="button" class="btn btn-sm btn-ghost"
-                  hx-post="{% url 'scheduling:no_show' row.pk %}"
-                  hx-include="[name='date'],[name='branch'],[name='status'],[name='q']"
-                  hx-target="#day-rows"
-                  hx-swap="innerHTML">No show</button>
-        {% endif %}
-        {% if membership.can_view_clinical and row.status == 'ARRIVED' %}
+        <div class="col-span-2 flex flex-wrap items-center gap-2 sm:col-auto">
+          {% if membership.can_view_clinical and row.status == 'SEEN' %}
+            {% comment %}
+              Display only, and never for STAFF — the row is theirs, the money
+              is not. Read through to the visit's bill rather than stored here,
+              so a payment taken at the desk shows on the next poll (ADR 0010).
+            {% endcomment %}
+            {% if row.bill %}
+              {% include 'billing/_status_badge.html' with status=row.bill.payment_status %}
+            {% else %}
+              <span class="badge badge-ghost badge-sm badge-outline">No {{ terms.invoice|lower }}</span>
+            {% endif %}
+          {% endif %}
+
           {% comment %}
-            The doctor learns someone has arrived here, so this is where he acts
-            on it. Gated rather than moved: STAFF works the same screen all day
-            and must not be offered a link that 403s.
+            Calling is an action, so it looks like one. As an underlined number
+            inside the grey meta line it read as data and was being missed —
+            and confirming the day's bookings by phone is the main thing this
+            screen is used for. Only rendered when there is a number: an empty
+            tel: is a dead tap. `dial` strips the separators a free-text phone
+            field collects; the label stays as typed.
           {% endcomment %}
-          <a class="btn btn-sm btn-brand"
-             href="{% url 'clinical:encounter_create' %}?appointment={{ row.pk }}">
-            Start {{ terms.encounter|lower }}
-          </a>
-        {% endif %}
-        {% if not row.is_closed %}
-          {% include 'scheduling/_cancel_button.html' with row=row %}
-        {% endif %}
+          {% if row.patient.phone %}
+            <a class="btn btn-sm btn-brand-ghost gap-1 font-normal"
+               href="tel:{{ row.patient.dial }}"
+               aria-label="Call {{ row.patient.full_name }} on {{ row.patient.phone }}">
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>{{ row.patient.phone }}
+            </a>
+          {% endif %}
+
+          {% if row.status == 'BOOKED' or row.status == 'NO_SHOW' %}
+            <button type="button" class="btn btn-sm btn-brand"
+                    hx-post="{% url 'scheduling:mark_arrived' row.pk %}"
+                    hx-include="[name='date'],[name='branch'],[name='status'],[name='q']"
+                    hx-target="#day-rows"
+                    hx-swap="innerHTML">Arrived</button>
+          {% endif %}
+          {% if row.status == 'BOOKED' %}
+            <button type="button" class="btn btn-sm btn-ghost"
+                    hx-post="{% url 'scheduling:no_show' row.pk %}"
+                    hx-include="[name='date'],[name='branch'],[name='status'],[name='q']"
+                    hx-target="#day-rows"
+                    hx-swap="innerHTML">No show</button>
+          {% endif %}
+          {% if membership.can_view_clinical and row.status == 'ARRIVED' %}
+            {% comment %}
+              The doctor learns someone has arrived here, so this is where he
+              acts on it. Gated rather than moved: STAFF works the same screen
+              all day and must not be offered a link that 403s.
+            {% endcomment %}
+            <a class="btn btn-sm btn-brand"
+               href="{% url 'clinical:encounter_create' %}?appointment={{ row.pk }}">
+              Start {{ terms.encounter|lower }}
+            </a>
+          {% endif %}
+          {% if not row.is_closed %}
+            {% include 'scheduling/_cancel_button.html' with row=row %}
+          {% endif %}
+        </div>
       </div>
     {% endfor %}
   </div>
 {% else %}
-  <p class="text-sm text-muted py-6 text-center">
+  {% comment %}
+    "Nothing on this day yet" was read as "the bookings are gone". An empty day
+    and a broken page look identical, so this states which day is being shown
+    and, when there are rows on other days, points at the nearest one and makes
+    it a link. The receptionist should never have to wonder whether the system
+    lost her work — the answer is on the screen.
+  {% endcomment %}
+  <div class="py-8 text-center space-y-3">
     {% if status or search %}
-      Nothing on this day matches that.
+      <p class="text-sm">Nothing on <span class="font-medium">{{ on_date|date:'l, d F Y' }}</span> matches that.</p>
+      <p class="text-xs text-muted">Clear the filters above to see the whole day.</p>
     {% else %}
-      Nothing on this day yet.
+      <p class="text-sm">
+        No {{ terms.appointment_plural|lower }} on
+        <span class="font-medium">{{ on_date|date:'l, d F Y' }}</span>.
+      </p>
+      {% if nearest.previous or nearest.next %}
+        <p class="text-xs text-muted">The nearest day with any:</p>
+        <div class="flex flex-wrap gap-2 justify-center">
+          {% if nearest.previous %}
+            <a class="btn btn-sm btn-brand-ghost"
+               href="?date={{ nearest.previous|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}">
+              ‹ {{ nearest.previous|date:'D, d M Y' }}
+            </a>
+          {% endif %}
+          {% if nearest.next %}
+            <a class="btn btn-sm btn-brand-ghost"
+               href="?date={{ nearest.next|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}">
+              {{ nearest.next|date:'D, d M Y' }} ›
+            </a>
+          {% endif %}
+        </div>
+      {% else %}
+        <p class="text-xs text-muted">
+          No {{ terms.appointment_plural|lower }} have been booked on any day yet.
+        </p>
+      {% endif %}
     {% endif %}
-  </p>
+  </div>
 {% endif %}

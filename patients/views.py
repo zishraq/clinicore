@@ -13,6 +13,7 @@ from accounts.permissions import clinical_access_required, require_membership
 from patients import services
 from patients.forms import ClinicalProfileForm, PatientForm
 from patients.models import Patient
+from patients.phone import looks_like_phone
 
 __all__ = [
     'clinical_profile_edit',
@@ -87,6 +88,10 @@ def patient_suggestions(request):
             'patients': matches[:SUGGESTION_LIMIT],
             'more': max(len(matches) - SUGGESTION_LIMIT, 0),
             'query': query,
+            # Which field the registration offer should seed. Decided here
+            # rather than in the template because the rule is a function of the
+            # text, and a template cannot call one with an argument.
+            'seed_field': 'phone' if looks_like_phone(query) else 'full_name',
         },
     )
 
@@ -130,9 +135,21 @@ def patient_quick_create(request):
             )
             return render(request, 'patients/_picked.html', {'patient': patient})
     else:
-        # Whatever was typed into the picker seeds the name, so the doctor does
-        # not retype the search he just ran.
-        form.initial['full_name'] = request.GET.get('full_name', '').strip()
+        # Whatever was typed into the picker seeds the form, so the doctor does
+        # not retype the search he just ran — but a phone number seeds *phone*.
+        # Searching by number and then registering was writing "01712345678"
+        # into full_name, on every screen with a picker.
+        #
+        # The check runs again here even though _suggestions.html already sent
+        # the right key. This is the one view every caller reaches, so it is the
+        # only place a fix cannot be missed: a template that still posts
+        # `full_name` (or a hand-built URL) is corrected rather than obeyed.
+        typed = request.GET.get('full_name', '').strip()
+        phone = request.GET.get('phone', '').strip()
+        if not phone and looks_like_phone(typed):
+            typed, phone = '', typed
+        form.initial['full_name'] = typed
+        form.initial['phone'] = phone
 
     return render(
         request,

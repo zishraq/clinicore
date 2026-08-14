@@ -114,12 +114,27 @@ def _day_context(request) -> dict:
     membership = getattr(request, 'membership', None)
     if membership is not None and membership.can_view_clinical:
         rows = services.with_bills(request.organization, rows)
+    # Evaluated once here so the empty state can be decided without the
+    # template triggering a second pass over the queryset.
+    rows = list(rows)
+    # Only looked up when there is nothing to show, and only when no filter is
+    # narrowing the day — with a filter on, "nothing here" already has an
+    # obvious cause and pointing at another date would be answering a question
+    # the receptionist did not ask.
+    nearest = (
+        services.nearest_booked_days(
+            request.organization, on_date=on_date, branch=branch
+        )
+        if not rows and not status and not search
+        else {'previous': None, 'next': None}
+    )
     return {
         'rows': rows,
         'on_date': on_date,
         'is_today': on_date == timezone.localdate(),
         'previous_date': on_date - timezone.timedelta(days=1),
         'next_date': on_date + timezone.timedelta(days=1),
+        'nearest': nearest,
         'branch': branch,
         'branches': _branches(request.organization),
         'status': status,

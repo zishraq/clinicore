@@ -171,6 +171,34 @@
   }
 }
 
+/* Toasts wrap instead of running off the screen.
+ *
+ * daisyUI's `.toast` is `white-space: nowrap` **and** `min-width: fit-content`,
+ * anchored to the right edge. A message wider than the viewport therefore grows
+ * *leftwards* off the screen and its first words — which is where the subject of
+ * the sentence lives — cannot be read at all. On a phone that is most messages:
+ * anything naming a file, a patient, or a medicine clears 375px easily.
+ *
+ * All three declarations are needed, and the order they were discovered in
+ * matters to anyone changing this:
+ *
+ *   - `min-width: 0` first. `min-width` beats `max-width` in the cascade, so
+ *     while `fit-content` stands, any cap added here is silently ignored. An
+ *     earlier attempt at this fix set only a max-width and did nothing at all.
+ *   - `white-space: normal`, or there is no break opportunity for a cap to use.
+ *   - the cap itself. `28rem` keeps a long message readable on a wide screen
+ *     rather than letting one sentence span a 1440px monitor; the `calc` is what
+ *     holds it inside a phone.
+ *
+ * Width is still shrink-to-fit, so a short toast stays short — only the long
+ * ones are affected.
+ */
+#toasts {
+  min-width: 0;
+  white-space: normal;
+  max-width: min(28rem, calc(100vw - 2rem));
+}
+
 /* Modals fill the phone.
  *
  * A dialog that leaves a margin of backdrop on every side is a desktop dialog

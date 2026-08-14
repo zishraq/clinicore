@@ -110,6 +110,21 @@ this file covers what was **not** built and what keeps biting.
   `--cc-*` tokens for the handful of brand-coloured classes. Rebranding is still
   a settings change, which is what SPEC §7 asks for.
 - **No factory-boy.** Fixtures build models directly.
+- **A quick-added medicine is priced at zero, on purpose.**
+  `catalog.services.quick_add_product` sets a name and nothing else, so
+  `sale_price` stays at its `0.00` default and a prefilled bill line starts at
+  zero. That is not an oversight: quick-add happens mid-consultation with a
+  patient in the room, and stopping to ask "what do we charge for this?" is the
+  wrong moment to interrupt. The price is typed on the bill, which is where the
+  practitioner is thinking about money anyway, and set permanently in
+  Settings → Medicines whenever someone gets to it.
+  `is_stock_tracked` stays `False` for the same reason — nobody books in a goods
+  receipt during a consultation. **`is_sellable` defaults to `True`** since
+  2026-08-14: the clinic sells most of what it prescribes, and with the old
+  `False` default every quick-added medicine was silently missing from the bill
+  raised from that same visit. "Recommended, bought elsewhere" is the exception
+  and is now the box you tick. Existing products kept their flags — the
+  migration alters a default, not data.
 
 ## Traps worth knowing before the next session
 
