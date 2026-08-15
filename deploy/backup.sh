@@ -29,6 +29,8 @@ DAY_OF_MONTH="$(date '+%d')"
 write_status() {
     # $1 = ok|error, $2 = message
     local state="$1" message="$2" success_line
+    # Before load_config there is nowhere to write; systemd still records it.
+    [ -n "${STATUS_DIR:-}" ] || return 0
     mkdir -p "$STATUS_DIR"
     # A failed run must not advance last_success. The app reads that field and
     # nothing else to decide whether backups are stale, so overwriting it here
@@ -55,12 +57,24 @@ EOF
     mv "$STATUS_DIR/backup-status.json.tmp" "$STATUS_DIR/backup-status.json"
 }
 
-on_error() {
-    local line="$1"
-    write_status error "backup failed at line $line — see: journalctl -u clinicore-backup"
-    log "backup FAILED (line $line)"
+# Two traps, and both are needed. ERR fires when a command fails and is the only
+# thing that knows the line number; it does NOT fire on an explicit `exit`, which
+# is how `die` reports an unset AGE_RECIPIENT or a suspiciously small dump.
+# Trapping ERR alone left those failures writing no status at all, so the
+# dashboard kept showing the previous night's success — the exact silence this
+# file exists to break.
+COMPLETED=0
+FAILURE_LINE=''
+trap 'FAILURE_LINE=$LINENO' ERR
+
+finish() {
+    local code=$?
+    [ "$COMPLETED" = 1 ] && return 0
+    write_status error \
+        "backup failed${FAILURE_LINE:+ at line $FAILURE_LINE} (exit $code) — see: journalctl -u clinicore-backup"
+    log "backup FAILED${FAILURE_LINE:+ (line $FAILURE_LINE)}"
 }
-trap 'on_error $LINENO' ERR
+trap finish EXIT
 
 load_config
 require age "Install it with: sudo apt install age"
@@ -129,6 +143,6 @@ else
     log "WARNING: RCLONE_REMOTE is empty, so this backup exists only on this box"
 fi
 
-trap - ERR
+COMPLETED=1
 write_status ok "backed up $((DB_BYTES / 1024)) KB database and $((MEDIA_BYTES / 1024)) KB media"
 log "backup OK"

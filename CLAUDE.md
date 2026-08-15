@@ -543,17 +543,38 @@ volumes. Rules to know:
   previous value on failure, because the dashboard reads that field and nothing
   else — overwriting it would turn every failure into a green dashboard, which
   is the exact silence the feature exists to break.
+- **`trap ... ERR` is not enough, and this shipped broken for an hour.** ERR does
+  not fire on an explicit `exit`, which is how `die` reports every early refusal
+  — a missing key, an unset `AGE_RECIPIENT`, no backups on disk. Those failures
+  wrote *no status at all*, so the dashboard went on showing the previous run's
+  success and `last_attempt` did not even move. Both scripts now pair
+  `trap 'FAILURE_LINE=$LINENO' ERR` (which knows the line) with
+  `trap finish EXIT` (which catches everything) and a `COMPLETED` flag set only
+  on the success path. Caught by deleting the key and watching the status file
+  stay green — not by reading the code.
+- **In `verify-restore.sh` the table-count assertion comes before any query
+  against an application table.** Reversed, a dump of a never-migrated database
+  fails on `relation "patients_patient" does not exist` at an arbitrary line,
+  where the useful sentence is "that backup holds no clinic". The message is the
+  entire product of that script.
 - **Backup status is a file, not a database row.** The scripts run on the host,
   and writing through `manage.py` would mean a backup could only record itself
   while the app was up — "the night the app was down" is the run whose outcome
   matters most. Mounted read-only at `/app/run`, so the app cannot flatter its
   own status. `core/backups.py` reports *never run* for anything missing,
   malformed or truncated: a fresh box must not look healthy.
-- **`deploy/verify-restore.sh` needs the private key on the box to run
-  unattended**, which weakens the stolen-server property. The trade is stated in
-  the script and the runbook: an unverified backup is the larger risk, but
-  running it by hand monthly with the key on a USB stick is the safer option and
-  either is a decision to write down.
+- **The private key lives on the box at `/etc/clinicore/backup-identity.key`
+  (root-only), so the monthly restore check runs unattended.** Decided
+  2026-08-15, and a knowing trade rather than an oversight: a stolen server can
+  now decrypt the backups it made. Accepted because the alternative was a human
+  ritual with a USB stick, which stops happening by the third month, and its
+  failure is invisible — unverified backups look exactly like verified ones
+  until the night one is needed. A year of unproven backups is the larger risk.
+  Reasoning in full under "Why the private key is on the server" in
+  `docs/RUNBOOK.md`, including that this loses *one copy* of the key rather than
+  the key, and that a stolen box means rotating the pair and keeping the old one
+  so existing backups stay readable. Only `verify-restore.sh` reads it;
+  `backup.sh` needs the public key alone.
 
 What the drill actually proved (`scratchpad/opsdrill`, a throwaway clone on its
 own compose project): backup → `down -v` (both volumes destroyed) → `up -d` →

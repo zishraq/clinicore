@@ -250,8 +250,13 @@ deleting the wrong file removes the only copy of a month.
 > If you are reading this and cannot confirm both exist, stop and fix that now.
 > It is more urgent than whatever brought you here.
 >
-> The key is **not on the server**, on purpose: someone who steals the machine
-> then cannot read a single backup it made.
+> There *is* a copy on the server, at `/etc/clinicore/backup-identity.key`, used
+> only by the monthly restore check — see
+> [Why the private key is on the server](#why-the-private-key-is-on-the-server--a-deliberate-trade).
+> **Do not rely on it.** If you are restoring, the reason is usually that this
+> machine is gone or broken, and that copy went with it. Fetch the key from the
+> password manager or the safe; if the server happens to still have it, that is
+> luck, not the plan.
 
 **DESTRUCTIVE.** This replaces the live records with the backup's. Anything
 entered since that backup was taken is gone — which is why the clinic must be
@@ -393,10 +398,17 @@ sudo mkdir -p /etc/clinicore
 sudo cp /opt/clinicore/deploy/clinicore.env.example /etc/clinicore/clinicore.env
 sudo nano /etc/clinicore/clinicore.env        # set AGE_RECIPIENT and the paths
 
-# 2. Google Drive, as the user the timers run as
+# 2. A copy of the PRIVATE key, for the monthly restore check only.
+#    Read the note under this block before doing it — this is a deliberate
+#    security trade, not a convenience.
+sudo nano /etc/clinicore/backup-identity.key   # paste the whole key file
+sudo chown root:root /etc/clinicore/backup-identity.key
+sudo chmod 600 /etc/clinicore/backup-identity.key
+
+# 3. Google Drive, as the user the timers run as
 rclone config                                  # name the remote "gdrive"
 
-# 3. The scheduled jobs
+# 4. The scheduled jobs
 sudo cp /opt/clinicore/deploy/systemd/* /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now clinicore-backup.timer
@@ -404,9 +416,41 @@ sudo systemctl enable --now clinicore-verify-restore.timer
 sudo systemctl enable --now clinicore-heal.timer
 systemctl list-timers 'clinicore-*'
 
-# 4. Prove it works, now, rather than finding out in six months
+# 5. Prove it works, now, rather than finding out in six months
 sudo /opt/clinicore/deploy/backup.sh
 ```
+
+### Why the private key is on the server — a deliberate trade
+
+Step 2 puts a copy of the backup private key on this machine, at
+`/etc/clinicore/backup-identity.key`, readable only by root. **This weakens the
+main reason for encrypting to a keypair: somebody who steals this server can now
+decrypt the backups it made.** That is accepted, knowingly, and here is why.
+
+The monthly restore check is the only thing that turns a backup from a guess
+into a fact, and it cannot run without the key. The alternative was a person
+running it by hand each month with the key on a USB stick. That works in
+January, slips in February, and has stopped by March — and the failure is
+invisible, because unverified backups look exactly like verified ones right up
+until the night somebody needs one.
+
+**A year of backups nobody has ever proven can be read is a larger risk than a
+stolen server.** So the key stays, and the check runs on its own.
+
+What this does *not* change:
+
+- The off-site copies on Google Drive are still useless to anyone without the
+  key, so a compromised Drive account is still not a data breach.
+- The key is still not in the code repository, not in the Docker image, and not
+  inside any backup.
+- Losing this server loses **one copy** of the key, not the key. The password
+  manager and the printed copy in the clinic safe remain the two that matter.
+
+If the server is ever stolen, lost, or decommissioned, treat the key as exposed:
+generate a new pair, put the new public key in
+`/etc/clinicore/clinicore.env`, and take a fresh backup that same day. Old
+backups stay readable with the old key, so keep it — do not destroy the old key
+just because it was rotated.
 
 Then do a full restore drill onto a spare machine before the clinic depends on
 this. A backup nobody has restored is a guess.
@@ -439,6 +483,11 @@ encrypted, so simply keeping them is enough. Do not decrypt them to check;
 - Restore a backup because the site is slow or a page looks wrong. Restoring
   throws away everything since last night. It is the last resort, not the first.
 - Run a database update (`migrate`) while the clinic is working.
+- Copy `/etc/clinicore/backup-identity.key` anywhere — not to your laptop, not
+  to Drive, not into a chat message. It is the key to every backup the clinic
+  has. It stays on the server and in the two places named above, and nowhere
+  else. If it has been copied somewhere by accident, say so; rotating the pair
+  is easy and staying quiet is not.
 
 **Call, do not continue, when:**
 

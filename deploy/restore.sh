@@ -7,9 +7,12 @@
 #                /path/to/media-2026-08-15_020011.tar.gz.age \
 #                /path/to/clinicore-backup.key
 #
-# The third argument is the age PRIVATE key, which is not on this server and
-# must be fetched from the password manager or the printed copy in the clinic
-# safe. Without it no backup can be read by anyone, ever. docs/RUNBOOK.md.
+# The third argument is the age PRIVATE key. A copy exists at
+# /etc/clinicore/backup-identity.key for the monthly restore check, but do not
+# depend on it: if you are restoring, this machine is usually the thing that
+# failed, and that copy failed with it. Fetch the key from the password manager
+# or the printed copy in the clinic safe. Without it no backup can be read by
+# anyone, ever. docs/RUNBOOK.md.
 
 set -Eeuo pipefail
 
@@ -25,9 +28,11 @@ usage() {
     cat >&2 <<'EOF'
 Usage: restore.sh <db-*.dump.age> <media-*.tar.gz.age> <private-key-file>
 
-  All three are required. The private key is NOT on this server: get it from
-  the password manager entry "Clinicore backup key", or the printed copy in the
-  clinic safe. See docs/RUNBOOK.md, "Restoring from a backup".
+  All three are required. Get the private key from the password manager entry
+  "Clinicore backup key", or the printed copy in the clinic safe. There is a
+  copy at /etc/clinicore/backup-identity.key for the monthly restore check, but
+  if this machine is the thing that broke, so is that copy.
+  See docs/RUNBOOK.md, "Restoring from a backup".
 EOF
     exit 64
 }
