@@ -102,11 +102,18 @@
     <p class="text-xs uppercase tracking-wide text-muted mt-4">Medicines</p>
     <div class="overflow-x-auto">
       <table class="table table-cards">
-        <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+        {% comment %}
+          The strength column appears when this prescription has strengths on
+          it, not when the clinic currently records them: a visit written before
+          the switch was turned off must stay readable exactly as it was written
+          (clinical/views.py _prescription_sections).
+        {% endcomment %}
+        <thead><tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}<th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
         <tbody>
           {% for item in medicines %}
             <tr>
               <td class="font-medium" data-label="Medicine">{{ item.name_snapshot }}</td>
+              {% if show_strength %}<td data-label="{{ terms.strength }}">{{ item.strength|default:'—' }}</td>{% endif %}
               <td data-label="Dosage">{{ item.dosage|default:'—' }}</td>
               <td data-label="Frequency">{{ item.frequency|default:'—' }}</td>
               <td data-label="Duration">{{ item.duration|default:'—' }}</td>

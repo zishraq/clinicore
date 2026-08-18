@@ -15,6 +15,7 @@ from django.db import models
 from django.db.models.functions import Lower
 
 from core.models import OrgOwnedModel
+from organizations.models import STRENGTH_MAX_LENGTH
 
 __all__ = ['AdviceCategory', 'AdviceTemplate', 'Product']
 
@@ -40,7 +41,15 @@ class Product(OrgOwnedModel):
     unit = models.CharField(
         max_length=50, blank=True, help_text='Tablet, capsule, ml, drops, …'
     )
-    # Specialty defaults (potency, dilution, …) copied onto each prescribed item.
+    # How strong this preparation usually is — "30C", "500mg", "1:10". Prefills
+    # the prescription row and stays editable there, because the same remedy is
+    # prescribed at different strengths to different patients. Only meaningful
+    # where the organization has ``strength_enabled``; see
+    # docs/adr/0015-prescribed-strength.md.
+    default_strength = models.CharField(max_length=STRENGTH_MAX_LENGTH, blank=True)
+    # Specialty defaults copied onto each prescribed item. Strength has its own
+    # column above: it is prescribing data that gets printed and read by a
+    # patient, not metadata. This stays for values that really are arbitrary.
     default_attributes = models.JSONField(default=dict, blank=True)
     # The current asking price. A billed line copies it into its own column at
     # issue time, so repricing here never rewrites a receipt already printed.

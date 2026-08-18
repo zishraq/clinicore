@@ -28,6 +28,13 @@ def _already_in_catalog(model, *, field: str, value: str, instance) -> bool:
 
 
 class ProductForm(forms.ModelForm):
+    """A catalog medicine.
+
+    ``organization`` is passed so the strength field can be dropped outright
+    where the clinic does not record strengths — hiding it in the template
+    would leave a field a hand-built POST could still set.
+    """
+
     class Meta:
         model = Product
         fields = [
@@ -35,6 +42,7 @@ class ProductForm(forms.ModelForm):
             'sku',
             'category',
             'unit',
+            'default_strength',
             'sale_price',
             'reorder_level',
             'is_stock_tracked',
@@ -50,6 +58,12 @@ class ProductForm(forms.ModelForm):
             'unit': forms.TextInput(
                 attrs={**_INPUT, 'placeholder': 'Tablet, ml, drops'}
             ),
+            # list= points at the datalist rendered by the product form
+            # template, so the usual values are offered without ruling out
+            # anything else.
+            'default_strength': forms.TextInput(
+                attrs={**_INPUT, 'list': 'strength-options', 'autocomplete': 'off'}
+            ),
             'sale_price': forms.NumberInput(
                 attrs={**_INPUT, 'type': 'number', 'step': '0.01', 'min': '0'}
             ),
@@ -60,6 +74,17 @@ class ProductForm(forms.ModelForm):
             'is_sellable': forms.CheckboxInput(attrs=_CHECKBOX),
             'is_active': forms.CheckboxInput(attrs=_CHECKBOX),
         }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if organization is None:
+            return
+        if organization.strength_enabled:
+            self.fields[
+                'default_strength'
+            ].label = f'Usual {organization.terms["strength"].lower()}'
+        else:
+            self.fields.pop('default_strength')
 
     def clean_name(self) -> str:
         name = self.cleaned_data['name'].strip()

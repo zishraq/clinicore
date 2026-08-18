@@ -153,7 +153,7 @@ def product_list(request):
 @clinical_access_required
 def product_create(request):
     membership = require_membership(request)
-    form = ProductForm(request.POST or None)
+    form = ProductForm(request.POST or None, organization=request.organization)
     if request.method == 'POST' and form.is_valid():
         product = form.save(commit=False)
         product.organization = request.organization
@@ -169,7 +169,9 @@ def product_create(request):
 def product_update(request, pk: int):
     require_membership(request)
     product = get_object_or_404(Product, pk=pk)
-    form = ProductForm(request.POST or None, instance=product)
+    form = ProductForm(
+        request.POST or None, instance=product, organization=request.organization
+    )
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Medicine updated.')

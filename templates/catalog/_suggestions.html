@@ -12,6 +12,13 @@ selecting it needs no further request (static/js/item-autocomplete.js).
             data-name="{{ product.name }}"
             {# The asking price rides along so a bill line fills itself in. #}
             data-price="{{ product.sale_price }}"
+            {% comment %}
+              The usual strength, prefilled into the row and still editable
+              there — the same remedy is prescribed at different strengths to
+              different patients. Empty for a clinic that does not record them,
+              and prefill() ignores an empty value.
+            {% endcomment %}
+            data-strength="{{ product.default_strength }}"
             @click="select($el)"
             class="w-full text-left px-3 py-2 hover:bg-[var(--cc-surface-alt)] flex items-baseline gap-2">
       <span class="font-medium">{{ product.name }}</span>

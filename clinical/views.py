@@ -54,6 +54,24 @@ STATUS_FILTERS = {
 }
 
 
+def _prescription_sections(items: list) -> dict:
+    """Split a prescription into its two halves, plus the strength decision.
+
+    ``show_strength`` is decided by the data and never by
+    ``Organization.strength_enabled``. A clinic that turns the capability off
+    must go on being able to read — and reprint — the strengths it already
+    recorded; gating a read surface on the switch would be a data-hiding bug.
+    It is the same rule that keeps recorded advice readable after A3's switch
+    goes off. See docs/adr/0015-prescribed-strength.md.
+    """
+    medicines = [item for item in items if not item.is_advice]
+    return {
+        'medicines': medicines,
+        'advice_items': [item for item in items if item.is_advice],
+        'show_strength': any(item.strength for item in medicines),
+    }
+
+
 @login_required
 @clinical_access_required
 def encounter_list(request):
@@ -95,8 +113,7 @@ def encounter_detail(request, pk: int):
         {
             'encounter': encounter,
             'prescription': prescription,
-            'medicines': [item for item in items if not item.is_advice],
-            'advice_items': [item for item in items if item.is_advice],
+            **_prescription_sections(items),
             'invoice': invoice_for_encounter(request.organization, encounter),
             'photos': encounter.photos.all(),
             'photo_form': PhotoUploadForm(),
@@ -430,8 +447,7 @@ def prescription_print(request, pk: int):
             'prescription': prescription,
             # Two sections: medicines carry a dose, advice does not. Each is
             # omitted entirely when empty rather than printing a bare header.
-            'medicines': [item for item in items if not item.is_advice],
-            'advice_items': [item for item in items if item.is_advice],
+            **_prescription_sections(items),
             'page_size': size,
             # Interpolated into CSS, so it comes from the validated accessor.
             'letterhead_color': request.organization.primary_color,

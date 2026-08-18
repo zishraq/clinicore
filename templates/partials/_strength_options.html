@@ -1,0 +1,15 @@
+{% comment %}
+The clinic's usual strengths, offered as a native datalist.
+
+Included once per page; every input that wants the suggestions points at it with
+list="strength-options". A datalist guides without constraining — the box stays
+free text, so an unusual value is typed rather than blocked, which is why there
+is no "Other…" option to explain. An input whose list= names a datalist that is
+not on the page behaves as an ordinary text box, so the include is only rendered
+where the capability is on and nothing breaks where it is off.
+{% endcomment %}
+{% if organization.strength_enabled and organization.strengths %}
+  <datalist id="strength-options">
+    {% for value in organization.strengths %}<option value="{{ value }}"></option>{% endfor %}
+  </datalist>
+{% endif %}

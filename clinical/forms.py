@@ -241,6 +241,7 @@ class PrescriptionItemForm(forms.ModelForm):
             'product',
             'advice_template',
             'free_text_name',
+            'strength',
             'dosage',
             'frequency',
             'duration',
@@ -252,6 +253,11 @@ class PrescriptionItemForm(forms.ModelForm):
             'product': forms.HiddenInput(attrs={'data-role': 'item-product'}),
             'advice_template': forms.HiddenInput(attrs={'data-role': 'item-advice'}),
             'free_text_name': forms.HiddenInput(attrs={'data-role': 'item-free-text'}),
+            # list= points at the datalist the encounter form renders once; see
+            # templates/partials/_strength_options.html.
+            'strength': forms.TextInput(
+                attrs={**_INPUT, 'list': 'strength-options', 'autocomplete': 'off'}
+            ),
             'dosage': forms.TextInput(attrs={**_INPUT, 'placeholder': '1 tablet'}),
             'frequency': forms.TextInput(
                 attrs={**_INPUT, 'placeholder': 'Twice daily'}
@@ -277,17 +283,27 @@ class PrescriptionItemForm(forms.ModelForm):
             self.fields['display_name'].initial = self.instance.name_snapshot
 
     def bind_organization(self, organization) -> None:
-        """Restrict the catalog relations to one tenant."""
+        """Restrict the catalog relations to one tenant, and gate strength."""
         self.fields['product'].queryset = Product.objects.for_organization(organization)
         self.fields[
             'advice_template'
         ].queryset = AdviceTemplate.objects.for_organization(organization)
+        # Dropped, not hidden. A field left on the form and merely omitted from
+        # the template is still settable by a hand-built POST — and, worse, is
+        # rebuilt as empty by ``construct_instance`` on every subsequent save,
+        # which would quietly erase strengths recorded before the clinic turned
+        # the capability off. See docs/adr/0015-prescribed-strength.md.
+        if organization.strength_enabled:
+            self.fields['strength'].label = organization.terms['strength']
+        else:
+            self.fields.pop('strength', None)
 
     #: Fields whose presence means the practitioner actually entered something.
     CONTENT_FIELDS = (
         'display_name',
         'product',
         'advice_template',
+        'strength',
         'dosage',
         'frequency',
         'duration',
@@ -330,6 +346,11 @@ class PrescriptionItemForm(forms.ModelForm):
 
         if cleaned['item_type'] == ItemType.ADVICE:
             cleaned['dosage'] = None
+            # Guarded on the field still being present: writing the key when
+            # the capability is off would let ``construct_instance`` blank a
+            # strength recorded while it was on.
+            if 'strength' in self.fields:
+                cleaned['strength'] = ''
 
         has_source = bool(product or advice or cleaned['free_text_name'])
         if not has_source and self.has_changed():

@@ -4,6 +4,7 @@
 {% block page_title %}{% if product %}Edit medicine{% else %}Add medicine{% endif %}{% endblock %}
 
 {% block content %}
+{% include 'partials/_strength_options.html' %}
 <form method="post" class="card-surface rounded-xl p-6 max-w-2xl">
   {% csrf_token %}
   <div class="grid gap-4 sm:grid-cols-2">

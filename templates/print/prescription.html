@@ -200,12 +200,18 @@
       <p class="rx-mark">℞</p>
       <table class="items">
         <thead>
-          <tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+          {% comment %}
+            Gated on the prescription's own data, like the name_snapshot rule
+            above: reprinting a visit years later must reproduce what the
+            patient was handed, whatever the clinic records today.
+          {% endcomment %}
+          <tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}<th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
         </thead>
         <tbody>
           {% for item in medicines %}
             <tr>
               <td class="name">{{ item.name_snapshot }}</td>
+              {% if show_strength %}<td>{{ item.strength|default:'—' }}</td>{% endif %}
               <td>{{ item.dosage|default:'—' }}</td>
               <td>{{ item.frequency|default:'—' }}</td>
               <td>{{ item.duration|default:'—' }}</td>

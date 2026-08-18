@@ -12,6 +12,7 @@ from django.db import models
 from simple_history.models import HistoricalRecords
 
 from core.models import OrgOwnedModel
+from organizations.models import STRENGTH_MAX_LENGTH
 
 __all__ = [
     'Encounter',
@@ -209,6 +210,14 @@ class PrescriptionItem(OrgOwnedModel):
     # prescriptions must never resolve the name through the live catalog row:
     # renaming or deactivating a product cannot be allowed to rewrite history.
     name_snapshot = models.CharField(max_length=300)
+    # How strong the preparation is — "30C", "500mg" — as opposed to how much
+    # of it to take, which is ``dosage``. Two facts, and a clinic that
+    # prescribes potencies was putting both in ``dosage`` for want of anywhere
+    # else. Blank rather than null: unlike a dose, a missing strength is
+    # ordinary for a clinic that does not record them at all, and the whole
+    # column is hidden by ``Organization.strength_enabled`` when it does not.
+    # See docs/adr/0015-prescribed-strength.md.
+    strength = models.CharField(max_length=STRENGTH_MAX_LENGTH, blank=True)
     # Null for advice: advice has no dose, and an empty string would read as
     # "no dose recorded" rather than "not applicable".
     dosage = models.CharField(max_length=100, blank=True, null=True)  # noqa: DJ001
@@ -266,6 +275,15 @@ class PrescriptionItem(OrgOwnedModel):
                 ),
                 name='prescription_item_advice_has_no_dosage',
             ),
+            # Same reasoning as the dosage rule above: advice is not a
+            # substance, so it has no strength. Asserted here rather than left
+            # to ``save()``, so it holds for every write path.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(item_type=ItemType.ADVICE) | models.Q(strength='')
+                ),
+                name='prescription_item_advice_has_no_strength',
+            ),
         ]
 
     def __str__(self) -> str:
@@ -290,11 +308,17 @@ class PrescriptionItem(OrgOwnedModel):
     def save(self, *args, **kwargs):
         if self.is_advice:
             self.dosage = None
+            self.strength = ''
         self.name_snapshot = self.resolve_name()
         if self.product_id and not self.attributes:
             self.attributes = dict(self.product.default_attributes or {})
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             # Callers passing update_fields must not silently skip the snapshot.
-            kwargs['update_fields'] = {*update_fields, 'name_snapshot', 'dosage'}
+            kwargs['update_fields'] = {
+                *update_fields,
+                'name_snapshot',
+                'dosage',
+                'strength',
+            }
         super().save(*args, **kwargs)

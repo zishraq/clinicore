@@ -20,6 +20,7 @@
  *   [data-role="item-advice"]   hidden advice_template pk
  *   [data-role="item-free-text"] hidden free_text_name
  *   [data-role="item-delete"]   hidden DELETE checkbox
+ *   [name$="-strength"]         strength box, absent unless the org records one
  *
  * Markup contract, templates/clinical/_patient_picker.html +
  * templates/patients/_suggestions.html:
@@ -153,13 +154,18 @@ document.addEventListener('alpine:init', () => {
         type === 'ADVICE' ? option.dataset.id || '' : '';
 
       // Prefill the entry's defaults, without clobbering anything already typed.
+      this.prefill('strength', option.dataset.strength);
       this.prefill('frequency', option.dataset.frequency);
       this.prefill('duration', option.dataset.duration);
       this.prefill('instructions', option.dataset.instructions);
       this.justSelected = true;
       if (type === 'ADVICE') {
-        const dosage = this.$root.querySelector('[name$="-dosage"]');
-        if (dosage) dosage.value = '';
+        // Neither applies to advice, and both are hidden rather than removed —
+        // a value typed before the row became advice would otherwise still post.
+        ['dosage', 'strength'].forEach((suffix) => {
+          const input = this.$root.querySelector(`[name$="-${suffix}"]`);
+          if (input) input.value = '';
+        });
       }
       this.close();
     },

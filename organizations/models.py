@@ -69,6 +69,12 @@ DEFAULT_TERMINOLOGY = {
     # carries the fact that a correction happened.
     'status_amended': 'Finished',
     'amend': 'Edit',
+    # How strong the preparation is: "500mg" to a general practice, "30C" to a
+    # classical homeopath, "1:10" to someone dispensing a dilution. One slot,
+    # named for what it measures rather than for one specialty's word for it —
+    # the clinic that prescribes potencies maps this key to "Potency" and every
+    # label in the application follows. See docs/adr/0015-prescribed-strength.md.
+    'strength': 'Strength',
     # The verb for leaving draft. Composed with `encounter` at the call site
     # ("Finish visit") so relabelling the record relabels the button.
     'finish': 'Finish',
@@ -148,6 +154,9 @@ DEFAULT_TERMINOLOGY = {
 #: Longest an override may be. These are chrome — a nav item, a badge, a button.
 _TERM_MAX_LENGTH = 40
 
+#: Longest a suggested strength may be, and the width of the columns storing one.
+STRENGTH_MAX_LENGTH = 40
+
 
 def default_terminology() -> dict:
     """Default value for ``Organization.terminology`` (callable, so it migrates)."""
@@ -179,6 +188,24 @@ class Organization(TimeStampedModel):
         default=True,
         help_text='Offer structured advice alongside medicines when prescribing.',
     )
+    # The second capability switch, and off by default where advice is on: a
+    # general practice writes the strength into the medicine's name
+    # ("Paracetamol 500mg") and would find the column redundant, while a
+    # classical homeopath cannot prescribe without it. Off hides the field
+    # everywhere it is entered; it never hides strengths already recorded.
+    strength_enabled = models.BooleanField(
+        default=False,
+        help_text='Record how strong each prescribed preparation is.',
+    )
+    # The usual values, offered as a datalist. Data rather than a code constant:
+    # a list of potencies in code would be homeopathy in the schema (SPEC §1),
+    # and the clinic next door dispensing dilutions wants different words.
+    # Empty is meaningful — the field stays, as free text with no suggestions.
+    strength_options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Suggested values, offered but never enforced.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -209,6 +236,23 @@ class Organization(TimeStampedModel):
             if key in DEFAULT_TERMINOLOGY and str(value).strip()
         }
         return {**DEFAULT_TERMINOLOGY, **overrides}
+
+    @property
+    def strengths(self) -> list[str]:
+        """Suggested strengths, cleaned: a datalist cannot be allowed to break.
+
+        The column is org-editable JSON, so it can hold anything a settings
+        screen or a loader put there. Blanks and duplicates are dropped and the
+        original order is kept — these are offered in the order the clinic
+        thinks of them, not alphabetically.
+        """
+        seen, cleaned = set(), []
+        for value in self.strength_options or []:
+            text = str(value).strip()[:STRENGTH_MAX_LENGTH]
+            if text and text.casefold() not in seen:
+                seen.add(text.casefold())
+                cleaned.append(text)
+        return cleaned
 
     @property
     def primary_color(self) -> str:

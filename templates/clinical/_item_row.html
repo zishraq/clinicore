@@ -72,6 +72,21 @@ which substitutes __prefix__ for the new index.
            data-results></div>
     </div>
 
+    {% comment %}
+      How strong the preparation is, where the clinic records that — a separate
+      fact from how much of it to take, which is Dosage. Hidden for advice for
+      the same reason Dosage is: advice is not a substance. The field is dropped
+      from the form entirely when the capability is off, so this block and the
+      one on Instructions below are the only layout the switch moves.
+    {% endcomment %}
+    {% if organization.strength_enabled %}
+      <div class="sm:col-span-2" x-show="!isAdvice()">
+        <label class="label py-1" for="{{ form.strength.id_for_label }}">
+          <span class="label-text text-xs">{{ terms.strength }}</span>
+        </label>
+        {{ form.strength }}
+      </div>
+    {% endif %}
     <div class="sm:col-span-2" x-show="!isAdvice()">
       <label class="label py-1"><span class="label-text text-xs">Dosage</span></label>
       {{ form.dosage }}
@@ -84,7 +99,14 @@ which substitutes __prefix__ for the new index.
       <label class="label py-1"><span class="label-text text-xs">Duration</span></label>
       {{ form.duration }}
     </div>
-    <div class="sm:col-span-2">
+    {% comment %}
+      Six fields do not fit one twelve-column line with the search box at four,
+      so the strength clinic gets Instructions on its own full-width row rather
+      than six boxes squeezed to ~90px each on a tablet. Instructions is the
+      right one to move: it is the longest thing typed here. Where strength is
+      off the row is byte-identical to what it always was.
+    {% endcomment %}
+    <div class="{% if organization.strength_enabled %}sm:col-span-12{% else %}sm:col-span-2{% endif %}">
       <label class="label py-1"><span class="label-text text-xs">Instructions</span></label>
       {{ form.instructions }}
     </div>
