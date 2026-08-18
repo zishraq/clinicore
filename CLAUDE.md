@@ -585,6 +585,79 @@ restore would have silently lost. Two runbook bugs were found by doing it: the
 restore section assumed the stack already existed, and assumed it was running.
 Both are now written down.
 
+Prescribed strength landed 2026-08-15, with the clinic's real medicine list.
+**Browser-verified end to end** against the running app: the Features screen set
+the switch, the label and the values; the prescription row showed "Potency"; a
+catalog default prefilled on selection; the visit saved with potency and dosage
+apart; the A5 printout carried a POTENCY column; and with the capability
+switched back off, that same printout still showed 200C while the form's row
+returned to its original five fields. Rules, all in
+`docs/adr/0015-prescribed-strength.md`:
+
+- **The column is `strength`, the label is the clinic's.** A column named
+  `potency` with `['6C','30C',…]` beside it is homeopathy in the schema, which
+  SPEC §1 forbids — and 30C, 500mg and 1:10 are one slot anyway. `terminology`
+  gains a `strength` key; the clinic maps it to "Potency". A hardcoded "Potency"
+  in a template or form is now a bug, exactly like `get_role_display`.
+- **The JSON fields were never the answer, and were never used.** Nothing wrote
+  `Product.default_attributes` and nothing read `PrescriptionItem.attributes` —
+  the only code touching either is three lines in `save()`. "Surfacing" them
+  meant building a key/value editor on a prescription row mid-consultation, for
+  one key. Strength is prescribing data that gets printed and handed to a
+  patient, same class as `dosage`; the fix for two facts in one column is a
+  second column. The JSON stays for values that really are arbitrary.
+- **The field is dropped from the form, never hidden in the template.** A field
+  left on the form is rebuilt as empty by `construct_instance` on every later
+  save, so turning the capability off would quietly erase strengths recorded
+  while it was on — the next time anyone edited the visit.
+  `bind_organization` and `ProductForm.__init__` pop it.
+- **The read surfaces gate on the data, not the switch.** `show_strength` comes
+  from `clinical.views._prescription_sections` — does *this* prescription carry
+  any — so reprinting a visit reproduces what the patient was handed whatever
+  the clinic records today. Same rule that keeps recorded advice readable (A3).
+- **The suggestions are a native `<datalist>`, and org data.**
+  `Organization.strength_options` is a JSON list edited on the Features screen,
+  one per line; `strengths` cleans it on the way out because a datalist must
+  survive whatever is in an org-editable JSON column. The box stays free text,
+  so an unusual potency is typed — there is no "Other…" option to explain.
+  Seeded for this clinic as Q, 6C, 12C, 30C, 200C, 1M, 10M, 50M, CM.
+- **Six fields do not fit one twelve-column line**, so Instructions moves to its
+  own full-width row when the capability is on. With it off the row is
+  byte-identical to what it always was.
+- **`Organization.strength_enabled` defaults to *off*** — the opposite of
+  `advice_enabled`, because a general practice writes the strength into the
+  medicine's name and would find the column clutter.
+
+`import_remedies <org-slug>` loads a clinic's own list: 333 remedies from
+`catalog/data/remedies.txt`, shipped inside the app. `scripts/` is gone — its
+parser is folded into the command and `parse_remedies.py` (which failed CI) is
+deleted. Rules:
+
+- **Idempotency comes from the constraint, not from reading the file.** Each row
+  is inserted inside its own savepoint and an `IntegrityError` counts as a skip,
+  so a second run, a name repeated inside one file, and a name differing only in
+  case are all the same case. A savepoint per row is required — an
+  `IntegrityError` poisons the enclosing transaction.
+- **There is deliberately no `--replace` or delete.** Products are referenced by
+  prescriptions, invoice lines and stock movements, so removing one either fails
+  on a PROTECT or orphans history. Deactivation is the only correction.
+
+**`bootstrap_demo --empty` is the real gap that closed.** There was no way to
+create an organization without also acquiring twenty-five invented medicines,
+and since those cannot be deleted afterwards, never seeding them is the only
+correct path for a real clinic. It creates the organization, one branch and one
+administrator (temporary password printed once, `must_change_password` set via
+`add_member`) and stops. `--reset` is refused alongside it: `--reset` deletes the
+*demo* org by its fixed slug, and a flag combination that read as "start this
+clinic again" and instead deleted patient records is not worth the convenience.
+A bad `--timezone` is refused rather than silently falling back to UTC (ADR
+0011). The demo path is untouched and demo data stays synthetic. The new-clinic
+sequence is written up under "Setting up a new clinic" in `docs/RUNBOOK.md`.
+
+Not done, and a knowing gap: **existing `dosage` values that hold both facts
+("30C 4 pills") are not migrated apart.** Nothing distinguishes them from doses
+that were always doses, and a guess would corrupt real records.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployable now, and now operable — but still never actually deployed

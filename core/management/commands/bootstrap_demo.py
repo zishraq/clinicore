@@ -1,18 +1,28 @@
-"""Load a synthetic demo organization.
+"""Load a synthetic demo organization, or stand up a real empty one.
 
-Everything here is invented: names, phone numbers, complaints, and medicines.
-No real patient data or clinic identity is ever committed (SPEC §8).
+Everything the demo path creates is invented: names, phone numbers, complaints,
+and medicines. No real patient data or clinic identity is ever committed
+(SPEC §8).
+
+``--empty`` is the other half, and the one a real clinic uses: an organization,
+one branch and one administrator, with none of the synthetic data. The demo
+catalog cannot be swapped for a real one after the fact — see
+``_empty_organization`` for why — so a real clinic must never acquire it.
 """
 
 import random
+import zoneinfo
 from datetime import time, timedelta
 from decimal import Decimal
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+from django.utils.crypto import get_random_string
+from django.utils.text import slugify
 
 from accounts.models import Membership, Role, User
+from accounts.services import add_member
 from billing.models import Invoice, InvoiceItem, LineType, PaymentMethod
 from billing.models import Payment as PaymentModel
 from billing.services import next_invoice_number, record_payment
@@ -160,7 +170,10 @@ TIMINGS = ['After meals', 'Before meals', 'With water', '']
 
 
 class Command(BaseCommand):
-    help = 'Create a synthetic demo organization with users, patients, encounters.'
+    help = (
+        'Create a synthetic demo organization with users, patients, encounters. '
+        'With --empty, create a real clinic and none of the demo data.'
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -168,10 +181,45 @@ class Command(BaseCommand):
             action='store_true',
             help='Delete the existing demo organization first.',
         )
+        parser.add_argument(
+            '--empty',
+            action='store_true',
+            help=(
+                'Create a real clinic instead: organization, one branch, one '
+                'administrator, and nothing else. Requires --name, '
+                '--admin-phone and --admin-name.'
+            ),
+        )
+        parser.add_argument('--name', default='', help='Clinic name. With --empty.')
+        parser.add_argument(
+            '--timezone',
+            default='UTC',
+            help='IANA zone the clinic keeps its day in, e.g. Asia/Dhaka.',
+        )
+        parser.add_argument('--branch', default='Main', help='Name of its one branch.')
+        parser.add_argument(
+            '--admin-phone', default='', help="The administrator's phone number."
+        )
+        parser.add_argument(
+            '--admin-name', default='', help="The administrator's full name."
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
         random.seed(20260731)
+
+        if options['empty']:
+            if options['reset']:
+                # --reset deletes the *demo* organization by its fixed slug and
+                # has nothing to say about a real clinic. Refusing is cheap; a
+                # combination that looked like "start this clinic again" and
+                # instead deleted patient records would not be.
+                raise CommandError(
+                    '--reset only ever applies to the demo organization. '
+                    'It cannot be combined with --empty.'
+                )
+            self._empty_organization(options)
+            return
 
         if options['reset']:
             self._reset()
@@ -282,6 +330,78 @@ class Command(BaseCommand):
         self.stdout.write('    01711000002  Practitioner  Dr Sabbir Ahmed')
         self.stdout.write('    01711000003  Staff         Nadia Sultana')
         self.stdout.write(f'\n  Password: {DEMO_PASSWORD}\n')
+
+    def _empty_organization(self, options):
+        """A real clinic: organization, one branch, one administrator, nothing else.
+
+        This exists because there was no way to stand up an organization without
+        also acquiring twenty-five invented medicines, and a real catalog cannot
+        simply replace them — products are referenced by prescriptions, invoice
+        lines and stock movements, so deleting one either fails on a PROTECT or
+        orphans the record it was prescribed on. Never seeding them is the only
+        correct path, and this is it. The clinic's own list goes in afterwards
+        with ``import_remedies``; see "Setting up a new clinic" in the runbook.
+        """
+        name = options['name'].strip()
+        phone = options['admin_phone'].strip()
+        admin_name = options['admin_name'].strip()
+        missing = [
+            flag
+            for flag, value in (
+                ('--name', name),
+                ('--admin-phone', phone),
+                ('--admin-name', admin_name),
+            )
+            if not value
+        ]
+        if missing:
+            raise CommandError(f'--empty needs {", ".join(missing)}.')
+
+        zone = options['timezone'].strip()
+        try:
+            zoneinfo.ZoneInfo(zone)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError) as error:
+            # A bad zone name is not a crash later, it is silence: the request
+            # middleware falls back to UTC, and the clinic finds out when a
+            # visit saved at 01:00 files itself under yesterday (ADR 0011).
+            raise CommandError(f'{zone!r} is not an IANA time zone.') from error
+
+        slug = slugify(name)[:60]
+        if not slug:
+            raise CommandError(f'{name!r} does not make a usable slug.')
+        if Organization.objects.filter(slug=slug).exists():
+            raise CommandError(f'An organization with slug {slug!r} already exists.')
+        if User.objects.filter(phone=phone).exists():
+            raise CommandError(f'{phone} already has an account.')
+
+        organization = Organization.objects.create(name=name, slug=slug, timezone=zone)
+        with organization_context(organization):
+            BranchModel.objects.create(
+                organization=organization,
+                name=options['branch'].strip() or 'Main',
+                code='MAIN',
+            )
+        # Read out over the phone, so no characters that are ambiguous aloud or
+        # in handwriting. Temporary by construction: ``add_member`` sets
+        # ``must_change_password``, and the middleware makes it stick (ADR 0013).
+        password = get_random_string(
+            10, allowed_chars='abcdefghjkmnpqrstuvwxyz23456789'
+        )
+        add_member(
+            organization=organization,
+            phone=phone,
+            full_name=admin_name,
+            role=Role.OWNER,
+            password=password,
+        )
+
+        self.stdout.write(self.style.SUCCESS(f'\n{name} created. No demo data.'))
+        self.stdout.write(f'  Slug         : {slug}')
+        self.stdout.write(f'  Time zone    : {zone}')
+        self.stdout.write(f'  Administrator: {phone}  {admin_name}')
+        self.stdout.write(f'  Password     : {password}  (must be changed at sign-in)')
+        self.stdout.write("\n  Next: load the clinic's own medicine list —")
+        self.stdout.write(f'    python manage.py import_remedies {slug}\n')
 
     def _reset(self):
         organization = Organization.objects.filter(slug=DEMO_SLUG).first()

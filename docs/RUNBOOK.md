@@ -420,6 +420,71 @@ systemctl list-timers 'clinicore-*'
 sudo /opt/clinicore/deploy/backup.sh
 ```
 
+## Setting up a new clinic
+
+The server is running but there is no clinic in it yet. Three commands, in this
+order. Run them from `/opt/clinicore`.
+
+```bash
+# 1. The clinic itself: the organization, one branch, one administrator.
+#    Nothing else — no patients, no medicines, no demo anything.
+docker compose -f docker-compose.prod.yml exec web \
+  python manage.py bootstrap_demo --empty \
+  --name "Karim Homeo Hall" \
+  --timezone "Asia/Dhaka" \
+  --branch "Main Chamber" \
+  --admin-phone 01712345678 \
+  --admin-name "Dr Ayesha Karim"
+```
+
+It prints a temporary password. **Write it down before you close the window —
+it is not stored anywhere and cannot be shown again.** Read it out to the
+administrator; the application forces them to change it the first time they
+sign in.
+
+Get the time zone right at this step. It decides which day a visit saved late at
+night belongs to, and correcting it afterwards does not correct the visits
+already filed under the wrong date.
+
+The command prints the clinic's **slug** (`karim-homeo-hall` above). The next
+command needs it.
+
+```bash
+# 2. The clinic's own medicine list.
+docker compose -f docker-compose.prod.yml exec web \
+  python manage.py import_remedies karim-homeo-hall
+```
+
+It reports how many it created and how many it skipped. Running it twice is
+safe: the second run creates nothing and skips everything. To load a different
+list, put the file somewhere the container can read and add
+`--file /path/to/list.txt` — one medicine per entry, separated by commas or
+newlines.
+
+```bash
+# 3. Take a backup, so there is a restore point before any patient data exists.
+sudo /opt/clinicore/deploy/backup.sh
+```
+
+Then sign in as the administrator and finish the setup on screen:
+
+- **Settings → Features** — turn on *Record how strong each medicine is* if this
+  clinic prescribes potencies, set what it calls the field ("Potency"), and list
+  the usual values one per line.
+- **Settings → Billing** — the currency and the consultation fee.
+- **Team** — add the receptionist and any other practitioners. Each gets a
+  temporary password the same way, read out and changed on first sign-in.
+
+### Never run `bootstrap_demo` without `--empty` on a real server
+
+Without the flag it creates a *demo* clinic: twenty-five invented medicines,
+fifteen invented patients, and bills against them. Those medicines cannot simply
+be deleted afterwards — prescriptions, bills and stock movements point at them,
+so the delete either refuses or leaves records pointing at nothing. There is no
+`--replace` for the same reason. If a real clinic ever ends up with the demo
+catalog, the fix is to deactivate each unwanted medicine
+(**Medicines → Deactivate**), not to remove it.
+
 ### Why the private key is on the server — a deliberate trade
 
 Step 2 puts a copy of the backup private key on this machine, at
