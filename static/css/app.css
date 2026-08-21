@@ -318,3 +318,28 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Date pickers — see static/js/date-picker.js.
+ *
+ * `static: true`, which the instances inside a <dialog> need because the top
+ * layer would otherwise hide the calendar, wraps the input in
+ * .flatpickr-wrapper. flatpickr ships that wrapper as inline-block, and the
+ * wrapper becomes the grid or flex item in the input's place — so a field the
+ * template sized w-full collapses to its content width without this.
+ */
+.flatpickr-wrapper {
+  display: block;
+}
+
+/* The calendar is the clinic's colour, not flatpickr's blue. */
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+  background: var(--cc-primary);
+  border-color: var(--cc-primary);
+}
+
+.flatpickr-day.today {
+  border-color: var(--cc-primary);
+}

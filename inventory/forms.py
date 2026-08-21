@@ -10,7 +10,7 @@ from decimal import Decimal
 from django import forms
 
 from catalog.models import Product
-from core.forms import org_scoped_formfield
+from core.forms import date_widget, org_scoped_formfield
 from inventory.models import GoodsReceipt
 from organizations.models import Branch
 
@@ -75,9 +75,7 @@ class GoodsReceiptItemForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={**_INPUT, 'placeholder': 'Lot / batch no.'}),
     )
-    expiry_date = forms.DateField(
-        required=False, widget=forms.DateInput(attrs={**_INPUT, 'type': 'date'})
-    )
+    expiry_date = forms.DateField(required=False, widget=date_widget())
     quantity = forms.DecimalField(
         max_digits=12,
         decimal_places=2,

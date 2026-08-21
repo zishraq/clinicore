@@ -32,12 +32,15 @@
   </div>
   <div>
     <label class="label py-1" for="from"><span class="label-text text-xs">From</span></label>
-    <input id="from" type="date" name="from" value="{{ date_from }}" class="input input-bordered w-full">
+    {# Posted value stays Y-m-d, which is all billing.views.invoice_list's parse_date accepts. #}
+    <input id="from" type="text" name="from" value="{{ date_from }}"
+           data-datepicker autocomplete="off" class="input input-bordered w-full">
   </div>
   <div class="flex flex-wrap gap-2 items-end">
     <div class="flex-1 min-w-[8rem]">
       <label class="label py-1" for="to"><span class="label-text text-xs">To</span></label>
-      <input id="to" type="date" name="to" value="{{ date_to }}" class="input input-bordered w-full">
+      <input id="to" type="text" name="to" value="{{ date_to }}"
+             data-datepicker autocomplete="off" class="input input-bordered w-full">
     </div>
     <button type="submit" class="btn btn-brand">Filter</button>
   </div>

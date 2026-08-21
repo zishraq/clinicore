@@ -12,7 +12,7 @@ See docs/adr/0005-org-scoped-default-manager.md and docs/MVP-NOTES.md.
 from django import forms
 from django.utils.text import capfirst
 
-__all__ = ['org_scoped_formfield']
+__all__ = ['date_widget', 'org_scoped_formfield']
 
 
 def org_scoped_formfield(model_field, **kwargs):
@@ -31,3 +31,26 @@ def org_scoped_formfield(model_field, **kwargs):
     }
     defaults.update(kwargs)
     return forms.ModelChoiceField(**defaults)
+
+
+def date_widget(**attrs):
+    """A date box the application draws itself, not the operating system.
+
+    ``type='date'`` is deliberately absent: the native control renders its text
+    in the device's locale, so the same field reads d/m/Y here and m/d/Y on a
+    laptop from elsewhere. ``data-datepicker`` hands it to
+    static/js/date-picker.js instead. The stored and posted value is unchanged
+    — hence the explicit ISO ``format``, which pins the rendered value rather
+    than leaving it to whatever ``LANGUAGE_CODE`` happens to be.
+
+    See docs/adr/0016-one-date-picker-the-app-controls.md.
+    """
+    return forms.DateInput(
+        attrs={
+            'class': 'input input-bordered w-full',
+            'data-datepicker': '',
+            'autocomplete': 'off',
+            **attrs,
+        },
+        format='%Y-%m-%d',
+    )

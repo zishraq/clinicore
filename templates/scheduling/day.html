@@ -46,7 +46,9 @@ templates/scheduling/_rows.html.
     <div class="flex flex-wrap items-center gap-1">
       <a class="btn btn-ghost btn-square shrink-0" aria-label="Previous day"
          href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">‹</a>
-      <input type="date" id="day-date" name="date" value="{{ on_date|date:'Y-m-d' }}"
+      {# text + data-datepicker, not type="date": the native control shows the device's date order. static/js/date-picker.js keeps the posted value Y-m-d, which is what scheduling.views._requested_date strptimes. #}
+      <input type="text" id="day-date" name="date" value="{{ on_date|date:'Y-m-d' }}"
+             data-datepicker autocomplete="off"
              onchange="this.form.submit()"
              class="input input-bordered flex-1 min-w-0 sm:flex-none">
       <a class="btn btn-ghost btn-square shrink-0" aria-label="Next day"

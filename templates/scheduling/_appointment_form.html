@@ -34,7 +34,9 @@ two answers that can disagree is how a walk-in ends up filed under next Tuesday.
   <div class="grid gap-3 sm:grid-cols-2 mt-3" x-show="!alreadyHere" x-cloak>
     <div>
       <label class="label py-1" for="appointment-date"><span class="label-text text-xs">Date</span></label>
-      <input type="date" id="appointment-date" name="appointment_date"
+      {# See day.html: the app draws this calendar, and still posts Y-m-d. #}
+      <input type="text" id="appointment-date" name="appointment_date"
+             data-datepicker autocomplete="off"
              value="{{ on_date|date:'Y-m-d' }}" class="input input-bordered w-full">
     </div>
     <div class="grid grid-cols-2 gap-2">

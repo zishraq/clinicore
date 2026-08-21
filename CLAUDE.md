@@ -658,6 +658,54 @@ Not done, and a knowing gap: **existing `dosage` values that hold both facts
 ("30C 4 pills") are not migrated apart.** Nothing distinguishes them from doses
 that were always doses, and a guess would corrupt real records.
 
+Every date field is now drawn by the application, not the operating system
+(2026-08-19). A native `type="date"` renders its text in the *device's* locale,
+so the same box read d/m/Y in the clinic and m/d/Y on a laptop from elsewhere,
+and nothing in the page — `lang`, an attribute, CSS — can change that. All seven
+are flatpickr behind `data-datepicker`, initialised by one shared
+`static/js/date-picker.js` loaded from `base.html`. **Browser-verified end to
+end** on all seven: calendar opens, date picks, manual typing parses, and the
+value round-trips through a real save. Rules, all in
+`docs/adr/0016-one-date-picker-the-app-controls.md`:
+
+- **The posted value did not move, and that is the whole constraint.**
+  flatpickr's `altInput` keeps the declared element as the real field, still
+  named the same and still `Y-m-d`; the visible box in front of it is a second
+  input showing `d/m/Y`. Four of the seven consumers are ISO-only with no
+  fallback — `parse_date` returns `None`, `strptime('%Y-%m-%d')` raises — so a
+  display format that reached the server would be a silent data change, not a
+  cosmetic one. `core.forms.date_widget` also pins `format='%Y-%m-%d'` rather
+  than trusting `LANGUAGE_CODE` to keep producing it.
+- **`disableMobile: true` is the line that makes this real.** flatpickr's
+  default is to step aside and use the native control on a mobile browser —
+  i.e. without it the change is a no-op on exactly the devices that motivated
+  it, and tests clean on a desktop.
+- **`static: true` for anything inside a `<dialog>`**, decided per instance at
+  runtime rather than per call site, because `date_of_birth` renders both on its
+  own page and inside the add-patient modal from one widget. A `showModal()`
+  dialog is in the browser's top layer, so a calendar appended to
+  `document.body` paints *underneath* it and the field looks dead.
+- **flatpickr eats Enter, and that broke implicit form submission.** Typing a
+  range into the bill filters and pressing Enter silently did nothing. The fix
+  is bound on the **capture** phase — flatpickr stops the key propagating, so a
+  normally-registered listener never runs — and defers the submit a tick, so
+  flatpickr has parsed the typed text into the real field before the form goes.
+  Skipped where the field has its own `onchange` (the day list), or both fire.
+- **The id moves to the visible box.** All seven have a `<label for>`, and
+  flatpickr leaves that id on the input it hides; `altInputClass` carries the
+  daisyUI classes across, which flatpickr otherwise replaces with its own.
+- **Loaded from `base.html`, not a per-page `{% block scripts %}`**, unlike
+  `item-autocomplete.js`: two of the fields live in modals included from several
+  unrelated pages, which is the coupling that already shipped the walk-in modal
+  without its add-patient dialog past a green suite.
+- `core/tests/test_date_inputs.py` fails on a reintroduced `type="date"`
+  anywhere in the templates, so a new date field cannot quietly go back to the
+  OS control.
+
+Related and **not** changed, because it was not in scope: `occurred_at` and
+`received_at` are `datetime-local` and still show the device's order (m/d/Y on
+this machine). Same root cause, same fix available; flag it before adding more.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployable now, and now operable — but still never actually deployed

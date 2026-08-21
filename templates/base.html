@@ -17,6 +17,19 @@
   {% block alpine_components %}{% endblock %}
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
 
+  {% comment %}
+    Date pickers. Loaded for every page rather than from a per-page scripts
+    block: a native date control shows the *device's* date order, so the
+    replacement has to reach all of them or the app has two conventions. Two of
+    the fields also live in modals included from several unrelated pages, which
+    is exactly the include-coupling that has bitten this codebase before.
+    Deferred scripts run in document order, so flatpickr is defined before
+    date-picker.js asks for it.
+  {% endcomment %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js" defer></script>
+  <script src="{% static 'js/date-picker.js' %}" defer></script>
+
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <style>:root{ {{ palette_css }} }</style>
   {% block head %}{% endblock %}

@@ -10,7 +10,7 @@ from accounts.models import Role, User
 from catalog.models import AdviceTemplate, Product
 from clinical.images import ImageRejected, normalize_image
 from clinical.models import Encounter, ItemType, Prescription, PrescriptionItem
-from core.forms import org_scoped_formfield
+from core.forms import date_widget, org_scoped_formfield
 from organizations.models import DEFAULT_TERMINOLOGY
 from organizations.services import active_branches
 from patients.models import Patient
@@ -157,7 +157,7 @@ class EncounterForm(forms.ModelForm):
             'occurred_at': forms.DateTimeInput(
                 attrs={**_INPUT, 'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'
             ),
-            'follow_up_date': forms.DateInput(attrs={**_INPUT, 'type': 'date'}),
+            'follow_up_date': date_widget(),
             'chief_complaint': forms.Textarea(attrs=_TEXTAREA),
             'examination': forms.Textarea(attrs=_TEXTAREA),
             'assessment': forms.Textarea(attrs=_TEXTAREA),

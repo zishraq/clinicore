@@ -6,7 +6,7 @@ boundary structural rather than a hidden template block.
 
 from django import forms
 
-from core.forms import org_scoped_formfield
+from core.forms import date_widget, org_scoped_formfield
 from organizations.services import active_branches, default_branch
 from patients.models import Patient, PatientClinicalProfile
 
@@ -42,7 +42,7 @@ class PatientForm(forms.ModelForm):
             'full_name': forms.TextInput(attrs=_INPUT),
             'phone': forms.TextInput(attrs={**_INPUT, 'inputmode': 'tel'}),
             'sex': forms.Select(attrs=_SELECT),
-            'date_of_birth': forms.DateInput(attrs={**_INPUT, 'type': 'date'}),
+            'date_of_birth': date_widget(),
             'address': forms.Textarea(attrs=_TEXTAREA),
             'registered_branch': forms.Select(attrs=_SELECT),
         }
