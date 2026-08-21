@@ -706,6 +706,83 @@ Related and **not** changed, because it was not in scope: `occurred_at` and
 `received_at` are `datetime-local` and still show the device's order (m/d/Y on
 this machine). Same root cause, same fix available; flag it before adding more.
 
+What is dispensed landed 2026-08-21, and the row collapsed around it
+(`docs/adr/0017-dispensing-details.md`). Two more columns —
+`PrescriptionItem.pack_size` and `.preparation` — plus the other four fields
+moving behind a disclosure. **Browser-verified end to end** against the running
+stack: the Features screen set all three capabilities, both new fields appeared
+on an HTMX-added second row with their datalists bound, an advice pick hid all
+three and forced the disclosure open, the visit saved and round-tripped, the A5
+printout came out four columns wide, and switching a capability off removed the
+field from the form while the printout still showed the recorded value. Rules:
+
+- **`preparation` is not `Product.unit`.** `unit` is the noun a *stock count* is
+  measured in, one value per catalog row. The preparation is a per-prescription
+  decision — the same remedy goes out as globules for one patient and liquid for
+  the next — and this clinic's catalog is 333 bare remedy names with no form, so
+  encoding it there would fork the list into 666 PROTECTed rows.
+- **`pack_size`, never `quantity`.** "2D" and "1/2 ounce" are strings;
+  `quantity` already means a Decimal that arithmetic is done on, on
+  `InvoiceItem` and `StockMovement`. `dispense_amount` was rejected for sitting
+  one word from `MovementType.DISPENSE` and reading as a stock hook.
+- **Neither field moves stock, and neither should.** The invoice is still the
+  only stock event (ADR 0009). A path off the prescription would double-decrement
+  against A5's `prescribed_product_lines`, and there is no conversion from
+  "1/2 ounce" to a Decimal in the product's unit. `prescribed_product_lines`
+  still sets `quantity=1` deliberately.
+- **One capability per field, and the three are built by a loop.**
+  `organizations.models.PRESCRIBING_FIELDS` derives `<key>_enabled`,
+  `<key>_options` and the datalist id from one name, and drives the settings
+  form, the item form, the check constraints and `save()`. A fourth field is an
+  entry in that tuple plus two columns. `STRENGTH_MAX_LENGTH` became
+  `PRESCRIBING_MAX_LENGTH` (same value, no column changed width).
+- **The collapsed four stay on the form and in the DOM.** A closed `<details>`
+  still posts what is inside it; a template conditional or an `__init__` pop
+  would let `construct_instance` rebuild them as empty and erase an older
+  visit's data on the next save. Only the disclosure hides them.
+- **`form.has_details` decides `open` server-side**, through
+  `BoundField.value()`, so a saved row, a redisplay after a validation error and
+  an HTMX-added row are all right without JavaScript. `prefill()` in
+  `item-autocomplete.js` now reports what it wrote and forces the disclosure
+  open, because an advice template's `default_frequency` landing unseen is the
+  one thing the disclosure must not cause.
+- **All seven optional print columns now gate on the data**, not just
+  `strength`. This **changes the layout of historic printouts** — a visit with no
+  dosages reprints without an empty Dosage column. Content is unchanged; it is
+  written down in the ADR because a reprint is no longer column-for-column
+  identical to the sheet handed over at the time.
+- **`PrescriptionItem.attributes` is now vestigial, and the ADR says so.** Three
+  specialty fields have bypassed it and nothing reads it, so writing to it today
+  writes into a hole. The rule that replaced it: if a value is printed on the
+  prescription and read back by a human, it is a column. Kept rather than
+  dropped — a destructive migration across the table and its `simple_history`
+  twin, for a column SPEC §5 still names.
+- Pricing was **deliberately not touched**: `InvoiceItem.unit_price` is already
+  an editable per-line box prefilled from the catalog and never overwritten once
+  typed, so the clinic's requirement is met at billing time. A whole-bill
+  discount, if that is what they meant, gets its own ADR.
+
+**Amended 2026-08-22**: `pack_size` and `preparation` are `<select>`s now, and
+strength stays a datalist. The clinic confirmed the first two are closed lists;
+an atypical potency genuinely gets typed. `PrescribingField.closed_list` carries
+the distinction and decides the control. Two things to know:
+
+- **A closed field always offers the value the row already holds**, even after
+  the clinic drops it from its options. A `<select>` missing the current value
+  renders with nothing selected, so the browser posts the first option — blank —
+  and the next save erases it. `_closed_choices` appends it;
+  `test_a_value_the_clinic_no_longer_offers_survives_a_resave` reads back what
+  the rendered page would submit rather than asserting a hardcoded value, and
+  was confirmed to fail against the guard removed.
+- **The field stays a plain `CharField`.** Choice validation would turn that
+  case into a refusal to save the row at all.
+
+Also done in that pass: `{% comment %}` blocks containing literal `<form>` /
+`<dialog>` / `<select>` markup in prose were reworded (the IDE parses markup
+inside Django comments and calls them unclosed elements; the markup was always
+balanced), and **every raw `&` in a template URL is now `&amp;`** — 26 of them
+across nine files, `href` and `hx-get` alike.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployable now, and now operable — but still never actually deployed
@@ -740,6 +817,9 @@ anywhere.
   python -m pytest                          # on Postgres; see Commands below
   ```
 
+  `python -m pytest` is the single spelling used throughout this file. Add
+  `-q` when you only want the summary line.
+
   `migrate --check` is the odd one out and the reason the list is explicit. The
   other four inspect the *code*; this one inspects **the database you are
   actually developing against**, and exits non-zero when it is behind. Nothing
@@ -749,7 +829,8 @@ anywhere.
   the second time to `clinical_encounterphoto`, on correct code.
 - **Verify interactive features in a browser before reporting them done.**
   Tests that assert status codes do not prove a UI works. Four bugs have
-  shipped past green tests this way.
+  shipped past green tests this way. See **Environment and verification** for
+  how — which browser, what a screenshot cannot capture, and what not to touch.
 - When you finish a substantial piece of work, update the "Current status"
   section of CLAUDE.md to reflect what is now done and what's next. Skip this
   for small fixes and questions.
@@ -794,3 +875,54 @@ Outside Docker the project runs on SQLite (`POSTGRES_DB` unset) against the
 files: the SQLite one from a bare `manage.py` run and the Postgres one behind
 `docker compose` fall behind independently, and a migration applied to one says
 nothing about the other.
+
+## Environment and verification
+
+**Shell.** A bare `manage.py` run — outside Docker, against SQLite — needs
+`DJANGO_DEBUG=1` exported, or it dies on `DJANGO_SECRET_KEY must be set`. This
+applies to that path only: inside `docker compose` the environment comes from
+compose, and exporting it in your shell changes nothing there. pytest needs it
+nowhere — it uses `config.settings_test` via `pyproject.toml`.
+
+**The test suite is pytest.** `python manage.py test` finds zero tests and
+exits successfully, which looks like a pass. Always `python -m pytest`. Run it
+against Postgres before reporting done: SQLite skips the two Postgres-only
+row-locking tests, so the counts differ by two (689 vs 691 as of ADR 0017).
+
+**Native popups are invisible to CDP screenshots.** `<select>` and
+`<datalist>` popups are OS-drawn windows, so DevTools-protocol capture shows
+an empty page. To see one: drive a real browser window with X11 input and
+capture the screen with ImageMagick `import`. Install any helper (python-xlib
+etc.) into a throwaway directory under /tmp, never `.venv_clinicore`.
+
+**Datalist popups cannot be styled.** They are browser chrome in both Chrome
+and Firefox and ignore page CSS, including `color-scheme`. Measured, twice.
+Don't re-investigate — see ADR 0017.
+
+**Never type a password.** For app-level browser checks, use the Chrome
+window that is already signed in. Firefox is rendering-only via a standalone
+replica page unless the user has signed in first. Say which was used.
+
+**Don't change desktop or OS settings** (GTK theme, locale, resolution) to
+run a test. Ask instead.
+
+**The MCP tab is a background tab.** That is fine for the DOM and for CDP
+screenshots, and useless for anything the OS draws. When a check needs a real
+visible window — a native popup, a print preview — launch a separate one with
+`google-chrome --new-window <url>`: same profile, so it is already signed in,
+and it can be closed with `wmctrl -i -c` without touching the user's tabs.
+X11 input goes to whatever is focused, so `wmctrl -i -a <id>` before every
+batch, or the screenshot catches the terminal instead.
+
+**Two CDP flakes, both seen repeatedly.** `Page.captureScreenshot` times out
+after 30s roughly one call in three — just call it again, the retry works. And
+clicking by `ref` silently does nothing on some buttons (the prescription
+form's "Add another item", twice across two sessions): take a screenshot and
+click by coordinate instead. A ref click that no-ops looks exactly like a
+feature that does not work, so verify the effect, never the click.
+
+**A `{% comment %}` block containing literal `<tag>` markup is an IDE hard
+error** — PyCharm parses inside Django comments and reports the tag as
+unclosed. Write "form element", not the tag. The one-off scan that finds them:
+strip `{% comment %}…{% endcomment %}` and `{# … #}` from every template and
+grep the comment bodies for `</?[a-z]`.

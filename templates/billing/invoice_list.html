@@ -85,11 +85,11 @@
   {% if invoices.has_other_pages %}
     <div class="join mt-4 flex justify-center">
       {% if invoices.has_previous %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status }}&from={{ date_from }}&to={{ date_to }}&page={{ invoices.previous_page_number }}">«</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&amp;status={{ status }}&amp;from={{ date_from }}&amp;to={{ date_to }}&amp;page={{ invoices.previous_page_number }}">«</a>
       {% endif %}
       <span class="join-item btn btn-sm btn-disabled">Page {{ invoices.number }} of {{ invoices.paginator.num_pages }}</span>
       {% if invoices.has_next %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status }}&from={{ date_from }}&to={{ date_to }}&page={{ invoices.next_page_number }}">»</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&amp;status={{ status }}&amp;from={{ date_from }}&amp;to={{ date_to }}&amp;page={{ invoices.next_page_number }}">»</a>
       {% endif %}
     </div>
   {% endif %}

@@ -235,3 +235,8 @@ theme/static/css/dist/
 # Backup status written by deploy/*.sh and read by the dashboard. Host state,
 # never committed.
 /run/
+
+# Real patient data. Never committed — the import command reads it from a path
+# outside the repo, supplied at run time. See docs/adr/0018.
+*patients*.csv
+/catalog/data/*.csv

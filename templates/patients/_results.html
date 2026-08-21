@@ -30,16 +30,16 @@
     <div class="join mt-4 flex justify-center">
       {% if patients.has_previous %}
         <a class="join-item btn btn-sm"
-           hx-get="{% url 'patients:search' %}?q={{ query|urlencode }}&page={{ patients.previous_page_number }}"
-           hx-target="#patient-results" href="?q={{ query|urlencode }}&page={{ patients.previous_page_number }}">«</a>
+           hx-get="{% url 'patients:search' %}?q={{ query|urlencode }}&amp;page={{ patients.previous_page_number }}"
+           hx-target="#patient-results" href="?q={{ query|urlencode }}&amp;page={{ patients.previous_page_number }}">«</a>
       {% endif %}
       <span class="join-item btn btn-sm btn-disabled">
         Page {{ patients.number }} of {{ patients.paginator.num_pages }}
       </span>
       {% if patients.has_next %}
         <a class="join-item btn btn-sm"
-           hx-get="{% url 'patients:search' %}?q={{ query|urlencode }}&page={{ patients.next_page_number }}"
-           hx-target="#patient-results" href="?q={{ query|urlencode }}&page={{ patients.next_page_number }}">»</a>
+           hx-get="{% url 'patients:search' %}?q={{ query|urlencode }}&amp;page={{ patients.next_page_number }}"
+           hx-target="#patient-results" href="?q={{ query|urlencode }}&amp;page={{ patients.next_page_number }}">»</a>
       {% endif %}
     </div>
   {% endif %}

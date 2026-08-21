@@ -1,0 +1,17 @@
+{% comment %}
+One optional prescribing field's usual values, offered as a native datalist.
+
+Included once per page for each field the clinic records; every input that wants
+the suggestions points at it with list="{{ id }}". A datalist guides without
+constraining — the box stays free text, so an unusual value is typed rather than
+blocked, which is why there is no "Other…" option to explain. An input whose
+list= names a datalist that is not on the page behaves as an ordinary text box,
+so a clinic that suggests nothing simply gets a plain box.
+
+Takes: id, options.
+{% endcomment %}
+{% if options %}
+  <datalist id="{{ id }}">
+    {% for value in options %}<option value="{{ value }}"></option>{% endfor %}
+  </datalist>
+{% endif %}

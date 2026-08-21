@@ -145,13 +145,13 @@ carries its own state as a badge and offers only the actions that apply to it.
         <div class="flex flex-wrap gap-2 justify-center">
           {% if nearest.previous %}
             <a class="btn btn-sm btn-brand-ghost"
-               href="?date={{ nearest.previous|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}">
+               href="?date={{ nearest.previous|date:'Y-m-d' }}{% if branch %}&amp;branch={{ branch.pk }}{% endif %}">
               ‹ {{ nearest.previous|date:'D, d M Y' }}
             </a>
           {% endif %}
           {% if nearest.next %}
             <a class="btn btn-sm btn-brand-ghost"
-               href="?date={{ nearest.next|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}">
+               href="?date={{ nearest.next|date:'Y-m-d' }}{% if branch %}&amp;branch={{ branch.pk }}{% endif %}">
               {{ nearest.next|date:'D, d M Y' }} ›
             </a>
           {% endif %}

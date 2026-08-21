@@ -13,6 +13,15 @@ each growing a near-identical page (organizations/views.py).
 <form method="post" class="card-surface rounded-xl p-6 max-w-lg space-y-4">
   {% csrf_token %}
   {% for field in form %}
+    {% comment %}
+      Each optional prescribing capability is three controls — a switch, the
+      clinic's word for it, and its usual values — and three of them in one flat
+      column reads as nine unrelated boxes. A rule before each switch is enough
+      to group them (organizations/forms.py capability_switches).
+    {% endcomment %}
+    {% if form.capability_switches and field.name in form.capability_switches %}
+      <hr class="border-black/5">
+    {% endif %}
     <div>
       {% if field.field.widget.input_type == 'checkbox' %}
         {# Checkboxes read as a statement with the control beside it, not above it. #}

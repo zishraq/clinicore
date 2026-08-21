@@ -7,6 +7,20 @@
  * compiled daisyUI theme is noted in docs/MVP-NOTES.md.
  */
 
+/* The app is light-only, so say so: native <select> popups, scrollbars and the
+ * calendar button on a date input follow the *used* color scheme rather than
+ * our palette, and without this they follow the OS when the OS is dark.
+ *
+ * daisyUI's [data-theme=light] already declares the same thing, so this is
+ * belt and braces against the CDN stylesheet not loading — it is not a fix for
+ * anything currently broken. It specifically does NOT light up a <datalist>
+ * popup: measured dark in both Chrome and Firefox with this set on :root and
+ * on the input itself. See docs/adr/0017-dispensing-details.md.
+ */
+:root {
+  color-scheme: light;
+}
+
 .btn-brand {
   background-color: var(--cc-primary);
   border-color: var(--cc-primary);

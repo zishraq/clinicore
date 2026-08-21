@@ -61,11 +61,11 @@
   {% if encounters.has_other_pages %}
     <div class="join mt-4 flex justify-center">
       {% if encounters.has_previous %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status|urlencode }}&page={{ encounters.previous_page_number }}">«</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&amp;status={{ status|urlencode }}&amp;page={{ encounters.previous_page_number }}">«</a>
       {% endif %}
       <span class="join-item btn btn-sm btn-disabled">Page {{ encounters.number }} of {{ encounters.paginator.num_pages }}</span>
       {% if encounters.has_next %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&status={{ status|urlencode }}&page={{ encounters.next_page_number }}">»</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&amp;status={{ status|urlencode }}&amp;page={{ encounters.next_page_number }}">»</a>
       {% endif %}
     </div>
   {% endif %}

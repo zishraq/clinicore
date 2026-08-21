@@ -15,7 +15,7 @@ from django.db import models
 from django.db.models.functions import Lower
 
 from core.models import OrgOwnedModel
-from organizations.models import STRENGTH_MAX_LENGTH
+from organizations.models import PRESCRIBING_MAX_LENGTH
 
 __all__ = ['AdviceCategory', 'AdviceTemplate', 'Product']
 
@@ -46,7 +46,7 @@ class Product(OrgOwnedModel):
     # prescribed at different strengths to different patients. Only meaningful
     # where the organization has ``strength_enabled``; see
     # docs/adr/0015-prescribed-strength.md.
-    default_strength = models.CharField(max_length=STRENGTH_MAX_LENGTH, blank=True)
+    default_strength = models.CharField(max_length=PRESCRIBING_MAX_LENGTH, blank=True)
     # Specialty defaults copied onto each prescribed item. Strength has its own
     # column above: it is prescribing data that gets printed and read by a
     # patient, not metadata. This stays for values that really are arbitrary.

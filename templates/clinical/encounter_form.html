@@ -13,8 +13,14 @@
 {% block page_title %}{% if is_create %}New {{ terms.encounter|lower }}{% elif is_amendment %}{{ terms.amend }} {{ terms.encounter|lower }}{% else %}Edit {{ terms.encounter|lower }}{% endif %}{% endblock %}
 
 {% block content %}
-{# Once for the page: every prescription row's strength box points at this. #}
-{% include 'partials/_strength_options.html' %}
+{% comment %}
+  Once for the page, one per *open-ended* field this clinic records: every
+  prescription row's box for that field points its list= at these. A closed
+  field is a select element and carries its options inline, so it needs none.
+{% endcomment %}
+{% for extra in organization.prescribing_datalists %}
+  {% include 'partials/_options_datalist.html' with id=extra.datalist_id options=extra.options %}
+{% endfor %}
 {% comment %}
   multipart because the photo control posts with the rest of the consultation:
   a visit being created has no saved row to attach a file to yet.

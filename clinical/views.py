@@ -54,21 +54,41 @@ STATUS_FILTERS = {
 }
 
 
-def _prescription_sections(items: list) -> dict:
-    """Split a prescription into its two halves, plus the strength decision.
+#: Optional medicine columns, in the order they are printed. Every one of them
+#: appears only when *this* prescription carries a value for it.
+MEDICINE_COLUMNS = (
+    'strength',
+    'pack_size',
+    'preparation',
+    'dosage',
+    'frequency',
+    'duration',
+    'instructions',
+)
 
-    ``show_strength`` is decided by the data and never by
-    ``Organization.strength_enabled``. A clinic that turns the capability off
-    must go on being able to read — and reprint — the strengths it already
-    recorded; gating a read surface on the switch would be a data-hiding bug.
-    It is the same rule that keeps recorded advice readable after A3's switch
-    goes off. See docs/adr/0015-prescribed-strength.md.
+
+def _prescription_sections(items: list) -> dict:
+    """Split a prescription into its two halves, plus one flag per column.
+
+    Each ``show_*`` is decided by the data and never by the organization's
+    capability switches. A clinic that turns one off must go on being able to
+    read — and reprint — what it already recorded; gating a read surface on a
+    current setting would be a data-hiding bug. It is the same rule that keeps
+    recorded advice readable after A3's switch goes off.
+
+    The four fields that are always offered are gated the same way, so a clinic
+    that handles dosage verbally does not print four empty columns beside the
+    three it does fill in. See docs/adr/0015-prescribed-strength.md and
+    docs/adr/0017-dispensing-details.md.
     """
     medicines = [item for item in items if not item.is_advice]
     return {
         'medicines': medicines,
         'advice_items': [item for item in items if item.is_advice],
-        'show_strength': any(item.strength for item in medicines),
+        **{
+            f'show_{column}': any(getattr(item, column) for item in medicines)
+            for column in MEDICINE_COLUMNS
+        },
     }
 
 

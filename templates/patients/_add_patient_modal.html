@@ -7,8 +7,8 @@ rendering this gets an htmx:targetError on #add-patient-body and a dead offer.
 The walk-in modal shipped that way, and status-code tests could not see it.
 **Include this from the modals block of every page that renders the picker.**
 
-Sits outside any <form>: forms cannot nest, and the point of registering from
-here is that the half-written thing behind it survives.
+Sits outside any form element: forms cannot nest, and the point of registering
+from here is that the half-written thing behind it survives.
 
 Takes: noun — what the patient is being selected for, already lowercased.
 {% endcomment %}

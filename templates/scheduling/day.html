@@ -45,17 +45,17 @@ templates/scheduling/_rows.html.
     <label class="label py-1" for="day-date"><span class="label-text text-xs">Day</span></label>
     <div class="flex flex-wrap items-center gap-1">
       <a class="btn btn-ghost btn-square shrink-0" aria-label="Previous day"
-         href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">‹</a>
+         href="?date={{ previous_date|date:'Y-m-d' }}{% if branch %}&amp;branch={{ branch.pk }}{% endif %}{% if status %}&amp;status={{ status }}{% endif %}">‹</a>
       {# text + data-datepicker, not type="date": the native control shows the device's date order. static/js/date-picker.js keeps the posted value Y-m-d, which is what scheduling.views._requested_date strptimes. #}
       <input type="text" id="day-date" name="date" value="{{ on_date|date:'Y-m-d' }}"
              data-datepicker autocomplete="off"
              onchange="this.form.submit()"
              class="input input-bordered flex-1 min-w-0 sm:flex-none">
       <a class="btn btn-ghost btn-square shrink-0" aria-label="Next day"
-         href="?date={{ next_date|date:'Y-m-d' }}{% if branch %}&branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">›</a>
+         href="?date={{ next_date|date:'Y-m-d' }}{% if branch %}&amp;branch={{ branch.pk }}{% endif %}{% if status %}&amp;status={{ status }}{% endif %}">›</a>
       {# Own line on a phone; sharing one left the date input clipped. #}
       <a class="btn shrink-0 w-full sm:w-auto {% if is_today %}btn-disabled{% else %}btn-ghost{% endif %}"
-         href="?{% if branch %}branch={{ branch.pk }}{% endif %}{% if status %}&status={{ status }}{% endif %}">Today</a>
+         href="?{% if branch %}branch={{ branch.pk }}{% endif %}{% if status %}&amp;status={{ status }}{% endif %}">Today</a>
     </div>
   </div>
 
@@ -137,8 +137,8 @@ templates/scheduling/_rows.html.
 {% comment %}
   The appointment modal renders the patient picker, so the page owes it the
   dialog its "add a new patient" offer targets. A sibling of appointment_modal
-  rather than a child: nesting one <dialog> in another stacks backdrops, and
-  closing the registration would take the half-filled form down with it.
+  rather than a child: nesting one dialog element in another stacks backdrops,
+  and closing the registration would take the half-filled form down with it.
 {% endcomment %}
 {% include 'patients/_add_patient_modal.html' with noun=terms.appointment|lower %}
 {% endblock %}

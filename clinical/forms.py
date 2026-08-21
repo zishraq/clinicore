@@ -11,7 +11,7 @@ from catalog.models import AdviceTemplate, Product
 from clinical.images import ImageRejected, normalize_image
 from clinical.models import Encounter, ItemType, Prescription, PrescriptionItem
 from core.forms import date_widget, org_scoped_formfield
-from organizations.models import DEFAULT_TERMINOLOGY
+from organizations.models import DEFAULT_TERMINOLOGY, PRESCRIBING_FIELDS
 from organizations.services import active_branches
 from patients.models import Patient
 
@@ -242,6 +242,8 @@ class PrescriptionItemForm(forms.ModelForm):
             'advice_template',
             'free_text_name',
             'strength',
+            'pack_size',
+            'preparation',
             'dosage',
             'frequency',
             'duration',
@@ -253,8 +255,13 @@ class PrescriptionItemForm(forms.ModelForm):
             'product': forms.HiddenInput(attrs={'data-role': 'item-product'}),
             'advice_template': forms.HiddenInput(attrs={'data-role': 'item-advice'}),
             'free_text_name': forms.HiddenInput(attrs={'data-role': 'item-free-text'}),
-            # list= points at the datalist the encounter form renders once; see
-            # templates/partials/_strength_options.html.
+            # Strength is open-ended, so it is a text box with suggestions:
+            # list= points at the datalist the encounter form renders once per
+            # open field; see templates/partials/_options_datalist.html. An
+            # input whose list= names a datalist that is not on the page is an
+            # ordinary text box, so nothing breaks where a clinic suggests none.
+            # The closed fields get their <select> in bind_organization, which
+            # is where the organization's options are in scope.
             'strength': forms.TextInput(
                 attrs={**_INPUT, 'list': 'strength-options', 'autocomplete': 'off'}
             ),
@@ -282,8 +289,12 @@ class PrescriptionItemForm(forms.ModelForm):
         if self.instance.pk:
             self.fields['display_name'].initial = self.instance.name_snapshot
 
+    #: Set by ``bind_organization``: the optional fields this clinic records,
+    #: in row order. Empty until then, so an unbound row offers none.
+    optional_field_names = ()
+
     def bind_organization(self, organization) -> None:
-        """Restrict the catalog relations to one tenant, and gate strength."""
+        """Restrict the catalog relations to one tenant, and gate the extras."""
         self.fields['product'].queryset = Product.objects.for_organization(organization)
         self.fields[
             'advice_template'
@@ -291,12 +302,67 @@ class PrescriptionItemForm(forms.ModelForm):
         # Dropped, not hidden. A field left on the form and merely omitted from
         # the template is still settable by a hand-built POST — and, worse, is
         # rebuilt as empty by ``construct_instance`` on every subsequent save,
-        # which would quietly erase strengths recorded before the clinic turned
+        # which would quietly erase what was recorded before the clinic turned
         # the capability off. See docs/adr/0015-prescribed-strength.md.
-        if organization.strength_enabled:
-            self.fields['strength'].label = organization.terms['strength']
-        else:
-            self.fields.pop('strength', None)
+        names = []
+        for field in PRESCRIBING_FIELDS:
+            if not getattr(organization, field.enabled_field):
+                self.fields.pop(field.key, None)
+                continue
+            self.fields[field.key].label = organization.terms[field.key]
+            if field.closed_list:
+                self.fields[field.key].widget = forms.Select(
+                    attrs=_SELECT, choices=self._closed_choices(field, organization)
+                )
+            names.append(field.key)
+        self.optional_field_names = names
+
+    def _closed_choices(self, field, organization) -> list[tuple[str, str]]:
+        """A closed field's options, always including whatever this row holds.
+
+        The stored value is offered even when the organization has since
+        dropped it from its list. A ``<select>`` that does not contain the
+        current value renders with nothing selected, so the browser posts the
+        first option — blank — and the next save silently erases a value that
+        was correct when it was recorded. That is the same class of data loss
+        ADR 0015 records for a popped field, arriving by a different route.
+
+        The field itself stays a plain ``CharField``: adding choice validation
+        would turn the same situation into a refusal to save the row at all.
+        """
+        # Blank first, and always: both fields are optional.
+        choices = [('', '—')]
+        options = organization.suggestions(field.key)
+        current = self[field.key].value()
+        if current and current not in options:
+            options = [*options, current]
+        choices += [(value, value) for value in options]
+        return choices
+
+    @property
+    def optional_fields(self) -> list:
+        """The extras that survived binding, for the row template to render.
+
+        The template asks the form which fields exist rather than asking the
+        organization which are on: those are the same answer, and only one of
+        them stays true after ``bind_organization`` has popped a field.
+        """
+        return [self[name] for name in self.optional_field_names]
+
+    #: The half of the row that lives behind the disclosure.
+    DETAIL_FIELDS = ('dosage', 'frequency', 'duration', 'instructions')
+
+    @property
+    def has_details(self) -> bool:
+        """Whether the collapsed half already holds something.
+
+        Decided here rather than in JavaScript, so editing an older visit shows
+        what is on it even with scripting off, and so an HTMX-added row (which
+        renders through this same template) starts closed. ``BoundField.value()``
+        reads posted data when bound and the instance when not, which covers
+        redisplay after a validation error too.
+        """
+        return any(self[name].value() for name in self.DETAIL_FIELDS)
 
     #: Fields whose presence means the practitioner actually entered something.
     CONTENT_FIELDS = (
@@ -304,6 +370,8 @@ class PrescriptionItemForm(forms.ModelForm):
         'product',
         'advice_template',
         'strength',
+        'pack_size',
+        'preparation',
         'dosage',
         'frequency',
         'duration',
@@ -348,9 +416,10 @@ class PrescriptionItemForm(forms.ModelForm):
             cleaned['dosage'] = None
             # Guarded on the field still being present: writing the key when
             # the capability is off would let ``construct_instance`` blank a
-            # strength recorded while it was on.
-            if 'strength' in self.fields:
-                cleaned['strength'] = ''
+            # value recorded while it was on.
+            for field in PRESCRIBING_FIELDS:
+                if field.key in self.fields:
+                    cleaned[field.key] = ''
 
         has_source = bool(product or advice or cleaned['free_text_name'])
         if not has_source and self.has_changed():

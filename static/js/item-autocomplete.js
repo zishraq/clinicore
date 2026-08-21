@@ -20,7 +20,10 @@
  *   [data-role="item-advice"]   hidden advice_template pk
  *   [data-role="item-free-text"] hidden free_text_name
  *   [data-role="item-delete"]   hidden DELETE checkbox
+ *   [data-row-details]          the collapsed half of the row (dosage and below)
  *   [name$="-strength"]         strength box, absent unless the org records one
+ *   [name$="-pack_size"]        pack-size box, absent unless the org records one
+ *   [name$="-preparation"]      preparation box, absent unless the org records one
  *
  * Markup contract, templates/clinical/_patient_picker.html +
  * templates/patients/_suggestions.html:
@@ -155,14 +158,18 @@ document.addEventListener('alpine:init', () => {
 
       // Prefill the entry's defaults, without clobbering anything already typed.
       this.prefill('strength', option.dataset.strength);
-      this.prefill('frequency', option.dataset.frequency);
-      this.prefill('duration', option.dataset.duration);
-      this.prefill('instructions', option.dataset.instructions);
+      // Three of the four defaults land in the collapsed half of the row. A
+      // value that arrives unseen is the thing the disclosure must never cause,
+      // so writing one opens it — the same rule as has_details on the server.
+      const hidden = ['frequency', 'duration', 'instructions'].map((suffix) =>
+        this.prefill(suffix, option.dataset[suffix])
+      );
+      if (hidden.some(Boolean)) this.openDetails();
       this.justSelected = true;
       if (type === 'ADVICE') {
-        // Neither applies to advice, and both are hidden rather than removed —
-        // a value typed before the row became advice would otherwise still post.
-        ['dosage', 'strength'].forEach((suffix) => {
+        // None of these applies to advice, and they are hidden rather than
+        // removed — a value typed before the row became advice would still post.
+        ['dosage', 'strength', 'pack_size', 'preparation'].forEach((suffix) => {
           const input = this.$root.querySelector(`[name$="-${suffix}"]`);
           if (input) input.value = '';
         });
@@ -170,10 +177,18 @@ document.addEventListener('alpine:init', () => {
       this.close();
     },
 
+    /* Fill an empty box, and say whether anything was actually written. */
     prefill(suffix, value) {
-      if (!value) return;
+      if (!value) return false;
       const input = this.$root.querySelector(`[name$="-${suffix}"]`);
-      if (input && !input.value) input.value = value;
+      if (!input || input.value) return false;
+      input.value = value;
+      return true;
+    },
+
+    openDetails() {
+      const details = this.$root.querySelector('[data-row-details]');
+      if (details) details.open = true;
     },
 
     /* Remove this row.

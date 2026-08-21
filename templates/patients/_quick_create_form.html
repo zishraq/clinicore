@@ -1,7 +1,7 @@
 {% comment %}
 Body of the visit form's "add patient" modal.
 
-Not a <form>: the modal sits in base.html's modals block, outside the visit
+Not a form element: the modal sits in base.html's modals block, outside the visit
 form, because a form cannot nest inside another one — and the whole point is
 that the visit form keeps its state. The fields are posted by htmx with
 hx-include over this container instead, which is why the submit button carries

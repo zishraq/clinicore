@@ -12,7 +12,7 @@ from django.db import models
 from simple_history.models import HistoricalRecords
 
 from core.models import OrgOwnedModel
-from organizations.models import STRENGTH_MAX_LENGTH
+from organizations.models import PRESCRIBING_FIELDS, PRESCRIBING_MAX_LENGTH
 
 __all__ = [
     'Encounter',
@@ -217,7 +217,20 @@ class PrescriptionItem(OrgOwnedModel):
     # ordinary for a clinic that does not record them at all, and the whole
     # column is hidden by ``Organization.strength_enabled`` when it does not.
     # See docs/adr/0015-prescribed-strength.md.
-    strength = models.CharField(max_length=STRENGTH_MAX_LENGTH, blank=True)
+    strength = models.CharField(max_length=PRESCRIBING_MAX_LENGTH, blank=True)
+    # How much of the preparation goes home: "2D", "1 ounce", "strip of 10".
+    # A string, and deliberately not called ``quantity`` — that word already
+    # means a Decimal that arithmetic is done on, on a bill line and on a stock
+    # movement, and nothing here is a number in a unit this system knows.
+    # Nothing decrements stock from it either: the invoice is the stock event
+    # (ADR 0009), and a second path off the prescription would move the same box
+    # twice. See docs/adr/0017-dispensing-details.md.
+    pack_size = models.CharField(max_length=PRESCRIBING_MAX_LENGTH, blank=True)
+    # The physical preparation dispensed — globules, a liquid, a cream. Not
+    # ``Product.unit``, which is the noun a stock count is measured in and is
+    # one value per catalog row: the same remedy goes out as globules for one
+    # patient and as liquid for the next, so this belongs to the prescription.
+    preparation = models.CharField(max_length=PRESCRIBING_MAX_LENGTH, blank=True)
     # Null for advice: advice has no dose, and an empty string would read as
     # "no dose recorded" rather than "not applicable".
     dosage = models.CharField(max_length=100, blank=True, null=True)  # noqa: DJ001
@@ -276,14 +289,21 @@ class PrescriptionItem(OrgOwnedModel):
                 name='prescription_item_advice_has_no_dosage',
             ),
             # Same reasoning as the dosage rule above: advice is not a
-            # substance, so it has no strength. Asserted here rather than left
-            # to ``save()``, so it holds for every write path.
-            models.CheckConstraint(
-                condition=(
-                    ~models.Q(item_type=ItemType.ADVICE) | models.Q(strength='')
-                ),
-                name='prescription_item_advice_has_no_strength',
-            ),
+            # substance, so it has no strength, no size and no preparation.
+            # Asserted here rather than left to ``save()``, so the rule holds
+            # for every write path. Generated from the same tuple that drives
+            # the switches and the form, so a fourth optional field cannot
+            # arrive without its constraint.
+            *[
+                models.CheckConstraint(
+                    condition=(
+                        ~models.Q(item_type=ItemType.ADVICE)
+                        | models.Q(**{field.key: ''})
+                    ),
+                    name=f'prescription_item_advice_has_no_{field.key}',
+                )
+                for field in PRESCRIBING_FIELDS
+            ],
         ]
 
     def __str__(self) -> str:
@@ -308,7 +328,8 @@ class PrescriptionItem(OrgOwnedModel):
     def save(self, *args, **kwargs):
         if self.is_advice:
             self.dosage = None
-            self.strength = ''
+            for field in PRESCRIBING_FIELDS:
+                setattr(self, field.key, '')
         self.name_snapshot = self.resolve_name()
         if self.product_id and not self.attributes:
             self.attributes = dict(self.product.default_attributes or {})
@@ -319,6 +340,6 @@ class PrescriptionItem(OrgOwnedModel):
                 *update_fields,
                 'name_snapshot',
                 'dosage',
-                'strength',
+                *(field.key for field in PRESCRIBING_FIELDS),
             }
         super().save(*args, **kwargs)

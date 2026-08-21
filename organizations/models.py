@@ -2,6 +2,7 @@
 
 import re
 from decimal import Decimal
+from typing import NamedTuple
 
 from django.db import models
 from django.utils.text import slugify
@@ -10,8 +11,11 @@ from core.models import OrgOwnedModel, TimeStampedModel
 
 __all__ = [
     'DEFAULT_TERMINOLOGY',
+    'PRESCRIBING_FIELDS',
     'Branch',
     'Organization',
+    'PrescribingField',
+    'clean_suggestions',
     'default_branding',
     'default_terminology',
     'hex_color_or',
@@ -75,6 +79,18 @@ DEFAULT_TERMINOLOGY = {
     # the clinic that prescribes potencies maps this key to "Potency" and every
     # label in the application follows. See docs/adr/0015-prescribed-strength.md.
     'strength': 'Strength',
+    # The physical preparation handed over: globules, a liquid, a tablet, a
+    # cream. Named for what it is rather than for one specialty's word for it,
+    # exactly like `strength` above — this clinic maps it to "Type". Not
+    # `Product.unit`, which is the noun a stock count is measured in and is one
+    # value per catalog row; the same remedy goes out as globules for one
+    # patient and liquid for the next. See docs/adr/0017-dispensing-details.md.
+    'preparation': 'Preparation',
+    # How much of it goes home: "2D", "1 ounce", "strip of 10". A string, never
+    # a number — `quantity` on a bill line and on a stock movement is a Decimal
+    # that arithmetic is done on, and these are container sizes in units
+    # nothing else in the system knows. This clinic maps it to "Quantity".
+    'pack_size': 'Pack size',
     # The verb for leaving draft. Composed with `encounter` at the call site
     # ("Finish visit") so relabelling the record relabels the button.
     'finish': 'Finish',
@@ -154,13 +170,74 @@ DEFAULT_TERMINOLOGY = {
 #: Longest an override may be. These are chrome — a nav item, a badge, a button.
 _TERM_MAX_LENGTH = 40
 
-#: Longest a suggested strength may be, and the width of the columns storing one.
-STRENGTH_MAX_LENGTH = 40
+#: Longest a suggested value may be, and the width of the columns storing one.
+#: Shared by every optional prescribing field so they stay one shape.
+PRESCRIBING_MAX_LENGTH = 40
+
+
+def clean_suggestions(values) -> list[str]:
+    """Suggested values, cleaned. One rule, used on the way in and on the way out.
+
+    Blanks and case-insensitive duplicates are dropped, values are truncated,
+    and the original order is kept — these are offered in the order the clinic
+    thinks of them, not alphabetically.
+    """
+    seen, cleaned = set(), []
+    for value in values or []:
+        text = str(value).strip()[:PRESCRIBING_MAX_LENGTH]
+        if text and text.casefold() not in seen:
+            seen.add(text.casefold())
+            cleaned.append(text)
+    return cleaned
 
 
 def default_terminology() -> dict:
     """Default value for ``Organization.terminology`` (callable, so it migrates)."""
     return dict(DEFAULT_TERMINOLOGY)
+
+
+class PrescribingField(NamedTuple):
+    """One optional field on a prescription row.
+
+    Each is a whole capability rather than a column: a switch that decides
+    whether the clinic records it, the clinic's own word for it (a
+    ``terminology`` key of the same name), and the values it usually takes.
+    Naming the three consistently is what lets the settings screen, the form
+    and the row template loop instead of carrying a copy each — a fourth field
+    is an entry here plus its two columns.
+
+    ``closed_list`` says whether the clinic's values are the *only* values.
+    It is the one thing the three do not share, and it decides the control: a
+    closed list is a ``<select>``, an open one is a text box with a
+    ``<datalist>`` of suggestions. See docs/adr/0017-dispensing-details.md.
+    """
+
+    key: str
+    closed_list: bool = False
+
+    @property
+    def enabled_field(self) -> str:
+        return f'{self.key}_enabled'
+
+    @property
+    def options_field(self) -> str:
+        return f'{self.key}_options'
+
+    @property
+    def datalist_id(self) -> str:
+        """The ``<datalist>`` this field's input points its ``list=`` at."""
+        return f'{self.key.replace("_", "-")}-options'
+
+
+#: In the order they appear on a prescription row, after the item itself.
+PRESCRIBING_FIELDS = (
+    # Open: an unusual potency genuinely does get typed (ADR 0015).
+    PrescribingField('strength'),
+    # Closed: the clinic confirmed both are fixed lists — five container sizes,
+    # two preparations. Nothing else is ever handed over.
+    PrescribingField('pack_size', closed_list=True),
+    PrescribingField('preparation', closed_list=True),
+)
 
 
 class Organization(TimeStampedModel):
@@ -206,6 +283,29 @@ class Organization(TimeStampedModel):
         blank=True,
         help_text='Suggested values, offered but never enforced.',
     )
+    # The other two optional prescribing fields, same shape as strength above
+    # and each its own switch. One capability per field on purpose: a clinic
+    # that records what it hands over in ounces does not necessarily record a
+    # potency, and "I turned on Type and a Quantity column appeared" is a screen
+    # that needs explaining. See docs/adr/0017-dispensing-details.md.
+    pack_size_enabled = models.BooleanField(
+        default=False,
+        help_text='Record how much of each medicine goes home with the patient.',
+    )
+    pack_size_options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Suggested values, offered but never enforced.',
+    )
+    preparation_enabled = models.BooleanField(
+        default=False,
+        help_text='Record the physical preparation each medicine is dispensed as.',
+    )
+    preparation_options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Suggested values, offered but never enforced.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -237,22 +337,38 @@ class Organization(TimeStampedModel):
         }
         return {**DEFAULT_TERMINOLOGY, **overrides}
 
+    def suggestions(self, key: str) -> list[str]:
+        """One optional field's suggested values, cleaned.
+
+        A datalist cannot be allowed to break, and these are org-editable JSON
+        columns that can hold whatever a settings screen or a loader put there.
+        """
+        return clean_suggestions(getattr(self, f'{key}_options', None))
+
     @property
     def strengths(self) -> list[str]:
-        """Suggested strengths, cleaned: a datalist cannot be allowed to break.
+        """Suggested strengths. The catalog's product form offers these too."""
+        return self.suggestions('strength')
 
-        The column is org-editable JSON, so it can hold anything a settings
-        screen or a loader put there. Blanks and duplicates are dropped and the
-        original order is kept — these are offered in the order the clinic
-        thinks of them, not alphabetically.
+    @property
+    def prescribing_datalists(self) -> list[dict]:
+        """The datalists this clinic's prescription rows need, in row order.
+
+        Open-ended fields only: a closed list is a ``<select>`` and carries its
+        options inline. Deliberately not keyed ``values``: Django resolves a
+        dict key before an attribute, but a key named after a dict method is a
+        trap for whoever edits the template next.
         """
-        seen, cleaned = set(), []
-        for value in self.strength_options or []:
-            text = str(value).strip()[:STRENGTH_MAX_LENGTH]
-            if text and text.casefold() not in seen:
-                seen.add(text.casefold())
-                cleaned.append(text)
-        return cleaned
+        return [
+            {
+                'key': field.key,
+                'label': self.terms[field.key],
+                'datalist_id': field.datalist_id,
+                'options': self.suggestions(field.key),
+            }
+            for field in PRESCRIBING_FIELDS
+            if getattr(self, field.enabled_field) and not field.closed_list
+        ]
 
     @property
     def primary_color(self) -> str:

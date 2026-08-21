@@ -103,21 +103,24 @@
     <div class="overflow-x-auto">
       <table class="table table-cards">
         {% comment %}
-          The strength column appears when this prescription has strengths on
-          it, not when the clinic currently records them: a visit written before
-          the switch was turned off must stay readable exactly as it was written
+          Every column appears when this prescription carries one, not when the
+          clinic currently records that field: a visit written before a switch
+          was turned off must stay readable exactly as it was written, and a
+          clinic that handles dosage verbally does not want four empty columns
           (clinical/views.py _prescription_sections).
         {% endcomment %}
-        <thead><tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}<th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+        <thead><tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}{% if show_pack_size %}<th>{{ terms.pack_size }}</th>{% endif %}{% if show_preparation %}<th>{{ terms.preparation }}</th>{% endif %}{% if show_dosage %}<th>Dosage</th>{% endif %}{% if show_frequency %}<th>Frequency</th>{% endif %}{% if show_duration %}<th>Duration</th>{% endif %}{% if show_instructions %}<th>Instructions</th>{% endif %}</tr></thead>
         <tbody>
           {% for item in medicines %}
             <tr>
               <td class="font-medium" data-label="Medicine">{{ item.name_snapshot }}</td>
               {% if show_strength %}<td data-label="{{ terms.strength }}">{{ item.strength|default:'—' }}</td>{% endif %}
-              <td data-label="Dosage">{{ item.dosage|default:'—' }}</td>
-              <td data-label="Frequency">{{ item.frequency|default:'—' }}</td>
-              <td data-label="Duration">{{ item.duration|default:'—' }}</td>
-              <td data-label="Instructions">{{ item.instructions|default:'—' }}</td>
+              {% if show_pack_size %}<td data-label="{{ terms.pack_size }}">{{ item.pack_size|default:'—' }}</td>{% endif %}
+              {% if show_preparation %}<td data-label="{{ terms.preparation }}">{{ item.preparation|default:'—' }}</td>{% endif %}
+              {% if show_dosage %}<td data-label="Dosage">{{ item.dosage|default:'—' }}</td>{% endif %}
+              {% if show_frequency %}<td data-label="Frequency">{{ item.frequency|default:'—' }}</td>{% endif %}
+              {% if show_duration %}<td data-label="Duration">{{ item.duration|default:'—' }}</td>{% endif %}
+              {% if show_instructions %}<td data-label="Instructions">{{ item.instructions|default:'—' }}</td>{% endif %}
             </tr>
           {% endfor %}
         </tbody>

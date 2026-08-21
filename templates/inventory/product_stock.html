@@ -114,11 +114,11 @@
     {% if movements.has_other_pages %}
       <div class="join mt-4 flex justify-center">
         {% if movements.has_previous %}
-          <a class="join-item btn btn-sm" href="?branch={{ branch.pk|default:'' }}&page={{ movements.previous_page_number }}">«</a>
+          <a class="join-item btn btn-sm" href="?branch={{ branch.pk|default:'' }}&amp;page={{ movements.previous_page_number }}">«</a>
         {% endif %}
         <span class="join-item btn btn-sm btn-disabled">Page {{ movements.number }} of {{ movements.paginator.num_pages }}</span>
         {% if movements.has_next %}
-          <a class="join-item btn btn-sm" href="?branch={{ branch.pk|default:'' }}&page={{ movements.next_page_number }}">»</a>
+          <a class="join-item btn btn-sm" href="?branch={{ branch.pk|default:'' }}&amp;page={{ movements.next_page_number }}">»</a>
         {% endif %}
       </div>
     {% endif %}

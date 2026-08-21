@@ -26,8 +26,15 @@ which substitutes __prefix__ for the new index.
     button sits under them, still plainly inside this row's card.
   {% endcomment %}
   <div class="flex flex-col sm:flex-row items-stretch sm:items-start gap-2">
+  {% comment %}
+    The line the clinic sees by default: what was prescribed, plus whichever
+    optional fields this clinic records (strength, pack size, preparation). The
+    search box takes whatever is left of the twelve columns — full width for a
+    clinic that records none of them, six where all three are on.
+  {% endcomment %}
+  {% with extras=form.optional_fields %}
   <div class="grid gap-2 sm:grid-cols-12 items-end flex-1">
-    <div class="sm:col-span-4 relative">
+    <div class="relative {% if extras|length == 0 %}sm:col-span-12{% elif extras|length == 1 %}sm:col-span-10{% elif extras|length == 2 %}sm:col-span-8{% else %}sm:col-span-6{% endif %}">
       <label class="label py-1">
         <span class="label-text text-xs">Item</span>
         <span class="label-text-alt text-xs" x-show="typeLabel" x-text="typeLabel"></span>
@@ -73,44 +80,67 @@ which substitutes __prefix__ for the new index.
     </div>
 
     {% comment %}
-      How strong the preparation is, where the clinic records that — a separate
-      fact from how much of it to take, which is Dosage. Hidden for advice for
-      the same reason Dosage is: advice is not a substance. The field is dropped
-      from the form entirely when the capability is off, so this block and the
-      one on Instructions below are the only layout the switch moves.
+      How strong the preparation is, how much of it goes home, and what form it
+      takes — each present only where the clinic records it. The form is asked
+      which fields survived binding rather than the organization being asked
+      which are on: those are the same answer, but only the form's stays true
+      after a capability is switched off (clinical/forms.py bind_organization).
+      All three are hidden for advice, for the reason Dosage is: advice is not
+      a substance.
+
+      The control comes from the widget, not from here: strength is a text box
+      with a datalist because an unusual potency gets typed, while the other two
+      are selects over closed lists. See docs/adr/0017-dispensing-details.md.
     {% endcomment %}
-    {% if organization.strength_enabled %}
+    {% for field in extras %}
       <div class="sm:col-span-2" x-show="!isAdvice()">
-        <label class="label py-1" for="{{ form.strength.id_for_label }}">
-          <span class="label-text text-xs">{{ terms.strength }}</span>
+        <label class="label py-1" for="{{ field.id_for_label }}">
+          <span class="label-text text-xs">{{ field.label }}</span>
         </label>
-        {{ form.strength }}
+        {{ field }}
+        {% for error in field.errors %}
+          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+        {% endfor %}
       </div>
-    {% endif %}
-    <div class="sm:col-span-2" x-show="!isAdvice()">
-      <label class="label py-1"><span class="label-text text-xs">Dosage</span></label>
-      {{ form.dosage }}
-    </div>
-    <div class="sm:col-span-2">
-      <label class="label py-1"><span class="label-text text-xs">Frequency</span></label>
-      {{ form.frequency }}
-    </div>
-    <div class="sm:col-span-2">
-      <label class="label py-1"><span class="label-text text-xs">Duration</span></label>
-      {{ form.duration }}
-    </div>
+    {% endfor %}
+
     {% comment %}
-      Six fields do not fit one twelve-column line with the search box at four,
-      so the strength clinic gets Instructions on its own full-width row rather
-      than six boxes squeezed to ~90px each on a tablet. Instructions is the
-      right one to move: it is the longest thing typed here. Where strength is
-      off the row is byte-identical to what it always was.
+      The other four, behind a disclosure. This clinic handles dosage, frequency
+      and duration verbally, but a clinic that changes its mind must not have
+      lost the columns or the data — so the fields stay on the form and in the
+      DOM, hidden by nothing more than a closed disclosure. Omitting them with a
+      template conditional, or popping them in __init__, would let
+      construct_instance rebuild them as empty on the next save and silently
+      erase what was recorded (ADR 0015).
+
+      open= is decided server-side by form.has_details, so editing an older
+      visit never hides what is already on it — with or without JavaScript. The
+      autocomplete forces it open too when a catalog entry prefills one of these
+      (static/js/item-autocomplete.js).
     {% endcomment %}
-    <div class="{% if organization.strength_enabled %}sm:col-span-12{% else %}sm:col-span-2{% endif %}">
-      <label class="label py-1"><span class="label-text text-xs">Instructions</span></label>
-      {{ form.instructions }}
-    </div>
+    <details class="sm:col-span-12" data-row-details {% if form.has_details %}open{% endif %}>
+      <summary class="text-xs text-muted cursor-pointer select-none py-1">More details</summary>
+      <div class="grid gap-2 sm:grid-cols-12 items-end">
+        <div class="sm:col-span-3" x-show="!isAdvice()">
+          <label class="label py-1" for="{{ form.dosage.id_for_label }}"><span class="label-text text-xs">Dosage</span></label>
+          {{ form.dosage }}
+        </div>
+        <div class="sm:col-span-3">
+          <label class="label py-1" for="{{ form.frequency.id_for_label }}"><span class="label-text text-xs">Frequency</span></label>
+          {{ form.frequency }}
+        </div>
+        <div class="sm:col-span-3">
+          <label class="label py-1" for="{{ form.duration.id_for_label }}"><span class="label-text text-xs">Duration</span></label>
+          {{ form.duration }}
+        </div>
+        <div class="sm:col-span-3">
+          <label class="label py-1" for="{{ form.instructions.id_for_label }}"><span class="label-text text-xs">Instructions</span></label>
+          {{ form.instructions }}
+        </div>
+      </div>
+    </details>
   </div>
+  {% endwith %}
 
     {% include 'partials/_remove_row_button.html' %}
   </div>

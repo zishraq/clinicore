@@ -20,7 +20,7 @@
     is where the front desk is standing when the patient asks for it.
   {% endcomment %}
   <button type="button" class="btn btn-sm btn-brand-ghost"
-          hx-get="{% url 'scheduling:create' %}?patient={{ patient.pk }}&redirect_to=1"
+          hx-get="{% url 'scheduling:create' %}?patient={{ patient.pk }}&amp;redirect_to=1"
           hx-target="#appointment-body"
           hx-swap="innerHTML"
           hx-on::after-request="document.getElementById('appointment_modal').showModal()">

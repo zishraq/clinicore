@@ -2,7 +2,7 @@
 Search-and-register patient control (static/js/item-autocomplete.js, component
 patientPicker). Used by the visit form and by the walk-in modal, which is why it
 takes its field name rather than a bound form field: one is a ModelForm's
-``patient``, the other a bare input in a modal that is not a <form> at all.
+``patient``, the other a bare input in a modal that is not a form element at all.
 
 The real value is the hidden input. The visible box is search only and is never
 posted, so the component clears the hidden pk on every keystroke — otherwise the

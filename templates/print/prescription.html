@@ -201,21 +201,27 @@
       <table class="items">
         <thead>
           {% comment %}
-            Gated on the prescription's own data, like the name_snapshot rule
-            above: reprinting a visit years later must reproduce what the
-            patient was handed, whatever the clinic records today.
+            Every column is gated on the prescription's own data, like the
+            name_snapshot rule above: reprinting a visit years later must
+            reproduce what the patient was handed, whatever the clinic records
+            today. That now covers dosage, frequency, duration and instructions
+            as well — seven optional columns will not fit across an A5 sheet,
+            and four of them empty is the worse document
+            (clinical/views.py _prescription_sections).
           {% endcomment %}
-          <tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}<th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+          <tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}{% if show_pack_size %}<th>{{ terms.pack_size }}</th>{% endif %}{% if show_preparation %}<th>{{ terms.preparation }}</th>{% endif %}{% if show_dosage %}<th>Dosage</th>{% endif %}{% if show_frequency %}<th>Frequency</th>{% endif %}{% if show_duration %}<th>Duration</th>{% endif %}{% if show_instructions %}<th>Instructions</th>{% endif %}</tr>
         </thead>
         <tbody>
           {% for item in medicines %}
             <tr>
               <td class="name">{{ item.name_snapshot }}</td>
               {% if show_strength %}<td>{{ item.strength|default:'—' }}</td>{% endif %}
-              <td>{{ item.dosage|default:'—' }}</td>
-              <td>{{ item.frequency|default:'—' }}</td>
-              <td>{{ item.duration|default:'—' }}</td>
-              <td>{{ item.instructions|default:'—' }}</td>
+              {% if show_pack_size %}<td>{{ item.pack_size|default:'—' }}</td>{% endif %}
+              {% if show_preparation %}<td>{{ item.preparation|default:'—' }}</td>{% endif %}
+              {% if show_dosage %}<td>{{ item.dosage|default:'—' }}</td>{% endif %}
+              {% if show_frequency %}<td>{{ item.frequency|default:'—' }}</td>{% endif %}
+              {% if show_duration %}<td>{{ item.duration|default:'—' }}</td>{% endif %}
+              {% if show_instructions %}<td>{{ item.instructions|default:'—' }}</td>{% endif %}
             </tr>
           {% endfor %}
         </tbody>

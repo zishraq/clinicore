@@ -64,11 +64,11 @@
   {% if products.has_other_pages %}
     <div class="join mt-4 flex justify-center">
       {% if products.has_previous %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&branch={{ branch.pk|default:'' }}&page={{ products.previous_page_number }}">«</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&amp;branch={{ branch.pk|default:'' }}&amp;page={{ products.previous_page_number }}">«</a>
       {% endif %}
       <span class="join-item btn btn-sm btn-disabled">Page {{ products.number }} of {{ products.paginator.num_pages }}</span>
       {% if products.has_next %}
-        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&branch={{ branch.pk|default:'' }}&page={{ products.next_page_number }}">»</a>
+        <a class="join-item btn btn-sm" href="?q={{ query|urlencode }}&amp;branch={{ branch.pk|default:'' }}&amp;page={{ products.next_page_number }}">»</a>
       {% endif %}
     </div>
   {% endif %}
