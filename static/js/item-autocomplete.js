@@ -21,9 +21,9 @@
  *   [data-role="item-free-text"] hidden free_text_name
  *   [data-role="item-delete"]   hidden DELETE checkbox
  *   [data-row-details]          the collapsed half of the row (dosage and below)
- *   [name$="-strength"]         strength box, absent unless the org records one
- *   [name$="-pack_size"]        pack-size box, absent unless the org records one
- *   [name$="-preparation"]      preparation box, absent unless the org records one
+ *   [name$="-strength"]         strength select, absent unless the org records one
+ *   [name$="-pack_size"]        pack-size select, absent unless the org records one
+ *   [name$="-preparation"]      preparation select, absent unless the org records one
  *
  * Markup contract, templates/clinical/_patient_picker.html +
  * templates/patients/_suggestions.html:
@@ -177,13 +177,20 @@ document.addEventListener('alpine:init', () => {
       this.close();
     },
 
-    /* Fill an empty box, and say whether anything was actually written. */
+    /* Fill an empty box, and say whether anything was actually written.
+     *
+     * The answer is read back rather than assumed, because three of these are
+     * <select>s now: assigning a value the list does not contain leaves the
+     * select where it was, silently. A catalog default that is not one of the
+     * clinic's configured strengths therefore prefills nothing, which is the
+     * right outcome — the practitioner picks — but it must not be reported as
+     * a write, or the disclosure would open on nothing. */
     prefill(suffix, value) {
       if (!value) return false;
       const input = this.$root.querySelector(`[name$="-${suffix}"]`);
       if (!input || input.value) return false;
       input.value = value;
-      return true;
+      return input.value === value;
     },
 
     openDetails() {

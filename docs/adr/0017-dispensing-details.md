@@ -1,8 +1,8 @@
 # 0017 — What is dispensed is two more columns, and the rest of the row collapses
 
-Status: accepted, 2026-08-21. Amended 2026-08-22 — the two closed fields
-became `<select>`s, the native-popup finding is recorded below, and the
-remaining datalist popup is closed as a decision rather than left open.
+Status: accepted, 2026-08-21. Amended twice on 2026-08-22 — first the two
+closed fields became `<select>`s and the native-popup finding was recorded,
+then strength followed them and the app was left with no datalists at all.
 
 Extends `docs/adr/0015-prescribed-strength.md`, which settled the shape this
 follows: a generically-named column, a label from the terminology map, an
@@ -100,10 +100,15 @@ So the control follows the list, not the field's shape:
 | `pack_size` | closed | `<select>` |
 | `preparation` | closed | `<select>` |
 
-`PrescribingField.closed_list` carries the distinction, so it is one flag next
-to the field rather than a rule spread across the form and two templates. The
-options still come from `Organization.<key>_options` in both cases — a list of
-preparations in code would be the SPEC §1 violation the naming decision avoided.
+**Superseded 2026-08-22**: strength is closed too, and every one of the three is
+a `<select>`. See the second amendment at the end of this file, and the
+amendment to ADR 0015. The reasoning below stands for the two that were closed
+from the start; `PrescribingField.closed_list` is gone with the distinction it
+carried.
+
+The options still come from `Organization.<key>_options` in every case — a list
+of preparations in code would be the SPEC §1 violation the naming decision
+avoided.
 
 Two consequences that are easy to get wrong:
 
@@ -374,3 +379,52 @@ Revisit when either of these is true, and not before:
 
 Until one of those, this is **decided, not deferred**. It should not be
 re-investigated, re-argued, or reported as an open question.
+
+
+## Second amendment, 2026-08-22 — exit (a) taken; there are no datalists left
+
+The clinic was asked whether potency is a closed set. It is: nine values, no
+additions or deletions planned. **Exit (a) above has been taken**, for the reason
+the amendment to ADR 0015 records — the free-text requirement was assumed, not
+established — rather than to close the popup. The popup closing is the
+consequence.
+
+### What that settles
+
+`strength` is a `<select>` over `Organization.strength_options`, at both call
+sites: the prescription row and `Product.default_strength` on the catalog form.
+`templates/partials/_options_datalist.html` had no callers left and is deleted.
+`Organization.prescribing_datalists` and `PrescribingField.datalist_id` are gone
+with it, and `PrescribingField.closed_list` with them — every optional
+prescribing field is a closed list, so a flag that never varies was a dead
+branch waiting to rot. Restoring an open field is that flag, its branch, and a
+partial: about twenty lines, and the ADR 0015 amendment says what would justify
+them.
+
+**The application now renders no `<datalist>` anywhere.** The dark popup is not
+fixed; it is *absent*, which is a stronger result and a cheaper one.
+
+### The two-postures question is closed, for now
+
+`base.html` still hardcodes `data-theme="light"` and still does not follow
+`prefers-color-scheme`. The app therefore still holds both postures — it owns
+its date pickers and its dropdowns, and defers to the OS on the page's scheme.
+What changed is that **no native surface remains to expose the mismatch**: every
+dropdown-shaped control in the application is now either a `<select>`, whose
+popup follows the page's `color-scheme` correctly, or app-drawn.
+
+That makes exit (b) — following `prefers-color-scheme` properly — a thing to do
+for its own sake if it is ever wanted (a phone at night, a dim chamber), not a
+bug fix. Its cost is itemised in the first amendment and has not changed.
+
+### Keep the finding
+
+The measurement in the first amendment stays exactly as written, because it is
+what stops someone paying for it twice: a `<datalist>` popup is browser chrome
+in both Chrome and Firefox, takes the browser/OS theme, and ignores
+`color-scheme` on `:root` and on the input alike. The rule it produces is now
+**do not introduce a datalist**, rather than do not re-investigate this one.
+
+`:root { color-scheme: light }` stays in `app.css`. It never was the fix for the
+popup; it pins scrollbars and the remaining native surfaces, and it is the only
+declaration if the daisyUI CDN ever fails to load.

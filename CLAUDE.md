@@ -934,8 +934,9 @@ capture the screen with ImageMagick `import`. Install any helper (python-xlib
 etc.) into a throwaway directory under /tmp, never `.venv_clinicore`.
 
 **Datalist popups cannot be styled.** They are browser chrome in both Chrome
-and Firefox and ignore page CSS, including `color-scheme`. Measured, twice.
-Don't re-investigate — see ADR 0017.
+and Firefox and ignore page CSS, including `color-scheme`. Measured, twice —
+see ADR 0017, and don't measure it again. The app now renders none: every
+dropdown is a `<select>` or app-drawn, so the rule is **don't introduce one**.
 
 **Never type a password.** For app-level browser checks, use the Chrome
 window that is already signed in. Firefox is rendering-only via a standalone

@@ -134,12 +134,10 @@ def test_the_clinics_own_words_reach_the_prescription_row(
         assert f'<span class="label-text text-xs">{label}</span>' in body
     assert 'name="items-0-pack_size"' in body
     assert 'name="items-0-preparation"' in body
-    # Strength is open-ended: a text box with suggestions, because an unusual
-    # potency gets typed. The other two are closed lists, so they are selects
-    # and carry their options inline (ADR 0017).
-    assert '<datalist id="strength-options">' in body
-    assert '<datalist id="pack-size-options">' not in body
-    assert '<datalist id="preparation-options">' not in body
+    # All three are closed lists, so all three are selects and the page holds
+    # no datalist at all (ADR 0015 amended, ADR 0017 amended).
+    assert '<datalist' not in body
+    assert _select_options(body, 'items-0-strength') == ['', '30C', '200C', '1M']
     assert _select_options(body, 'items-0-pack_size') == [
         '',
         '2D',
@@ -372,7 +370,7 @@ def test_the_disclosure_stays_shut_for_a_row_with_none_of_them(
     assert 'open' not in _details_tag(body)
 
 
-def test_a_row_added_by_htmx_carries_the_fields_and_their_datalists(
+def test_a_row_added_by_htmx_carries_all_three_selects(
     client, practitioner, dispensing
 ):
     """The second row is where a load-time-only binding breaks."""
@@ -380,9 +378,16 @@ def test_a_row_added_by_htmx_carries_the_fields_and_their_datalists(
     body = client.get(
         reverse('clinical:item_row'), {'items-TOTAL_FORMS': '1'}
     ).content.decode()
-    assert 'name="items-1-pack_size"' in body
+    assert _select_options(body, 'items-1-strength') == ['', '30C', '200C', '1M']
+    assert _select_options(body, 'items-1-pack_size') == [
+        '',
+        '2D',
+        '1/2 ounce',
+        '1 ounce',
+        '2 ounce',
+        '4 ounce',
+    ]
     assert _select_options(body, 'items-1-preparation') == ['', 'Globule', 'Liquid']
-    assert 'list="strength-options"' in body
     for name in DETAIL_FIELDS:
         assert f'name="items-1-{name}"' in body
     assert 'open' not in _details_tag(body, prefix='items-1')

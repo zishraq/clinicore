@@ -206,14 +206,16 @@ class PrescribingField(NamedTuple):
     and the row template loop instead of carrying a copy each — a fourth field
     is an entry here plus its two columns.
 
-    ``closed_list`` says whether the clinic's values are the *only* values.
-    It is the one thing the three do not share, and it decides the control: a
-    closed list is a ``<select>``, an open one is a text box with a
-    ``<datalist>`` of suggestions. See docs/adr/0017-dispensing-details.md.
+    All three are **closed lists**: the clinic's configured values are the only
+    values, so every one of them is a ``<select>``. Strength was the last free
+    text field and stopped being one on 2026-08-22, when the clinic was asked
+    directly and confirmed its nine potencies are the complete range. An
+    unlisted value is added in Settings, not typed into a visit. See the
+    amendments to docs/adr/0015-prescribed-strength.md and
+    docs/adr/0017-dispensing-details.md.
     """
 
     key: str
-    closed_list: bool = False
 
     @property
     def enabled_field(self) -> str:
@@ -223,20 +225,12 @@ class PrescribingField(NamedTuple):
     def options_field(self) -> str:
         return f'{self.key}_options'
 
-    @property
-    def datalist_id(self) -> str:
-        """The ``<datalist>`` this field's input points its ``list=`` at."""
-        return f'{self.key.replace("_", "-")}-options'
-
 
 #: In the order they appear on a prescription row, after the item itself.
 PRESCRIBING_FIELDS = (
-    # Open: an unusual potency genuinely does get typed (ADR 0015).
     PrescribingField('strength'),
-    # Closed: the clinic confirmed both are fixed lists — five container sizes,
-    # two preparations. Nothing else is ever handed over.
-    PrescribingField('pack_size', closed_list=True),
-    PrescribingField('preparation', closed_list=True),
+    PrescribingField('pack_size'),
+    PrescribingField('preparation'),
 )
 
 
@@ -349,26 +343,6 @@ class Organization(TimeStampedModel):
     def strengths(self) -> list[str]:
         """Suggested strengths. The catalog's product form offers these too."""
         return self.suggestions('strength')
-
-    @property
-    def prescribing_datalists(self) -> list[dict]:
-        """The datalists this clinic's prescription rows need, in row order.
-
-        Open-ended fields only: a closed list is a ``<select>`` and carries its
-        options inline. Deliberately not keyed ``values``: Django resolves a
-        dict key before an attribute, but a key named after a dict method is a
-        trap for whoever edits the template next.
-        """
-        return [
-            {
-                'key': field.key,
-                'label': self.terms[field.key],
-                'datalist_id': field.datalist_id,
-                'options': self.suggestions(field.key),
-            }
-            for field in PRESCRIBING_FIELDS
-            if getattr(self, field.enabled_field) and not field.closed_list
-        ]
 
     @property
     def primary_color(self) -> str:

@@ -11,6 +11,8 @@ throughout, the way the timezone tests use a non-UTC zone. A test run entirely
 under the default label would pass with the label hardcoded.
 """
 
+import re
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -27,6 +29,28 @@ from core.context import organization_context
 from patients.models import Patient
 
 pytestmark = pytest.mark.django_db
+
+
+def _select_options(html: str, name: str) -> list[str]:
+    """The option values of one <select>, in order."""
+    block = re.search(rf'<select[^>]*name="{name}".*?</select>', html, re.S)
+    assert block, f'no <select name="{name}"> in the page'
+    return re.findall(r'<option value="([^"]*)"', block.group(0))
+
+
+def _browser_would_post(html: str, name: str) -> str:
+    """What a browser would submit for one <select>, selected or not.
+
+    A control with no option marked selected posts its *first* option, which is
+    how a stored value that is not on the list gets silently erased.
+    """
+    block = re.search(rf'<select[^>]*name="{name}".*?</select>', html, re.S)
+    assert block, f'no <select name="{name}"> in the page'
+    options = re.findall(r'<option value="([^"]*)"([^>]*)>', block.group(0))
+    for value, rest in options:
+        if 'selected' in rest:
+            return value
+    return options[0][0]
 
 
 @pytest.fixture
@@ -121,10 +145,18 @@ def test_the_clinics_own_word_reaches_the_prescription_row(
     body = client.get(reverse('clinical:encounter_create')).content.decode()
     assert 'Potency' in body
     assert 'name="items-0-strength"' in body
-    # The suggestions are offered as a native datalist, so an unusual potency
-    # can still be typed; there is no "Other…" option to explain.
-    assert '<datalist id="strength-options">' in body
-    assert '<option value="200C">' in body
+    # A select over the clinic's configured potencies. It was a datalist until
+    # 2026-08-22, when the clinic confirmed its nine values are the whole
+    # range; see the amendment to docs/adr/0015-prescribed-strength.md.
+    assert _select_options(body, 'items-0-strength') == [
+        '',
+        'Q',
+        '6C',
+        '30C',
+        '200C',
+        '1M',
+    ]
+    assert '<datalist' not in body
 
 
 def test_the_field_is_absent_when_the_capability_is_off(
@@ -133,7 +165,6 @@ def test_the_field_is_absent_when_the_capability_is_off(
     client.force_login(practitioner)
     body = client.get(reverse('clinical:encounter_create')).content.decode()
     assert 'name="items-0-strength"' not in body
-    assert '<datalist id="strength-options">' not in body
 
 
 def test_a_posted_strength_is_ignored_when_the_capability_is_off(
@@ -169,10 +200,21 @@ def test_a_potency_is_recorded_when_the_capability_is_on(
         assert item.dosage == '4 pills'
 
 
-def test_an_unusual_potency_is_not_blocked(
+def test_a_potency_outside_the_list_is_stored_rather_than_refused(
     client, practitioner, homeopathy, patient, branch
 ):
-    """The list guides; it never constrains. LM potencies are not on it."""
+    """The field stays a plain CharField, and this test is why.
+
+    It was written to pin ADR 0015's free-text decision — "the list guides, it
+    never constrains" — and that decision was reversed on 2026-08-22, when the
+    clinic confirmed a closed set. What it asserts now is the half that
+    survived: no choice validation. A row holding a value the configured list
+    does not contain must still save, or a settings change made months ago
+    would stop a practitioner correcting a note today.
+
+    The doctor can no longer *type* one — that is the reversal — and an
+    unlisted potency is added in Settings.
+    """
     client.force_login(practitioner)
     client.post(
         reverse('clinical:encounter_create'),
@@ -180,6 +222,68 @@ def test_an_unusual_potency_is_not_blocked(
     )
     with organization_context(homeopathy):
         assert PrescriptionItem.objects.get().strength == 'LM3'
+
+
+def test_a_potency_typed_before_the_list_closed_survives_a_resave(
+    client, practitioner, homeopathy, patient, branch
+):
+    """The rows this change had to be safe for.
+
+    Strength was free text for months, so visits hold potencies that were never
+    in any configured list. A select that does not contain its own stored value
+    renders with nothing selected, the browser posts the first option — blank —
+    and the next edit of that visit erases it. See the amendment to
+    docs/adr/0017-dispensing-details.md.
+    """
+    with organization_context(homeopathy):
+        encounter = Encounter.objects.create(
+            organization=homeopathy,
+            patient=patient,
+            practitioner=practitioner,
+            branch=branch,
+            occurred_at=timezone.now(),
+            status=EncounterStatus.FINALIZED,
+            finalized_at=timezone.now(),
+        )
+        prescription = Prescription.objects.create(
+            organization=homeopathy, encounter=encounter, issued_at=timezone.now()
+        )
+        item = PrescriptionItem.objects.create(
+            organization=homeopathy,
+            prescription=prescription,
+            item_type=ItemType.MEDICATION,
+            free_text_name='Arsenicum album',
+            # Never offered by this clinic: typed by hand while it was free text.
+            strength='LM3',
+        )
+    assert 'LM3' not in homeopathy.strengths
+
+    client.force_login(practitioner)
+    url = reverse('clinical:encounter_update', args=[encounter.pk])
+    body = client.get(url).content.decode()
+    assert 'LM3' in _select_options(body, 'items-0-strength')
+    assert _browser_would_post(body, 'items-0-strength') == 'LM3'
+
+    client.post(
+        url,
+        _payload(
+            patient,
+            branch,
+            practitioner,
+            change_reason='Corrected the note',
+            **{
+                'items-TOTAL_FORMS': '1',
+                'items-INITIAL_FORMS': '1',
+                'items-0-id': item.pk,
+                'items-0-prescription': item.prescription_id,
+                'items-0-display_name': 'Arsenicum album',
+                'items-0-free_text_name': 'Arsenicum album',
+                'items-0-strength': _browser_would_post(body, 'items-0-strength'),
+            },
+        ),
+    )
+    item.refresh_from_db()
+    assert item.strength == 'LM3'
 
 
 # --- the catalog default ---------------------------------------------------
@@ -213,6 +317,31 @@ def test_the_product_form_offers_the_default_when_it_is_on(
     body = client.get(reverse('catalog:product_create')).content.decode()
     assert 'name="default_strength"' in body
     assert 'Usual potency' in body
+    # The same closed list the prescription row offers, and no datalist.
+    assert _select_options(body, 'default_strength') == [
+        '',
+        'Q',
+        '6C',
+        '30C',
+        '200C',
+        '1M',
+    ]
+    assert '<datalist' not in body
+
+
+def test_a_product_keeps_a_default_the_list_no_longer_offers(
+    client, practitioner, homeopathy
+):
+    """The same trap as the prescription row, on the catalog's own copy."""
+    with organization_context(homeopathy):
+        product = Product.objects.create(
+            organization=homeopathy, name='Arsenicum album', default_strength='LM3'
+        )
+    client.force_login(practitioner)
+    body = client.get(
+        reverse('catalog:product_update', args=[product.pk])
+    ).content.decode()
+    assert _browser_would_post(body, 'default_strength') == 'LM3'
 
 
 # --- advice has no strength ------------------------------------------------

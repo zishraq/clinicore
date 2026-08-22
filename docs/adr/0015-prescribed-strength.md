@@ -1,6 +1,7 @@
 # 0015 — Prescribed strength is a column, named generically and labelled per clinic
 
-Status: accepted, 2026-08-15.
+Status: accepted, 2026-08-15. **Partly reversed 2026-08-22** — strength is a
+`<select>`, not free text. See the amendment at the end; the rest stands.
 
 ## Context
 
@@ -157,3 +158,73 @@ one — so there is nothing for a third state to say.
   `prefill()` in `static/js/item-autocomplete.js`.
 - A future "find every patient given Sulphur 200C" report is now a plain query
   rather than a JSON containment lookup.
+
+
+## Amendment, 2026-08-22 — the free-text decision is reversed
+
+### What was rejected, and on what basis
+
+The section above chose a free-text box with a `<datalist>` and explicitly
+rejected a dropdown:
+
+> That gives the requested "dropdown of standard values with a free-text escape"
+> as *one* control: the box is ordinary text, so an unusual potency is simply
+> typed. An explicit "Other…" option would be a second control and a rule to
+> explain, for behaviour the native element already has.
+
+The reasoning about controls was sound. The premise underneath it was not: it
+**assumed** that an unusual potency needs to be typed during a consultation.
+Nobody had asked the clinic.
+
+They have now been asked directly, and the answer is that their nine values —
+Q, 6C, 12C, 30C, 200C, 1M, 10M, 50M, CM — are their complete working range, with
+no additions or deletions planned. The requirement the free-text decision rested
+on does not exist. So strength becomes a `<select>` over
+`Organization.strength_options`, exactly like `pack_size` and `preparation`.
+
+This is not the "Other…" escape hatch this ADR rejected, and the distinction
+still holds: that was a second control on the prescription row plus a rule about
+which one wins. This is one control, and the place an unlisted value is added is
+the Features screen that this ADR built and that the clinic already uses to type
+its list.
+
+### The incidental win
+
+Free text guarantees that `30C`, `30c` and `30 C` end up as three distinct
+strings in one column eventually, because nothing stops them. This ADR promised
+that "a future *find every patient given Sulphur 200C* report is now a plain
+query rather than a JSON containment lookup" — which was true of the *column* and
+quietly untrue of the *values in it*. A select makes the drift impossible and
+delivers the query that was promised.
+
+### What would reopen this
+
+A clinic that genuinely prescribes outside its configured list. The answer then
+is **to add the value in Settings**, not to restore free text: the Features
+screen exists, an administrator can edit the list in seconds, and the value is
+then available on every row thereafter. Restoring free text would reintroduce
+the drift above to solve a problem the settings screen already solves.
+
+Only if a clinic needed a value *that nobody could anticipate, during the
+consultation, repeatedly* would the trade change — and that is a different claim
+from the one this ADR assumed, and one that should be checked with the clinic
+before it is believed a second time.
+
+### What did not change
+
+- The column is still `strength`, still named for what it measures, still
+  labelled from the terminology map. Nothing about the naming decision moves.
+- The field is still a plain `CharField` with **no choice validation**. A row
+  holding a value the configured list does not contain must still save — a
+  settings change made months ago must not stop a practitioner correcting a note
+  today. `test_a_potency_outside_the_list_is_stored_rather_than_refused` is that
+  assertion; it was written to pin *this* ADR's free-text decision, and its
+  docstring now records that the premise moved and what survived.
+- Values recorded while the field was free text are offered as a selected option
+  even though they were never in any list, and survive a re-save
+  (`test_a_potency_typed_before_the_list_closed_survives_a_resave`). Mechanism
+  and reasoning in `core.forms.closed_choices` and the amendment to
+  docs/adr/0017-dispensing-details.md.
+- `Product.default_strength` follows the same change on the catalog form. It is
+  still a prefill and still editable — it is now picked rather than typed.
+- No schema change and no migration. This is a widget decision.

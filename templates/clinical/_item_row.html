@@ -88,9 +88,11 @@ which substitutes __prefix__ for the new index.
       All three are hidden for advice, for the reason Dosage is: advice is not
       a substance.
 
-      The control comes from the widget, not from here: strength is a text box
-      with a datalist because an unusual potency gets typed, while the other two
-      are selects over closed lists. See docs/adr/0017-dispensing-details.md.
+      The control comes from the widget, not from here: all three are selects
+      over the clinic's configured values, because all three are closed lists.
+      An unlisted value is added in Settings, never typed into a visit. See the
+      amendments to docs/adr/0015-prescribed-strength.md and
+      docs/adr/0017-dispensing-details.md.
     {% endcomment %}
     {% for field in extras %}
       <div class="sm:col-span-2" x-show="!isAdvice()">

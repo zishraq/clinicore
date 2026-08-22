@@ -10,6 +10,7 @@ catalog". The queryset is organization-scoped through the ambient manager.
 from django import forms
 
 from catalog.models import AdviceTemplate, Product
+from core.forms import closed_choices
 
 __all__ = ['AdviceTemplateForm', 'ProductForm']
 
@@ -58,12 +59,6 @@ class ProductForm(forms.ModelForm):
             'unit': forms.TextInput(
                 attrs={**_INPUT, 'placeholder': 'Tablet, ml, drops'}
             ),
-            # list= points at the datalist rendered by the product form
-            # template, so the usual values are offered without ruling out
-            # anything else.
-            'default_strength': forms.TextInput(
-                attrs={**_INPUT, 'list': 'strength-options', 'autocomplete': 'off'}
-            ),
             'sale_price': forms.NumberInput(
                 attrs={**_INPUT, 'type': 'number', 'step': '0.01', 'min': '0'}
             ),
@@ -80,9 +75,17 @@ class ProductForm(forms.ModelForm):
         if organization is None:
             return
         if organization.strength_enabled:
-            self.fields[
-                'default_strength'
-            ].label = f'Usual {organization.terms["strength"].lower()}'
+            field = self.fields['default_strength']
+            field.label = f'Usual {organization.terms["strength"].lower()}'
+            # The same closed list the prescription row offers: the clinic's
+            # configured values are the only values, and one this product
+            # already carries is offered even if the list has moved on.
+            field.widget = forms.Select(
+                attrs=_SELECT,
+                choices=closed_choices(
+                    organization.strengths, self['default_strength'].value()
+                ),
+            )
         else:
             self.fields.pop('default_strength')
 

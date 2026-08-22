@@ -12,7 +12,7 @@ See docs/adr/0005-org-scoped-default-manager.md and docs/MVP-NOTES.md.
 from django import forms
 from django.utils.text import capfirst
 
-__all__ = ['date_widget', 'org_scoped_formfield']
+__all__ = ['closed_choices', 'date_widget', 'org_scoped_formfield']
 
 
 def org_scoped_formfield(model_field, **kwargs):
@@ -31,6 +31,28 @@ def org_scoped_formfield(model_field, **kwargs):
     }
     defaults.update(kwargs)
     return forms.ModelChoiceField(**defaults)
+
+
+def closed_choices(options, current: str) -> list[tuple[str, str]]:
+    """Choices for a select over an organization-editable list of values.
+
+    Blank first, because every field using this is optional. Then the
+    organization's list — and then ``current``, when the row holds a value the
+    list no longer offers.
+
+    That last part is the whole reason this is a function. A ``<select>`` that
+    does not contain its own current value renders with nothing selected, so
+    the browser posts the *first* option — blank — and the next save of that
+    record silently erases a value that was correct when it was recorded. The
+    field stays a plain ``CharField`` for the matching reason: choice
+    validation would turn the same situation into a refusal to save at all.
+
+    See docs/adr/0017-dispensing-details.md.
+    """
+    values = list(options)
+    if current and current not in values:
+        values.append(current)
+    return [('', '—'), *((value, value) for value in values)]
 
 
 def date_widget(**attrs):

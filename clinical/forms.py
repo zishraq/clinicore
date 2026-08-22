@@ -10,7 +10,7 @@ from accounts.models import Role, User
 from catalog.models import AdviceTemplate, Product
 from clinical.images import ImageRejected, normalize_image
 from clinical.models import Encounter, ItemType, Prescription, PrescriptionItem
-from core.forms import date_widget, org_scoped_formfield
+from core.forms import closed_choices, date_widget, org_scoped_formfield
 from organizations.models import DEFAULT_TERMINOLOGY, PRESCRIBING_FIELDS
 from organizations.services import active_branches
 from patients.models import Patient
@@ -255,16 +255,6 @@ class PrescriptionItemForm(forms.ModelForm):
             'product': forms.HiddenInput(attrs={'data-role': 'item-product'}),
             'advice_template': forms.HiddenInput(attrs={'data-role': 'item-advice'}),
             'free_text_name': forms.HiddenInput(attrs={'data-role': 'item-free-text'}),
-            # Strength is open-ended, so it is a text box with suggestions:
-            # list= points at the datalist the encounter form renders once per
-            # open field; see templates/partials/_options_datalist.html. An
-            # input whose list= names a datalist that is not on the page is an
-            # ordinary text box, so nothing breaks where a clinic suggests none.
-            # The closed fields get their <select> in bind_organization, which
-            # is where the organization's options are in scope.
-            'strength': forms.TextInput(
-                attrs={**_INPUT, 'list': 'strength-options', 'autocomplete': 'off'}
-            ),
             'dosage': forms.TextInput(attrs={**_INPUT, 'placeholder': '1 tablet'}),
             'frequency': forms.TextInput(
                 attrs={**_INPUT, 'placeholder': 'Twice daily'}
@@ -310,34 +300,20 @@ class PrescriptionItemForm(forms.ModelForm):
                 self.fields.pop(field.key, None)
                 continue
             self.fields[field.key].label = organization.terms[field.key]
-            if field.closed_list:
-                self.fields[field.key].widget = forms.Select(
-                    attrs=_SELECT, choices=self._closed_choices(field, organization)
-                )
+            # Every optional prescribing field is a closed list: the clinic's
+            # configured values are the only values, and an unlisted one is
+            # added in Settings rather than typed into a visit. The widget is
+            # built here because this is where the organization is in scope,
+            # and per form instance because the choices include whatever *this*
+            # row already holds — see core.forms.closed_choices.
+            self.fields[field.key].widget = forms.Select(
+                attrs=_SELECT,
+                choices=closed_choices(
+                    organization.suggestions(field.key), self[field.key].value()
+                ),
+            )
             names.append(field.key)
         self.optional_field_names = names
-
-    def _closed_choices(self, field, organization) -> list[tuple[str, str]]:
-        """A closed field's options, always including whatever this row holds.
-
-        The stored value is offered even when the organization has since
-        dropped it from its list. A ``<select>`` that does not contain the
-        current value renders with nothing selected, so the browser posts the
-        first option — blank — and the next save silently erases a value that
-        was correct when it was recorded. That is the same class of data loss
-        ADR 0015 records for a popped field, arriving by a different route.
-
-        The field itself stays a plain ``CharField``: adding choice validation
-        would turn the same situation into a refusal to save the row at all.
-        """
-        # Blank first, and always: both fields are optional.
-        choices = [('', '—')]
-        options = organization.suggestions(field.key)
-        current = self[field.key].value()
-        if current and current not in options:
-            options = [*options, current]
-        choices += [(value, value) for value in options]
-        return choices
 
     @property
     def optional_fields(self) -> list:
