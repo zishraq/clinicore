@@ -163,9 +163,10 @@ def member_update(request, pk: int):
     )
     if request.method == 'POST' and form.is_valid():
         form.save()
-        # ``role`` lives on the membership, not the user, and the form's
-        # disabled-field guard means this is already the unchanged value when
-        # an administrator is editing their own row.
+        # ``role`` lives on the membership, not the user. When an administrator
+        # is editing their own row the form has already narrowed the choices to
+        # the roles that keep administering, so this can only ever be one of
+        # those (ADR 0019).
         member.role = form.cleaned_data['role']
         member.save(update_fields=['role', 'updated_at'])
         messages.success(request, f'{member.user.full_name} updated.')

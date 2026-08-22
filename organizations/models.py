@@ -156,6 +156,10 @@ DEFAULT_TERMINOLOGY = {
     'role_owner': 'Administrator',
     'role_practitioner': 'Practitioner',
     'role_staff': 'Staff',
+    # Administers the system without treating anybody, so it is never offered as
+    # the treating practitioner (ADR 0019). A clinic that would rather call this
+    # "Technician" or "IT" overrides the label; the stored value never moves.
+    'role_developer': 'Developer',
     # The people who work here. "User" is a software word; a clinic has a team.
     'member': 'Team member',
     'member_plural': 'Team',

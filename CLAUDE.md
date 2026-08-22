@@ -846,6 +846,52 @@ anyone with the old invocation in their notes needs to know.
   "never run `bootstrap_demo` without `--empty`" section existed only because
   the command was misnamed, and it is gone rather than reworded.
 
+A fourth role landed 2026-08-23: **`DEVELOPER`** — everything `OWNER` can do,
+minus being eligible to treat anyone. It exists because one fact was answering
+three questions, all in
+`docs/adr/0019-read-clinical-and-may-be-booked-are-two-facts.md`:
+
+- **Three questions, three frozensets, all in `accounts/models.py`.**
+  `CLINICAL_ROLES` = {OWNER, PRACTITIONER, DEVELOPER} (may read a consultation
+  note), `PRESCRIBING_ROLES` = {OWNER, PRACTITIONER} (may be booked or recorded
+  as treating), `ADMIN_ROLES` = {OWNER, DEVELOPER} (may administer). The stored
+  roles are now OWNER / PRACTITIONER / STAFF / DEVELOPER.
+- **A bare role comparison or an inlined pair outside `accounts.models` is a
+  bug.** The pair `[Role.OWNER, Role.PRACTITIONER]` had been inlined in four
+  places, two of them byte-identical practitioner lookups in different apps —
+  which is exactly how "reads clinical data" and "may treat a patient" stayed one
+  fact for the whole MVP. Those two are now one function,
+  `accounts.services.prescribing_users`. `accounts/tests/test_roles.py` asserts
+  the sets have diverged so a future edit cannot silently re-merge them.
+- **`Membership.is_owner` means "may administer" and returns true for two
+  roles.** The name is knowingly stale; renaming it to `is_administrator` is a
+  follow-up recorded in the ADR, not a `TODO` in the code.
+- **Filtering a `ModelChoiceField` by role locks old rows unless you carry the
+  current value.** A select whose stored value is outside its queryset renders
+  unselected and then refuses the save, so every visit recorded by somebody who
+  later stops prescribing would become unamendable.
+  `clinical.forms._practitioner_choices` always offers `instance.practitioner`.
+  Same guard, same reason, as `core.forms.closed_choices` (ADR 0017) — and the
+  test was confirmed to fail against the guard removed.
+- **`clinical/views.py` only prefills the signed-in user as practitioner when
+  they are in `PRESCRIBING_ROLES`.** Prefilling a value outside the queryset
+  renders a field that looks broken rather than unanswered.
+- **The last-administrator guard changed shape.** It was `role.disabled = True`
+  on your own row; it is now the role dropdown narrowed to `ADMIN_ROLES`, which
+  is what makes OWNER → DEVELOPER reachable for the one person who needs it.
+  Enforcement is still structural — `ChoiceField.validate` refuses anything
+  outside `choices`, so it is not a `clean_role` that a refactor could drop. The
+  invariant is unchanged: moving between two administering roles removes
+  nobody's access, and only the last administrator could remove the last
+  administrator. Self-demotion is now refused *visibly*, with a field error
+  instead of a silent ignore, so `test_an_administrator_cannot_demote_themselves`
+  asserts 200-with-errors rather than 302.
+- **`role_developer` in `DEFAULT_TERMINOLOGY` is mandatory, not decorative.**
+  `Organization.terms` drops overrides for unknown keys, so without the default
+  a clinic renaming it to "Technician" would be silently ignored.
+- The migration is **choices-only**: `sqlmigrate` prints `BEGIN; -- (no-op)
+  COMMIT;` on Postgres, `max_length` was already 20, and nothing rewrites a row.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployed to production on 2026-08-23 — one Oracle Cloud Always Free box,

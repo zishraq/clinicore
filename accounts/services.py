@@ -5,7 +5,7 @@ Authorisation is at the view boundary, not here
 is calling it.
 """
 
-from accounts.models import Membership, Role, User
+from accounts.models import PRESCRIBING_ROLES, Membership, Role, User
 
 __all__ = [
     'ACTIVE_ORGANIZATION_SESSION_KEY',
@@ -13,6 +13,7 @@ __all__ = [
     'add_member',
     'create_member',
     'organization_members',
+    'prescribing_users',
     'set_active_organization',
     'set_membership_active',
     'set_temporary_password',
@@ -35,6 +36,22 @@ def active_memberships(user: User):
 def set_active_organization(request, membership: Membership) -> None:
     """Remember the chosen organization for subsequent requests."""
     request.session[ACTIVE_ORGANIZATION_SESSION_KEY] = membership.organization_id
+
+
+def prescribing_users(organization):
+    """Users who may be recorded as, or booked as, the treating practitioner.
+
+    One function for both surfaces — the visit form's field and the appointment
+    modal's list — because two copies of this query are what let the visit form
+    and the day list disagree about who can treat a patient. It answers
+    ``PRESCRIBING_ROLES``, not ``CLINICAL_ROLES``: a DEVELOPER reads every
+    consultation note and is never on this list (ADR 0019).
+    """
+    return User.objects.filter(
+        memberships__organization=organization,
+        memberships__is_active=True,
+        memberships__role__in=PRESCRIBING_ROLES,
+    ).distinct()
 
 
 def organization_members(organization):

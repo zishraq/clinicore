@@ -10,7 +10,15 @@ from django.utils import timezone
 
 from core.models import TimeStampedModel
 
-__all__ = ['Membership', 'Role', 'User', 'UserManager']
+__all__ = [
+    'ADMIN_ROLES',
+    'CLINICAL_ROLES',
+    'PRESCRIBING_ROLES',
+    'Membership',
+    'Role',
+    'User',
+    'UserManager',
+]
 
 
 class Role(models.TextChoices):
@@ -21,10 +29,30 @@ class Role(models.TextChoices):
     OWNER = 'OWNER', 'Administrator'
     PRACTITIONER = 'PRACTITIONER', 'Practitioner'
     STAFF = 'STAFF', 'Staff'
+    DEVELOPER = 'DEVELOPER', 'Developer'
 
+
+# Three questions, three sets. They were one set until DEVELOPER arrived, which
+# is what proved they were three questions all along: "may read a consultation
+# note", "may be booked to treat a patient" and "may administer this clinic" had
+# been answered by a single membership in {OWNER, PRACTITIONER} plus a separate
+# hardcoded ``role == OWNER``. See
+# docs/adr/0019-read-clinical-and-may-be-booked-are-two-facts.md.
+#
+# Every gate reads one of these three. A bare role comparison outside this
+# module, or an inlined pair, is how they silently re-merge.
 
 #: Roles allowed to read clinical narrative and prescriptions (SPEC §6.1).
-CLINICAL_ROLES = frozenset({Role.OWNER, Role.PRACTITIONER})
+CLINICAL_ROLES = frozenset({Role.OWNER, Role.PRACTITIONER, Role.DEVELOPER})
+
+#: Roles that may be recorded as the treating practitioner — the visit form's
+#: field and the appointment modal's list. Deliberately *not* CLINICAL_ROLES:
+#: somebody who administers the system without treating anybody must never be
+#: bookable, or a receptionist can put a patient in front of them.
+PRESCRIBING_ROLES = frozenset({Role.OWNER, Role.PRACTITIONER})
+
+#: Roles that may administer the organization: settings, and the team screen.
+ADMIN_ROLES = frozenset({Role.OWNER, Role.DEVELOPER})
 
 
 class UserManager(BaseUserManager):
@@ -120,5 +148,12 @@ class Membership(TimeStampedModel):
 
     @property
     def is_owner(self) -> bool:
-        """MVP: replace with permission layer (SPEC §6.1 RolePermission)."""
-        return self.role == Role.OWNER
+        """May administer this organization: settings, and the team screen.
+
+        Named for the role it used to test and kept that way deliberately —
+        renaming it to ``is_administrator`` is a follow-up, not something to
+        land in the same commit as a behaviour change (ADR 0019).
+
+        MVP: replace with permission layer (SPEC §6.1 RolePermission).
+        """
+        return self.role in ADMIN_ROLES

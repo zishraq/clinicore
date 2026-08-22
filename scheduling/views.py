@@ -26,8 +26,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from accounts.models import Role, User
 from accounts.permissions import require_membership
+from accounts.services import prescribing_users
 from organizations.models import Branch
 from patients.models import Patient
 from scheduling import services
@@ -230,15 +230,6 @@ def appointment_cancel(request, pk: int):
     return _retargeted(response, '#cancel-body') if error else response
 
 
-def _practitioners(organization):
-    """Who a patient can be booked with. Same rule as the visit form's field."""
-    return User.objects.filter(
-        memberships__organization=organization,
-        memberships__is_active=True,
-        memberships__role__in=[Role.OWNER, Role.PRACTITIONER],
-    ).distinct()
-
-
 def _requested_time(raw: str):
     """``None`` for blank or unparseable, which the form treats as "no time"."""
     try:
@@ -267,7 +258,7 @@ def _create_appointment(request, membership) -> str:
         return 'Choose which chamber they are coming to.'
 
     practitioner = (
-        _practitioners(request.organization)
+        prescribing_users(request.organization)
         .filter(pk=request.POST.get('practitioner') or 0)
         .first()
     )
@@ -349,7 +340,7 @@ def appointment_create(request):
             'branches': branches,
             'error': error,
             'default_branch': _selected_branch(request) or branches.first(),
-            'practitioners': _practitioners(request.organization),
+            'practitioners': prescribing_users(request.organization),
             'day_parts': DayPart.choices,
             'selected_patient': _requested_patient(request),
             'redirect_to': _redirect_target(request),

@@ -81,3 +81,9 @@ def practitioner(organization, make_member) -> User:
 @pytest.fixture
 def staff(organization, make_member) -> User:
     return make_member(organization, role=Role.STAFF, phone='01700000003')
+
+
+@pytest.fixture
+def developer(organization, make_member) -> User:
+    """Administers the clinic, reads everything, treats nobody (ADR 0019)."""
+    return make_member(organization, role=Role.DEVELOPER, phone='01700000004')

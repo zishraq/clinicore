@@ -373,6 +373,26 @@ prints an error, **stop there and call** — do not run step 5.
 Do updates in the morning, never on a Thursday evening, and never while the
 clinic is full.
 
+### When step 4 says "no-op"
+
+Some updates change the code without changing the database. Step 4 still runs —
+it is what proves the database is where the new code expects it — and it may
+report that it applied a migration that does nothing. That is normal and is not
+an error.
+
+The **Developer role** update (August 2026) is one of these. It adds a fourth
+role for somebody who administers the system without treating patients, so that
+they stop appearing in the practitioner list on the visit form and the
+appointment screen. Its migration **only widens a list of permitted values and
+alters no data** — no patient record, visit, bill or team member is touched by
+it, and nothing needs correcting afterwards. Detail in
+`docs/adr/0019-read-clinical-and-may-be-booked-are-two-facts.md`.
+
+After deploying it, set your own role on **Team → your own row**. The dropdown
+on your own row offers only the roles that can still administer the clinic —
+that is deliberate, so that nobody can accidentally leave the clinic with no
+administrator.
+
 ---
 
 ## First-time setup on a new server

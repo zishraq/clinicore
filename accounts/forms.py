@@ -8,7 +8,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 
-from accounts.models import Role, User
+from accounts.models import ADMIN_ROLES, Role, User
 from organizations.models import DEFAULT_TERMINOLOGY
 
 __all__ = [
@@ -57,16 +57,20 @@ class PhoneLoginForm(AuthenticationForm):
     }
 
 
-def _role_choices(terms: dict) -> list[tuple[str, str]]:
+def _role_choices(terms: dict, only=None) -> list[tuple[str, str]]:
     """Role dropdown, labelled from the organization's terminology map.
 
-    Three fixed roles and a dropdown, deliberately: SPEC §6.1 asks for a
-    data-driven permission matrix, and a screen for editing one is configuration
-    a clinic of five people will get wrong rather than a feature they want.
+    Fixed roles and a dropdown, deliberately: SPEC §6.1 asks for a data-driven
+    permission matrix, and a screen for editing one is configuration a clinic of
+    five people will get wrong rather than a feature they want.
+
+    ``only`` narrows the list, which is how self-editing is constrained to the
+    roles that keep administering — see ``MemberUpdateForm``.
     """
+    roles = [role for role in Role if only is None or role in only]
     return [
         (role.value, terms.get(f'role_{role.value.lower()}', role.label))
-        for role in Role
+        for role in roles
     ]
 
 
@@ -130,7 +134,10 @@ class _MemberFormBase(forms.ModelForm):
 
     def __init__(self, *args, terms: dict | None = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['role'].choices = _role_choices(terms or DEFAULT_TERMINOLOGY)
+        self.fields['role'].choices = _role_choices(
+            terms or DEFAULT_TERMINOLOGY,
+            only=ADMIN_ROLES if getattr(self, 'editing_self', False) else None,
+        )
 
     def clean_phone(self):
         """A collision is a form error, never an IntegrityError.
@@ -163,27 +170,35 @@ class MemberCreateForm(_MemberFormBase):
 class MemberUpdateForm(_MemberFormBase):
     """Edit somebody's details and role. The password is a separate screen.
 
-    ``editing_self`` disables the role field, which is the whole guard against
-    the unrecoverable state: an administrator who demotes themselves in an
-    organization where they are the only one leaves it with no way back in short
-    of shell access. Disabling is not decoration — Django ignores submitted data
-    for a disabled field and takes the initial value, so a hand-built POST
-    cannot change it either.
+    ``editing_self`` narrows the role dropdown to ``ADMIN_ROLES``, which is the
+    whole guard against the unrecoverable state: an administrator who demotes
+    themselves in an organization where they are the only one leaves it with no
+    way back short of shell access.
+
+    Narrowing rather than disabling, since DEVELOPER arrived (ADR 0019). An
+    administrator who does not treat patients has to be able to say so, and
+    moving between two roles that both administer removes nobody's access. The
+    enforcement is still structural rather than a validator that could be
+    forgotten: ``ChoiceField.validate`` refuses any value outside ``choices``,
+    so a hand-built POST of ``STAFF`` is rejected by the field itself.
 
     Nothing weaker is needed. The only account that could remove the *last*
-    administrator is that administrator, so refusing self-demotion means an
-    organization always has at least one.
+    administrator is that administrator, so refusing to let them leave
+    ``ADMIN_ROLES`` means an organization always has at least one.
     """
 
     field_order = ['full_name', 'phone', 'role', 'email']
 
     def __init__(self, *args, editing_self: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Set before super(), because the base builds the role choices and
+        # needs to know whether to narrow them.
         self.editing_self = editing_self
+        super().__init__(*args, **kwargs)
         if editing_self:
-            role = self.fields['role']
-            role.disabled = True
-            role.help_text = 'Only another administrator can change your role.'
+            self.fields['role'].help_text = (
+                'You can change your own role only to another that administers '
+                'this clinic. Another administrator can move you off it.'
+            )
 
 
 class TemporaryPasswordForm(forms.Form):

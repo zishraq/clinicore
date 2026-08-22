@@ -14,6 +14,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from accounts.models import PRESCRIBING_ROLES
 from accounts.permissions import clinical_access_required, require_membership
 from clinical import services
 from clinical.forms import (
@@ -298,7 +299,12 @@ def encounter_create(request):
     form, prescription_form, item_formset = _encounter_form_context(request)
     if request.method != 'POST':
         form.initial.setdefault('occurred_at', timezone.localtime())
-        form.initial.setdefault('practitioner', membership.user_id)
+        # Only when the person opening the form could actually be the one
+        # treating. An administrator who does not see patients is not on that
+        # list (ADR 0019), and prefilling them would render the select with
+        # nothing chosen — a field that looks broken rather than unanswered.
+        if membership.role in PRESCRIBING_ROLES:
+            form.initial.setdefault('practitioner', membership.user_id)
         # Most clinics have one branch; preselecting it saves a click per visit.
         branch = default_branch(request.organization)
         if branch is not None:

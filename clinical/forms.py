@@ -5,8 +5,10 @@ notes, prescription instructions, and item rows — submitted once.
 """
 
 from django import forms
+from django.db.models import Q
 
-from accounts.models import Role, User
+from accounts.models import User
+from accounts.services import prescribing_users
 from catalog.models import AdviceTemplate, Product
 from clinical.images import ImageRejected, normalize_image
 from clinical.models import Encounter, ItemType, Prescription, PrescriptionItem
@@ -103,12 +105,22 @@ class PhotoUploadForm(forms.Form):
     )
 
 
-def _practitioner_users(organization):
-    """Users who may be recorded as the practitioner on an encounter."""
+def _practitioner_choices(organization, instance):
+    """Who may be picked, plus whoever this visit already names.
+
+    The second half is not cosmetic. A ``ModelChoiceField`` whose stored value
+    is outside its queryset renders with nothing selected and then refuses the
+    save with "Select a valid choice", so narrowing the list by role would make
+    every visit recorded by somebody who has since stopped treating patients
+    unamendable — the record locked by a change to a *different* row. Same
+    guard, same reason, as the closed prescribing lists (ADR 0017).
+    """
+    eligible = prescribing_users(organization)
+    current = getattr(instance, 'practitioner_id', None)
+    if current is None:
+        return eligible
     return User.objects.filter(
-        memberships__organization=organization,
-        memberships__is_active=True,
-        memberships__role__in=[Role.OWNER, Role.PRACTITIONER],
+        Q(pk__in=eligible.values('pk')) | Q(pk=current)
     ).distinct()
 
 
@@ -197,7 +209,9 @@ class EncounterForm(forms.ModelForm):
         self.fields['patient'].queryset = Patient.objects.for_organization(organization)
         self.fields['branch'].queryset = active_branches(organization)
         # Practitioners are users, not org-owned rows, so narrow by membership.
-        self.fields['practitioner'].queryset = _practitioner_users(organization)
+        self.fields['practitioner'].queryset = _practitioner_choices(
+            organization, self.instance
+        )
         self.fields['occurred_at'].input_formats = ['%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M']
 
 

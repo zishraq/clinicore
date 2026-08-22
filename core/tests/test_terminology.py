@@ -125,6 +125,32 @@ def test_a_clinic_can_relabel_its_roles(client, organization, owner):
     assert 'Administrator' not in body
 
 
+def test_a_clinic_can_rename_the_developer_role(client, organization, owner, developer):
+    """ADR 0019: the stored value is DEVELOPER, the word on screen is theirs.
+
+    ``Organization.terms`` drops overrides for keys absent from
+    ``DEFAULT_TERMINOLOGY``, so this failing is what a missing default looks
+    like — not a template bug.
+    """
+    organization.terminology = {'role_developer': 'Technician'}
+    organization.save(update_fields=['terminology'])
+
+    response = _sign_in(client, owner).get(reverse('accounts:member_list'))
+    body = response.content.decode()
+
+    assert 'data-label="Role">Technician' in body
+    assert 'data-label="Role">Developer' not in body
+    assert organization.memberships.get(user=developer).role == 'DEVELOPER'
+
+
+def test_the_developer_role_defaults_to_developer(
+    client, organization, owner, developer
+):
+    response = _sign_in(client, owner).get(reverse('accounts:member_list'))
+
+    assert 'data-label="Role">Developer' in response.content.decode()
+
+
 def test_amend_label_is_configurable_on_a_locked_encounter(
     client, organization, practitioner, encounter
 ):

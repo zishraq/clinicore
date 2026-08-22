@@ -11,7 +11,7 @@ from functools import wraps
 
 from django.core.exceptions import PermissionDenied
 
-from accounts.models import Role
+from accounts.models import ADMIN_ROLES, CLINICAL_ROLES
 
 __all__ = [
     'clinical_access_required',
@@ -52,8 +52,13 @@ def role_required(*roles: str):
     return decorator
 
 
-# MVP: replace with permission layer
-clinical_access_required = role_required(Role.OWNER, Role.PRACTITIONER)
+# Both read the named sets rather than listing roles, so adding a fourth role is
+# an edit to ``accounts.models`` and nothing else. The pair used to be inlined
+# here, which is how "may read clinical data" and "may treat a patient" stayed
+# one fact for the whole MVP (ADR 0019).
 
 # MVP: replace with permission layer
-owner_required = role_required(Role.OWNER)
+clinical_access_required = role_required(*CLINICAL_ROLES)
+
+# MVP: replace with permission layer
+owner_required = role_required(*ADMIN_ROLES)

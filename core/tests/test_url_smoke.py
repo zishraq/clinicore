@@ -209,12 +209,24 @@ class _Discard:
         pass
 
 
-ROLES = [Role.OWNER, Role.PRACTITIONER, Role.STAFF]
+#: The demo loader seeds the first three; DEVELOPER is added to the walk by
+#: hand, because the demo is a clinic and a clinic does not normally have one.
+DEMO_PHONES = {
+    Role.OWNER: '01711000001',
+    Role.PRACTITIONER: '01711000002',
+    Role.STAFF: '01711000003',
+}
+ROLES = [Role.OWNER, Role.PRACTITIONER, Role.STAFF, Role.DEVELOPER]
 
 
 @pytest.mark.parametrize('role', ROLES)
-def test_no_page_raises_on_a_populated_clinic(client, populated, role):
-    user = User.objects.get(phone=f'0171100000{ROLES.index(role) + 1}')
+def test_no_page_raises_on_a_populated_clinic(client, populated, make_member, role):
+    phone = DEMO_PHONES.get(role)
+    user = (
+        User.objects.get(phone=phone)
+        if phone
+        else make_member(populated, role=role, phone='01711000004')
+    )
     assert Membership.objects.get(user=user, organization=populated).role == role
 
     failures = _walk(client, populated, user, label=role)

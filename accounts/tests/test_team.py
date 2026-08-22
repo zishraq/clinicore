@@ -211,9 +211,9 @@ def test_editing_onto_a_taken_phone_number_is_refused(
 def test_an_administrator_cannot_demote_themselves(client, organization, owner):
     """An organization with no active administrator needs a shell to recover.
 
-    The role field is ``disabled`` for your own row, which Django enforces by
-    ignoring submitted data and taking the initial value — so this hand-built
-    POST is the real attack, not the button.
+    Your own row offers only the roles that keep administering, and
+    ``ChoiceField.validate`` refuses anything outside the offered choices — so
+    this hand-built POST is the real attack, not the dropdown (ADR 0019).
     """
     own_membership = Membership.objects.get(user=owner, organization=organization)
 
@@ -228,9 +228,71 @@ def test_an_administrator_cannot_demote_themselves(client, organization, owner):
         },
     )
 
-    assert response.status_code == 302
+    # Refused visibly now rather than silently ignored: the form comes back
+    # with the field in error instead of redirecting as though it had saved.
+    assert response.status_code == 200
+    assert response.context['form'].errors['role']
     own_membership.refresh_from_db()
     assert own_membership.role == Role.OWNER
+
+
+def test_an_administrator_may_change_their_own_role_to_another_that_administers(
+    client, organization, owner
+):
+    """The change ADR 0019 exists to allow.
+
+    An administrator who does not treat patients has to be able to say so, and
+    OWNER to DEVELOPER removes nobody's access — the organization still has
+    exactly as many people who can administer it.
+    """
+    own_membership = Membership.objects.get(user=owner, organization=organization)
+
+    _sign_in(client, owner)
+    response = client.post(
+        reverse('accounts:member_update', args=[own_membership.pk]),
+        {
+            'full_name': owner.full_name,
+            'phone': owner.phone,
+            'email': '',
+            'role': Role.DEVELOPER,
+        },
+    )
+
+    assert response.status_code == 302
+    own_membership.refresh_from_db()
+    assert own_membership.role == Role.DEVELOPER
+    # And they can still administer, which is what makes it safe.
+    assert own_membership.is_owner is True
+
+
+def test_your_own_row_offers_only_the_administering_roles(client, organization, owner):
+    """Read off the rendered form, so the dropdown and the guard cannot drift."""
+    own_membership = Membership.objects.get(user=owner, organization=organization)
+
+    _sign_in(client, owner)
+    response = client.get(reverse('accounts:member_update', args=[own_membership.pk]))
+
+    offered = {value for value, _ in response.context['form'].fields['role'].choices}
+    assert offered == {Role.OWNER.value, Role.DEVELOPER.value}
+
+
+def test_somebody_elses_row_still_offers_every_role(client, organization, owner, staff):
+    """The narrowing is self-only; an administrator still assigns any role."""
+    membership = Membership.objects.get(user=staff, organization=organization)
+
+    _sign_in(client, owner)
+    response = client.get(reverse('accounts:member_update', args=[membership.pk]))
+
+    offered = {value for value, _ in response.context['form'].fields['role'].choices}
+    assert offered == {role.value for role in Role}
+
+
+def test_a_developer_administers_the_team_screen(client, organization, developer):
+    """Full OWNER surface: with no SMTP, a hand-typed reset is the only one."""
+    _sign_in(client, developer)
+
+    assert client.get(reverse('accounts:member_list')).status_code == 200
+    assert client.get(reverse('accounts:member_create')).status_code == 200
 
 
 def test_an_administrator_cannot_deactivate_themselves(client, organization, owner):
