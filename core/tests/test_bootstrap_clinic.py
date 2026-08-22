@@ -1,10 +1,14 @@
-"""Standing up a real clinic: ``bootstrap_demo --empty``.
+"""Standing up a real clinic: ``bootstrap_clinic``.
 
 The gap this closes is that there was no way to create an organization without
 also acquiring twenty-five invented medicines, and a real catalog cannot replace
 them afterwards — products are referenced by prescriptions, invoice lines and
 stock movements, so a delete either fails on a PROTECT or orphans history. The
 only correct path is never to seed them, which is what these tests pin down.
+
+It was ``bootstrap_demo --empty`` until the two jobs were split into two
+commands. The flag is gone; the demo loader now refuses to run outside
+development at all, which is asserted in ``test_bootstrap_demo.py``.
 """
 
 from io import StringIO
@@ -22,9 +26,9 @@ from patients.models import Patient
 pytestmark = pytest.mark.django_db
 
 REAL_CLINIC = (
-    '--empty',
     '--name=Karim Homeo Hall',
     '--timezone=Asia/Dhaka',
+    '--branch=Main Chamber',
     '--admin-phone=01712345678',
     '--admin-name=Dr Ayesha Karim',
 )
@@ -32,7 +36,7 @@ REAL_CLINIC = (
 
 def _build(*args):
     out = StringIO()
-    call_command('bootstrap_demo', *args, stdout=out)
+    call_command('bootstrap_clinic', *args, stdout=out)
     return out.getvalue()
 
 
@@ -77,44 +81,39 @@ def test_it_names_the_next_step():
     assert 'import_remedies karim-homeo-hall' in output
 
 
-def test_the_branch_can_be_named():
-    _build(*REAL_CLINIC, '--branch=Mirpur Chamber')
+def test_the_branch_is_named_by_the_operator():
+    _build(*REAL_CLINIC)
     organization = Organization.objects.get(slug='karim-homeo-hall')
     with organization_context(organization):
-        assert Branch.objects.get().name == 'Mirpur Chamber'
+        assert Branch.objects.get().name == 'Main Chamber'
 
 
-def test_the_demo_path_is_untouched():
-    """Demo data stays synthetic and stays the default."""
-    call_command('bootstrap_demo', stdout=StringIO())
-    demo = Organization.objects.get(slug='demo-clinic')
-    with organization_context(demo):
-        assert Product.objects.count() == 25
+@pytest.mark.parametrize('missing', REAL_CLINIC)
+def test_every_fact_it_cannot_invent_is_required(missing):
+    """None of the five is defaulted, the time zone least of all (ADR 0011)."""
+    args = [arg for arg in REAL_CLINIC if arg != missing]
+    with pytest.raises(CommandError, match='required'):
+        call_command('bootstrap_clinic', *args, stdout=StringIO())
+    assert not Organization.objects.exists()
 
 
-@pytest.mark.parametrize(
-    'missing',
-    [
-        '--name=Karim Homeo Hall',
-        '--admin-phone=01712345678',
-        '--admin-name=Dr Ayesha Karim',
-    ],
-)
-def test_the_three_facts_it_cannot_invent_are_required(missing):
-    args = ['--empty'] + [arg for arg in REAL_CLINIC[1:] if arg != missing]
-    with pytest.raises(CommandError, match='--empty needs'):
-        call_command('bootstrap_demo', *args, stdout=StringIO())
-    assert not Organization.objects.exclude(slug='demo-clinic').exists()
+@pytest.mark.parametrize('flag', ['--name', '--branch', '--admin-name'])
+def test_a_flag_given_as_blank_is_refused(flag):
+    """argparse is happy with an empty string; a clinic with no name is not."""
+    args = [f'{flag}=' if arg.startswith(f'{flag}=') else arg for arg in REAL_CLINIC]
+    with pytest.raises(CommandError, match='cannot be empty'):
+        call_command('bootstrap_clinic', *args, stdout=StringIO())
+    assert not Organization.objects.exists()
 
 
 def test_a_bad_time_zone_is_refused():
     """ADR 0011: a wrong zone is not a crash, it is a silent fallback to UTC."""
     with pytest.raises(CommandError, match='not an IANA time zone'):
         call_command(
-            'bootstrap_demo',
-            '--empty',
+            'bootstrap_clinic',
             '--name=Karim Homeo Hall',
             '--timezone=Dhaka/Asia',
+            '--branch=Main Chamber',
             '--admin-phone=01712345678',
             '--admin-name=Dr Ayesha Karim',
             stdout=StringIO(),
@@ -123,10 +122,18 @@ def test_a_bad_time_zone_is_refused():
 
 
 def test_an_existing_slug_is_refused():
+    """A different administrator, so it is the name colliding and not the phone."""
     _build(*REAL_CLINIC)
     with pytest.raises(CommandError, match='already exists'):
-        _build(*REAL_CLINIC)
+        _build(
+            '--name=Karim Homeo Hall',
+            '--timezone=Asia/Dhaka',
+            '--branch=Second Chamber',
+            '--admin-phone=01799999999',
+            '--admin-name=Someone Else',
+        )
     assert Organization.objects.filter(slug='karim-homeo-hall').count() == 1
+    assert not User.objects.filter(phone='01799999999').exists()
 
 
 def test_an_existing_phone_number_is_refused():
@@ -134,15 +141,17 @@ def test_an_existing_phone_number_is_refused():
     _build(*REAL_CLINIC)
     with pytest.raises(CommandError, match='already has an account'):
         _build(
-            '--empty',
             '--name=Second Clinic',
+            '--timezone=Asia/Dhaka',
+            '--branch=Main',
             '--admin-phone=01712345678',
             '--admin-name=Someone Else',
         )
     assert not Organization.objects.filter(slug='second-clinic').exists()
 
 
-def test_reset_cannot_be_combined_with_empty():
-    """--reset deletes the demo organization and has nothing to say about a real one."""
-    with pytest.raises(CommandError, match='only ever applies to the demo'):
-        call_command('bootstrap_demo', '--reset', *REAL_CLINIC, stdout=StringIO())
+def test_it_has_no_reset():
+    """``--reset`` belongs to the demo loader and never to a real clinic."""
+    with pytest.raises(CommandError, match=r'unrecognized arguments|Unknown option'):
+        call_command('bootstrap_clinic', '--reset', *REAL_CLINIC, stdout=StringIO())
+    assert not Organization.objects.exists()

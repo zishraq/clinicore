@@ -5,13 +5,18 @@ dictate, and that order is easy to get subtly wrong: it only breaks once some
 row that is normally absent turns up. A bill line carrying a batch override is
 exactly such a row — it PROTECTs the lot it named, and it survives its own
 stock movements — so the second build is what fails, not the first.
+
+Every build here runs under ``DEBUG=True`` on purpose: the loader refuses
+outright with it off, which is the guard that keeps invented patients off a
+server, and ``config.settings_test`` has it off like production does.
 """
 
 from decimal import Decimal
 from io import StringIO
 
 import pytest
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
+from django.test import override_settings
 from django.utils import timezone
 
 from billing.models import Invoice, InvoiceItem
@@ -28,8 +33,22 @@ DEMO_SLUG = 'demo-clinic'
 
 
 def _build(*args):
-    call_command('bootstrap_demo', *args, stdout=StringIO())
+    with override_settings(DEBUG=True):
+        call_command('bootstrap_demo', *args, stdout=StringIO())
     return Organization.objects.get(slug=DEMO_SLUG)
+
+
+def test_it_refuses_to_run_with_debug_off():
+    """The guard is the whole reason this is a second command.
+
+    What it invents cannot be deleted once a prescription, bill or stock
+    movement points at it, so on any machine that is not a development one the
+    only safe answer is no. ``config.settings_test`` has ``DEBUG`` off, so this
+    needs no override — the refusal is the default here.
+    """
+    with pytest.raises(CommandError, match='bootstrap_clinic'):
+        call_command('bootstrap_demo', stdout=StringIO())
+    assert not Organization.objects.exists()
 
 
 def test_the_demo_builds_a_shelf_with_all_three_alert_states():

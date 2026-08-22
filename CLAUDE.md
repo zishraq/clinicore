@@ -642,17 +642,16 @@ deleted. Rules:
   prescriptions, invoice lines and stock movements, so removing one either fails
   on a PROTECT or orphans history. Deactivation is the only correction.
 
-**`bootstrap_demo --empty` is the real gap that closed.** There was no way to
-create an organization without also acquiring twenty-five invented medicines,
-and since those cannot be deleted afterwards, never seeding them is the only
-correct path for a real clinic. It creates the organization, one branch and one
-administrator (temporary password printed once, `must_change_password` set via
-`add_member`) and stops. `--reset` is refused alongside it: `--reset` deletes the
-*demo* org by its fixed slug, and a flag combination that read as "start this
-clinic again" and instead deleted patient records is not worth the convenience.
-A bad `--timezone` is refused rather than silently falling back to UTC (ADR
-0011). The demo path is untouched and demo data stays synthetic. The new-clinic
-sequence is written up under "Setting up a new clinic" in `docs/RUNBOOK.md`.
+**`bootstrap_clinic` is the real gap that closed.** There was no way to create
+an organization without also acquiring twenty-five invented medicines, and since
+those cannot be deleted afterwards, never seeding them is the only correct path
+for a real clinic. It creates the organization, one branch and one administrator
+(temporary password printed once, `must_change_password` set via `add_member`)
+and stops. All five arguments are required — a defaulted `--timezone` is the one
+that matters, because UTC would be accepted silently and file every late-evening
+visit under the wrong date (ADR 0011); a bad zone is refused outright. The
+new-clinic sequence is written up under "Setting up a new clinic" in
+`docs/RUNBOOK.md`.
 
 Not done, and a knowing gap: **existing `dosage` values that hold both facts
 ("30C 4 pills") are not migrated apart.** Nothing distinguishes them from doses
@@ -819,10 +818,38 @@ run creating nothing. Rules:
   which is why there are two copies to destroy, and a third in whatever the
   clinic sent it by.
 
+`bootstrap_demo` was split in two on 2026-08-23, because one command was doing
+two unrelated jobs and the difference between them was five characters typed at
+a terminal on a live server. **This is a rename of an operator-facing command**;
+anyone with the old invocation in their notes needs to know.
+
+- **`bootstrap_clinic` is the real-clinic path**, formerly `--empty`: one
+  organization, one branch, one administrator, no data. All five arguments are
+  required now — `--timezone` and `--branch` no longer default, because the only
+  thing a defaulted zone can do is be silently wrong (ADR 0011).
+- **`bootstrap_demo` refuses when `DJANGO_DEBUG` is off**, which is to say it
+  cannot run on a server at all. There is no `--force`: what it invents cannot
+  be deleted once a prescription, bill or stock movement points at it, so the
+  only safe answer off a development machine is no. `settings_test` has `DEBUG`
+  off like production does, so the refusal is what the suite gets by default and
+  every demo build in `core/tests/test_bootstrap_demo.py` and the URL smoke
+  walk's `populated` fixture opts in with `override_settings(DEBUG=True)`.
+- **`core.services.create_organization` is the shared half** — the organization
+  row plus its first branch, written inside `organization_context`, with the
+  zone validated rather than defaulted. It is in `core` rather than
+  `organizations` because it is the one thing both commands do and because a new
+  organization is never only an `Organization` row. `**fields` carries the
+  demo's currency, fee and `advice_enabled`; `branch=` carries the first
+  branch's own fields. It raises `core.exceptions.CannotCreateOrganization` and
+  the commands turn that into a `CommandError` sentence.
+- **The runbook no longer warns about anything**, which was the point: the
+  "never run `bootstrap_demo` without `--empty`" section existed only because
+  the command was misnamed, and it is gone rather than reworded.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
-gaps. Deployable now, and now operable — but still never actually deployed
-anywhere.
+gaps. Deployed to production on 2026-08-23 — one Oracle Cloud Always Free box,
+Ubuntu 24.04 on ARM, Docker Compose behind Caddy for TLS.
 
 ## Standing rules
 
@@ -898,6 +925,9 @@ docker compose up                                     # local stack (web :8000, 
 docker compose exec web python -m pytest
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py bootstrap_demo --reset   # synthetic demo data
+docker compose exec web python manage.py bootstrap_clinic \
+  --name "…" --timezone "…" --branch "…" \
+  --admin-phone "…" --admin-name "…"          # a real clinic, no demo data
 ruff check . && ruff format --check .
 python manage.py check
 python manage.py makemigrations --check --dry-run   # is the code ahead of the migrations?

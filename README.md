@@ -8,7 +8,9 @@ second clinic is configuration and seed data, never a code change.
 
 Django 6 · HTMX · Alpine · Tailwind + daisyUI · PostgreSQL. MIT licensed.
 
-> **Status: feature-complete for daily clinic use, not yet deployed anywhere.**
+> **Status: feature-complete for daily clinic use, and in production at one
+> clinic since August 2026** — a single Oracle Cloud Always Free box (Ubuntu
+> 24.04 on ARM) running Docker Compose behind Caddy for TLS.
 > Appointments, patients, encounters, prescriptions, printing, billing and
 > inventory are built, tested and browser-verified. Reporting, attachments, an
 > audit log and the data-driven permission layer are not. `docs/SPEC.md` is the
@@ -25,7 +27,10 @@ docker compose exec web python manage.py bootstrap_demo
 Then open <http://localhost:8000/>. The bootstrap command prints three demo
 logins (owner, practitioner, staff) and their shared password, and books a full
 day of appointments so the day list has something in it. All demo data is
-synthetic.
+synthetic — and `bootstrap_demo` refuses to run with `DJANGO_DEBUG` off, because
+what it invents cannot be deleted once a prescription, bill or stock movement
+points at it. A real clinic is created by `bootstrap_clinic`, which seeds
+nothing; see "Setting up a new clinic" in [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ```bash
 docker compose exec web python -m pytest    # tests
@@ -203,7 +208,7 @@ view, so there is no `/media/` route to protect. See
 ```
 config/          settings, root urlconf, wsgi
 core/            abstract bases, org-scoping machinery, dashboard, healthz,
-                 terminology tags, bootstrap_demo
+                 terminology tags, bootstrap_clinic / bootstrap_demo
 organizations/   Organization (branding, terminology, timezone), Branch
 accounts/        custom User (phone login), Membership, roles, auth views
 patients/        Patient, PatientClinicalProfile

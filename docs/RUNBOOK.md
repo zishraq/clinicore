@@ -429,13 +429,16 @@ order. Run them from `/opt/clinicore`.
 # 1. The clinic itself: the organization, one branch, one administrator.
 #    Nothing else — no patients, no medicines, no demo anything.
 docker compose -f docker-compose.prod.yml exec web \
-  python manage.py bootstrap_demo --empty \
+  python manage.py bootstrap_clinic \
   --name "Karim Homeo Hall" \
   --timezone "Asia/Dhaka" \
   --branch "Main Chamber" \
   --admin-phone 01712345678 \
   --admin-name "Dr Ayesha Karim"
 ```
+
+All five are required — the command invents nothing about the clinic, so there
+is no default to be quietly wrong about.
 
 It prints a temporary password. **Write it down before you close the window —
 it is not stored anywhere and cannot be shown again.** Read it out to the
@@ -475,15 +478,14 @@ Then sign in as the administrator and finish the setup on screen:
 - **Team** — add the receptionist and any other practitioners. Each gets a
   temporary password the same way, read out and changed on first sign-in.
 
-### Never run `bootstrap_demo` without `--empty` on a real server
+### If a clinic ends up with medicines it does not want
 
-Without the flag it creates a *demo* clinic: twenty-five invented medicines,
-fifteen invented patients, and bills against them. Those medicines cannot simply
-be deleted afterwards — prescriptions, bills and stock movements point at them,
-so the delete either refuses or leaves records pointing at nothing. There is no
-`--replace` for the same reason. If a real clinic ever ends up with the demo
-catalog, the fix is to deactivate each unwanted medicine
-(**Medicines → Deactivate**), not to remove it.
+Nothing can delete a medicine once it has been prescribed, billed or stocked —
+prescriptions, bills and stock movements point at it, so the delete either
+refuses or leaves records pointing at nothing. There is no `--replace` on the
+import for the same reason. The fix is to deactivate each unwanted medicine
+(**Medicines → Deactivate**), which takes it out of every search box and leaves
+the history that mentions it readable.
 
 ### Why the private key is on the server — a deliberate trade
 

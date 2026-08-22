@@ -1,17 +1,77 @@
-"""Cross-app operations. Currently: gap-free document numbering.
+"""Cross-app operations: standing an organization up, and document numbering.
 
 Financial documents are numbered from a locked counter row rather than a
 database sequence — sequences are not gap-free, and a gap in an invoice run
 reads as a deleted transaction. See
 docs/adr/0008-invoice-numbering-and-derived-balances.md.
+
+``create_organization`` is here rather than in ``organizations`` because it is
+the one operation both ``bootstrap_clinic`` and ``bootstrap_demo`` share, and a
+new organization is never only an ``Organization`` row: it is that row plus its
+first branch, written in the organization's own scope.
 """
+
+import zoneinfo
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 
+from core.context import organization_context
+from core.exceptions import CannotCreateOrganization
 from core.models import DocumentSequence
+from organizations.models import Branch, Organization
 
-__all__ = ['current_period', 'next_document_number']
+__all__ = ['create_organization', 'current_period', 'next_document_number']
+
+
+@transaction.atomic
+def create_organization(
+    *,
+    name: str,
+    slug: str = '',
+    timezone_name: str = 'UTC',
+    branch: dict | None = None,
+    **fields,
+) -> tuple[Organization, Branch]:
+    """An organization and its first branch. Returns both.
+
+    ``branch`` is that branch's own fields, defaulting to a single ``Main``;
+    ``fields`` are the organization's, so a caller that wants a currency or a
+    consultation fee sets them here rather than saving twice.
+
+    The zone is validated rather than defaulted, because a wrong one is not a
+    crash: the request middleware falls back to UTC and the clinic finds out
+    when a visit saved at 01:00 files itself under yesterday (ADR 0011).
+    """
+    name = name.strip()
+    if not name:
+        raise CannotCreateOrganization('A clinic needs a name.')
+
+    zone = timezone_name.strip()
+    try:
+        zoneinfo.ZoneInfo(zone)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError) as error:
+        raise CannotCreateOrganization(f'{zone!r} is not an IANA time zone.') from error
+
+    slug = (slug or slugify(name))[:60]
+    if not slug:
+        raise CannotCreateOrganization(f'{name!r} does not make a usable slug.')
+    if Organization.objects.filter(slug=slug).exists():
+        raise CannotCreateOrganization(
+            f'An organization with slug {slug!r} already exists.'
+        )
+
+    organization = Organization.objects.create(
+        name=name, slug=slug, timezone=zone, **fields
+    )
+    branch_fields = {'name': 'Main', 'code': 'MAIN', **(branch or {})}
+    # Branch is org-scoped, so it is written inside the scope it belongs to
+    # rather than by passing the FK past a manager that would refuse to read
+    # it back (docs/adr/0005-org-scoped-default-manager.md).
+    with organization_context(organization):
+        first_branch = Branch.objects.create(organization=organization, **branch_fields)
+    return organization, first_branch
 
 
 def current_period() -> str:

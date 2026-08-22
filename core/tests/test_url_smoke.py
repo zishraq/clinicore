@@ -174,10 +174,14 @@ def populated(db):
     for new tables without a second seeding path to keep in step.
     """
     from django.core.files.base import ContentFile
+    from django.test import override_settings
 
     from clinical.models import Encounter, EncounterPhoto
 
-    call_command('bootstrap_demo', stdout=_Discard())
+    # The loader refuses with DEBUG off, which is how the test settings run and
+    # how a server runs. Turning it on for the seeding is the whole override.
+    with override_settings(DEBUG=True):
+        call_command('bootstrap_demo', stdout=_Discard())
     organization = Organization.objects.get(slug='demo-clinic')
     # The loader seeds no photographs on purpose (no binaries in the repo), so
     # the two photo URLs would be skipped for want of a row. One staged here
