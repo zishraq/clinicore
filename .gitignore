@@ -240,3 +240,10 @@ theme/static/css/dist/
 # outside the repo, supplied at run time. See docs/adr/0018.
 *patients*.csv
 /catalog/data/*.csv
+
+# The one exception, named exactly: the committed sample of the import format.
+# Invented names only. It does not match the patterns above today; the negation
+# is here so it still survives if someone widens one of them to *patient*.csv,
+# and it is an exact path rather than a glob so widening cannot let a real file
+# through beside it.
+!docs/sample-patient-import.csv

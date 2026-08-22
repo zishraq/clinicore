@@ -783,6 +783,42 @@ inside Django comments and calls them unclosed elements; the markup was always
 balanced), and **every raw `&` in a template URL is now `&amp;`** — 26 of them
 across nine files, `href` and `hx-get` alike.
 
+`import_patients` landed 2026-08-22 — the clinic's existing patient list, from a
+CSV handed over at run time (`docs/adr/0018-importing-real-patient-data.md`).
+Verified against the demo org on Postgres: a dry run, a real run, and a second
+run creating nothing. Rules:
+
+- **Nothing ships with it.** `--file` is required, with no default and no
+  bundled fallback, so there is no way to run it against a file that came with
+  the code. That is the whole difference from `import_remedies`, which ships its
+  materia medica *because* that data is public domain. `.gitignore` blocks
+  `*patients*.csv`; the one committed CSV is `docs/sample-patient-import.csv`,
+  six invented people, with an exact-path negation so widening the pattern
+  cannot lose it and cannot let a real file through beside it.
+- **A header row is required**, matched case-insensitively after stripping a
+  BOM. A headerless file is refused rather than read positionally: a column
+  order that transposes `sex` and `phone` is invisible for months. Extra columns
+  are ignored *with a note*; a missing required column is an error.
+- **Dedupe is an exact match on name + date of birth + normalised phone**, read
+  through `all_objects` so a soft-deleted patient is skipped rather than
+  resurrected. Two family members on one phone differ by name and both import.
+  The limit it cannot see is a corrected spelling — that is a new patient, and
+  the dry run reporting *would create 0* is the guard.
+- **An unrecognised `sex` imports as UNKNOWN and is reported by row**, counted
+  separately from blank: blank is legitimate absence, "Mael" is an error someone
+  should look at, and one number for both hides the second inside the first.
+- **Dates are `fromisoformat` and nothing else.** No sniffing — `01/02/1998` is
+  two days on two continents. A `--date-format` option gets added if a real file
+  needs one.
+- **One transaction, one savepoint per row**, and `--dry-run` validates rather
+  than writing and rolling back. The branch is refused, not guessed, when a
+  multi-branch clinic gives none.
+- **The command cannot undo itself**, so the runbook takes a backup first and
+  deletes the file from the container *and* the host afterwards. Production has
+  no bind mount for the code, so the CSV has to be `docker compose cp`'d in —
+  which is why there are two copies to destroy, and a third in whatever the
+  clinic sent it by.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployable now, and now operable — but still never actually deployed
@@ -887,7 +923,9 @@ nowhere — it uses `config.settings_test` via `pyproject.toml`.
 **The test suite is pytest.** `python manage.py test` finds zero tests and
 exits successfully, which looks like a pass. Always `python -m pytest`. Run it
 against Postgres before reporting done: SQLite skips the two Postgres-only
-row-locking tests, so the counts differ by two (689 vs 691 as of ADR 0017).
+row-locking tests, so the two counts always differ by exactly two. Don't
+record the absolute numbers here — they move every time tests land, and a
+stale count reads as a failure to whoever sees it next.
 
 **Native popups are invisible to CDP screenshots.** `<select>` and
 `<datalist>` popups are OS-drawn windows, so DevTools-protocol capture shows

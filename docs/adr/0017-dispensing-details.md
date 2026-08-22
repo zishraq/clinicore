@@ -1,7 +1,8 @@
 # 0017 — What is dispensed is two more columns, and the rest of the row collapses
 
 Status: accepted, 2026-08-21. Amended 2026-08-22 — the two closed fields
-became `<select>`s, and the native-popup finding is recorded below.
+became `<select>`s, the native-popup finding is recorded below, and the
+remaining datalist popup is closed as a decision rather than left open.
 
 Extends `docs/adr/0015-prescribed-strength.md`, which settled the shape this
 follows: a generically-named column, a label from the terminology map, an
@@ -267,3 +268,109 @@ and gets its own ADR.
 - `Organization.prescribing_datalists` yields only the **open** enabled fields,
   because a closed one carries its options inline. A clinic running only closed
   fields renders no datalist at all.
+
+
+## Amendment, 2026-08-22 — the remaining datalist popup is decided, not deferred
+
+This stays in 0017 rather than becoming its own ADR: the finding above and the
+decision below are the same thread, and separating a measurement from the
+conclusion it produced is what makes a decision log unreadable two years later.
+It does reach past this feature, so it cross-references 0016.
+
+### The diagnosis is broader than one popup
+
+The application holds **two postures toward native surfaces at once.**
+
+- It takes full control of some. ADR 0016 replaced every native `type="date"`
+  input for exactly this class of reason: the native control renders its text in
+  the *device's* locale, so one field read `d/m/Y` in the clinic and `m/d/Y` on a
+  laptop from elsewhere, and nothing in the page could change it.
+- It defers to the OS on others. `base.html` hardcodes `data-theme="light"`, so
+  the page never follows the system — while the `<datalist>` popup always does.
+
+The mismatch is not bad luck about one element. It is the **guaranteed
+consequence of holding both postures**: any native surface the application does
+not control will diverge from the page the moment the user's OS disagrees with
+our hardcoded light. Today that is one popup on one field, because the migration
+above removed the other two. Tomorrow it is whatever native surface is added
+next.
+
+This also disposes of "check what OS the clinic runs". That answers whether
+*today's machine* happens to hide the problem, not whether the problem exists. It
+is a useful thing to know and it is not a resolution.
+
+### Exit (a) — control it fully
+
+`strength` becomes a `<select>` fed from the organization's existing
+`strength_options`. An unlisted potency is added once, in Settings, and is then
+available on every row thereafter.
+
+**This is not the "Other…" escape hatch ADR 0015 rejected**, and the difference
+is the whole reason it is on the table. That proposal was a *second control on
+the prescription row* plus a rule to explain — a dropdown and a text box side by
+side, with the user having to learn which one wins. This is a single control, and
+the place an unlisted value gets added is the Features screen that ADR 0015 built
+and that the clinic already uses to type its list of potencies. No new surface,
+no new rule.
+
+A benefit that comes free with it: free text guarantees that `30C`, `30c` and
+`30 C` end up as three distinct strings in one column eventually, because nothing
+stops them. A closed list makes the column answerable — which is the
+"find every patient given Sulphur 200C" query ADR 0015 promised and that free
+text quietly cannot deliver.
+
+The real cost, and the only reason this is not already done: a doctor who needs
+an unlisted potency **mid-consultation, with a patient in the room**, must leave
+the visit form to add it — or ask an administrator to. That is the trade. Roughly
+an hour of work: `closed_list=True` already exists, is already tested, and
+already carries the stored-value guard; the product form's own `default_strength`
+field is the only other caller to move.
+
+### Exit (b) — follow it fully
+
+`prefers-color-scheme` drives `data-theme`, so a dark OS gets a dark page and the
+popup is coherent **by construction**, on every device, with no JavaScript and no
+ARIA. It is the only exit that also fixes the next native surface before it is
+added.
+
+The cost is genuinely larger, and it is not in the switch:
+
+- The `--cc-*` palette derives from `Organization.branding` and is built for
+  light. A dark page needs a second derivation, per organization, that stays
+  legible against whatever brand colour the clinic chose.
+- `card-surface`, `text-muted` and the borders expressed as `rgb(0 0 0 / 0.06)`
+  need dark variants.
+- The print templates must stay light regardless of the setting. Paper is white;
+  a dark prescription is a wasted cartridge and an unreadable handout.
+- Every screen needs a legibility pass, not a spot check.
+
+It has independent value — a phone at night, a dim chamber, a doctor reading a
+visit at home — so it is **work, not waste**, and it is the exit to take if this
+is ever revisited for its own sake rather than to close one popup.
+
+### Exit (c) — the combobox, last
+
+Extending `item-autocomplete.js` to serve strength stays the most expensive
+option and is an **accessibility downgrade** unless `invoice-line.js` is first
+merged into `autocompleteCore` and the full ARIA combobox pattern is
+implemented — the current components carry `aria-selected` on their options and
+nothing else, which is inert without a `role="listbox"` container. Replacing a
+native control that screen readers announce as a combobox with a custom one that
+they do not, in order to fix a colour, is the wrong direction. Priced in full in
+the session that produced this amendment.
+
+### Decision
+
+**Not fixed before deployment.** The remaining popup is a known cosmetic
+divergence on one field, on a dark-mode OS only, and none of the three exits is
+worth blocking a deployment for.
+
+Revisit when either of these is true, and not before:
+
+- a clinic runs a dark-mode desktop, which turns a cosmetic divergence into
+  something a user sees every day; or
+- a **second** field needs free text, which turns one popup into a pattern and
+  makes exit (b) the cheaper answer than doing (a) twice.
+
+Until one of those, this is **decided, not deferred**. It should not be
+re-investigated, re-argued, or reported as an open question.

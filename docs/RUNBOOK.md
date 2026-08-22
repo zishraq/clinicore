@@ -535,6 +535,127 @@ encrypted, so simply keeping them is enough. Do not decrypt them to check;
 
 ---
 
+## Loading the clinic's existing patient list
+
+The clinic sends a CSV of the patients it already has. This is real patient
+data: it goes onto the server, into the application, and then off the server
+again. Work through the steps in order and do not skip step 1 or step 7.
+
+The file must have a header line naming the columns, then one patient per line:
+
+```
+full_name,date_of_birth,sex,phone
+Rahima Begum,1981-04-17,Female,01712345678
+```
+
+`docs/sample-patient-import.csv` in the repository is a working example with
+invented names — send it to whoever is preparing the file. What the four columns
+accept:
+
+| column | accepts | if it is blank |
+|---|---|---|
+| `full_name` | any text; a name with a comma must be in "quotes" | the row is not imported |
+| `date_of_birth` | `YYYY-MM-DD` only, e.g. `1981-04-17` | fine — left unknown |
+| `sex` | `Male`, `Female`, `Other`, or `M`, `F`, `O` | fine — recorded as unknown |
+| `phone` | anything the clinic writes | fine — left empty |
+
+Extra columns the clinic added — an address, a note — are ignored, and the
+command says which it ignored. A **missing** column is an error.
+
+### Step 1 — take a backup first
+
+```bash
+sudo /opt/clinicore/deploy/backup.sh
+```
+
+**Do not skip this.** The import has no undo. If it puts several hundred wrong
+patients into the clinic, the only way back is restoring the backup you took
+here.
+
+### Step 2 — put the file on the server
+
+```bash
+# From your own computer:
+scp patients.csv you@the-server:/tmp/patients.csv
+```
+
+### Step 3 — put the file inside the application container
+
+The application cannot see `/tmp` on the server — it runs in its own container
+with its own filesystem. Copy it in:
+
+```bash
+cd /opt/clinicore
+docker compose -f docker-compose.prod.yml cp /tmp/patients.csv web:/tmp/patients.csv
+```
+
+### Step 4 — dry run, and read it
+
+```bash
+docker compose -f docker-compose.prod.yml exec web \
+  python manage.py import_patients karim-homeo-hall \
+  --file /tmp/patients.csv --dry-run
+```
+
+This writes nothing at all. Read the whole output before going on:
+
+- **The clinic name at the top must be the right clinic.** This is the moment a
+  mistyped name is free to fix.
+- **Would be created** is how many new patients you are about to add. Check it
+  against how many the clinic says it sent.
+- **Failed** lists a row number and a reason for each row that cannot be
+  imported. Row numbers are the line numbers Excel shows, so the clinic can find
+  and fix them. Send the list back, get a corrected file, start again at step 2.
+- **Sex unrecognised** lists rows where the sex column held something the
+  application did not understand. Those patients *are* imported, with the sex
+  left as unknown, and can be corrected on the patient screen afterwards.
+
+### Step 5 — run it
+
+The same command without `--dry-run`:
+
+```bash
+docker compose -f docker-compose.prod.yml exec web \
+  python manage.py import_patients karim-homeo-hall \
+  --file /tmp/patients.csv
+```
+
+Do it when nobody is using the application. While it runs, nobody can register a
+new patient — it holds the counter that hands out patient codes. It takes
+seconds.
+
+If the clinic has more than one chamber the command will stop and ask which one
+these patients belong to. Add `--branch` and the chamber's code, which it lists
+for you.
+
+### Step 6 — check in the application
+
+Sign in and open **Patients**. The count should have gone up by the number the
+dry run said. Open two or three records and check the name, date of birth and
+phone against the clinic's own list.
+
+### Step 7 — destroy both copies of the file
+
+```bash
+docker compose -f docker-compose.prod.yml exec web rm /tmp/patients.csv
+shred -u /tmp/patients.csv
+```
+
+**There is a third copy** — in whatever email or WhatsApp message the clinic sent
+it by. Delete that too, on your own machine and in the sent folder.
+
+### If you have to run it a second time
+
+Running it again with the same file is safe: it recognises the patients it
+already imported and creates nothing. The dry run will say **would be created:
+0**. If it says anything else, the file has changed since last time — find out
+what changed before running it.
+
+The one thing it cannot see is a **corrected spelling**. If someone fixed
+`Rahima Begum` to `Rahima Begam` and you re-run, that is a new patient as far as
+the application is concerned, and you will have both. When the clinic sends a
+corrected file, ask which rows changed.
+
 ## What not to do, and when to call
 
 **Never:**
