@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Prescription - Global Homeopathy Clinic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Bengali & Modern Latin Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #007791;
+      --primary-light: #eef8fa;
+      --primary-dark: #004d5e;
+      --text-dark: #1f2937;
+      --text-muted: #6b7280;
+      --border-color: #e5e7eb;
+      --line-color: #d1d5db;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Hind Siliguri', 'Inter', sans-serif;
+      background-color: #f3f4f6;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+      color: var(--text-dark);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .prescription-page {
+      width: 210mm;
+      min-height: 297mm;
+      background: #ffffff;
+      padding: 16mm 18mm 14mm 18mm;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* Watermark */
+    .prescription-page::before {
+      content: "GHC";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 140px;
+      font-weight: 800;
+      font-family: 'Inter', sans-serif;
+      color: rgba(0, 119, 145, 0.03);
+      border: 6px solid rgba(0, 119, 145, 0.03);
+      border-radius: 50%;
+      width: 280px;
+      height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Header */
+    .header-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--primary);
+      position: relative;
+      z-index: 1;
+    }
+
+    .doc-info h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 2px;
+    }
+
+    .doc-info .degrees {
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+
+    .doc-info .designation {
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+
+    .doc-info .meta-badges {
+      margin-top: 6px;
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .meta-badges span {
+      background: var(--primary-light);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: var(--primary);
+    }
+
+    .clinic-info {
+      text-align: right;
+    }
+
+    .clinic-info h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 3px;
+    }
+
+    .clinic-info p {
+      font-size: 11.5px;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+
+    .clinic-info .timing {
+      margin-top: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dark);
+    }
+
+    /* Patient Bar */
+    .patient-bar {
+      margin-top: 10px;
+      background: var(--primary-light);
+      border-radius: 6px;
+      padding: 8px 14px;
+      display: grid;
+      grid-template-columns: 2fr 0.7fr 0.8fr 0.7fr 1fr;
+      gap: 10px;
+      font-size: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .patient-field {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .patient-field label {
+      font-weight: 600;
+      color: var(--primary-dark);
+    }
+
+    .patient-field .line {
+      flex: 1;
+      border-bottom: 1px dashed var(--line-color);
+      min-height: 16px;
+    }
+
+    /* Main Body */
+    .main-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 62mm 1fr;
+      margin-top: 14px;
+      min-height: 155mm;
+      position: relative;
+      z-index: 1;
+    }
+
+    .left-sidebar {
+      border-right: 1px solid var(--border-color);
+      padding-right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .sidebar-section h4 {
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--primary);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .sidebar-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      margin-top: 12px;
+    }
+
+    .sidebar-lines .line {
+      border-bottom: 1px dotted #e5e7eb;
+    }
+
+    .right-content {
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .rx-symbol {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--primary);
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .content-area {
+      flex: 1;
+    }
+
+    .signature-area {
+      text-align: right;
+      align-self: flex-end;
+      padding-top: 40px;
+    }
+
+    .signature-line {
+      display: inline-block;
+      width: 140px;
+      border-top: 1px solid var(--text-dark);
+      padding-top: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* Notice Bar */
+    .notice {
+      text-align: center;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
+
+    /* Footer */
+    .footer {
+      border-top: 1.5px solid var(--primary);
+      padding-top: 8px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .branch-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 10.5px;
+      line-height: 1.35;
+      background: #fafafa;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+
+    .branch-item strong {
+      color: var(--primary-dark);
+    }
+
+    .badge-day {
+      background: var(--primary);
+      color: #fff;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin: 0 2px;
+    }
+
+    .social-bar {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: 'Inter', sans-serif;
+      padding: 0 4px;
+    }
+
+    .social-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    @media print {
+      body {
+        background: transparent;
+        padding: 0;
+      }
+      .prescription-page {
+        box-shadow: none;
+        width: 100%;
+        min-height: 100vh;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="prescription-page">
+  
+  <!-- Header -->
+  <div>
+    <div class="header-grid">
+      <!-- Doctor Info -->
+      <div class="doc-info">
+        <h1>ডা. আনোয়ার এইচ বিশ্বাস</h1>
+        <div class="degrees">বিএইচএমএস (ঢা. বি), এমপিএইচ, এমএসএস (ঢা. বি)</div>
+        <div class="designation">
+          বিভাগীয় প্রধান: কমিউনিটি মেডিসিন বিভাগ<br>
+          সরকারি হোমিওপ্যাথিক মেডিকেল কলেজ-মিরপুর-১৪, ঢাকা।<br>
+          <span style="font-size: 10px; color: #6b7280;">আন্তর্জাতিক সেমিনারে অংশগ্রহণ (ভারত, থাইল্যান্ড, মালয়েশিয়া, চীন, সিঙ্গাপুর ও তুরস্ক)</span>
+        </div>
+        <div class="meta-badges">
+          <span>রেজি নং: এইচ-৪৭২</span>
+          <span>মোবা: 01711345387</span>
+        </div>
+      </div>
+
+      <!-- Clinic Info -->
+      <div class="clinic-info">
+        <h2>গ্লোবাল হোমিওপ্যাথি ক্লিনিক</h2>
+        <p>২৯, রুহানী মার্কেট, সনি স্কয়ার<br>চিড়িয়াখানা রোড, মিরপুর-২, ঢাকা</p>
+        <div class="timing">
+          রোগী দেখার সময়: বিকাল ৫টা – রাত ৯টা পর্যন্ত
+        </div>
+        <p style="font-weight: 700; color: var(--primary); font-size: 13px; margin-top: 2px;">
+          01568-316095
+        </p>
+      </div>
+    </div>
+
+    <!-- Patient Details -->
+    <div class="patient-bar">
+      <div class="patient-field">
+        <label>Name:</label>
+        <div class="line"></div>
+      </div>
+      <div class="patient-field">
+        <label>Age:</label>
+        <div class="line"></div>
+      </div>
+      <div class="patient-field">
+        <label>Sex:</label>
+        <div class="line"></div>
+      </div>
+      <div class="patient-field">
+        <label>Wt:</label>
+        <div class="line"></div>
+      </div>
+      <div class="patient-field">
+        <label>Date:</label>
+        <div class="line"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prescription Workspace -->
+  <div class="main-body">
+    <!-- Left Clinical Notes Column -->
+    <div class="left-sidebar">
+      <div class="sidebar-section">
+        <h4>Clinical Findings</h4>
+        <div class="sidebar-lines">
+          <div class="line"></div>
+          <div class="line"></div>
+          <div class="line"></div>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <h4>Investigation</h4>
+        <div class="sidebar-lines">
+          <div class="line"></div>
+          <div class="line"></div>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <h4>Diagnosis</h4>
+        <div class="sidebar-lines">
+          <div class="line"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Rx / Prescription Area -->
+    <div class="right-content">
+      <div class="rx-symbol">℞</div>
+      <div class="content-area">
+        <!-- Ready for dynamic digital text insertion -->
+      </div>
+      <div class="signature-area">
+        <div class="signature-line">Doctor's Signature</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer Section -->
+  <div>
+    <div class="notice">
+      পরবর্তী সাক্ষাতের সময় ব্যবস্থাপত্র অবশ্যই সঙ্গে আনবেন।
+    </div>
+
+    <div class="footer">
+      <!-- Visiting Branch Chambers -->
+      <div class="branch-container">
+        <div class="branch-item">
+          <strong>কুষ্টিয়া চেম্বার ১:</strong> চৌধুরী নুরুন নাহার হাসপাতাল, ফুলতলা মোড়, চৌড়হাস, কুষ্টিয়া। 
+          (প্রতি ইংরেজি মাসের <span class="badge-day">২য়</span> শুক্রবার) | <strong>মোবা:</strong> 01718-184122
+        </div>
+        <div class="branch-item">
+          <strong>কুষ্টিয়া চেম্বার ২:</strong> বিশ্বাস ফাউন্ডেশন, শেরপুর, দৌলতপুর, কুষ্টিয়া। 
+          (প্রতি ইংরেজি মাসের <span class="badge-day">৪র্থ</span> শুক্রবার) | <strong>মোবা:</strong> 01913-215482
+        </div>
+      </div>
+
+      <!-- Social and Quick Contacts -->
+      <div class="social-bar">
+        <div class="social-item"><span>Facebook:</span> /DrAnwarHBiswas</div>
+        <div class="social-item"><span>Clinic:</span> /GlobalHomeopathyClinic</div>
+        <div class="social-item"><span>YouTube:</span> Dr. Anwar H Biswas</div>
+        <div class="social-item"><span>WhatsApp / Call:</span> 01711-345387</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
