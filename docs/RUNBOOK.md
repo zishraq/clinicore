@@ -498,6 +498,27 @@ Then sign in as the administrator and finish the setup on screen:
 - **Team** — add the receptionist and any other practitioners. Each gets a
   temporary password the same way, read out and changed on first sign-in.
 
+**Then the printed prescription's letterhead.** None of it is in the code — the
+whole sheet is this clinic's data — so a new clinic prints a plain letterhead
+until these are filled in. Nothing here can be got wrong in a way that loses
+data; it is all appearance.
+
+- **Settings → Prescription** — the notice printed to the patient, the contact
+  strip (one line each, printed exactly as typed), a short watermark, and the
+  brand colour every rule and heading on the sheet is drawn in.
+- **Settings → Chambers** — for each chamber: its address and phone, its
+  consulting hours (printed in the header of a visit that happened there), when
+  it opens (printed in the footer, e.g. *every 2nd Friday*), whether it appears
+  on prescriptions at all, and the order it prints in.
+  `bootstrap_clinic` turns the first chamber on; any chamber added later starts
+  **off** and has to be ticked. There is no delete — turn *In use* off instead.
+- **Your account** — each practitioner fills in their own printed name, degrees,
+  designation, registration number and the phone to print. It is per clinic, so
+  somebody working at two of them fills it in twice, on purpose.
+
+The first four chamber details can also be given at bootstrap time, with
+`--branch-address`, `--branch-phone`, `--branch-hours` and `--branch-schedule`.
+
 ### If a clinic ends up with medicines it does not want
 
 Nothing can delete a medicine once it has been prescribed, billed or stocked —

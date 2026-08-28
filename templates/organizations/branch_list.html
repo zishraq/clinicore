@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% comment %}
+  There is no remove control, deliberately. Patients and visits both point at a
+  branch with PROTECT, so a delete would fail for every chamber that has ever
+  been used; "In use" on the form is the off switch (organizations/views.py).
+{% endcomment %}
+
+{% block title %}Chambers{% endblock %}
+{% block page_title %}Chambers{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'organizations:branch_create' %}" class="btn btn-sm btn-brand">Add a chamber</a>
+{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-6">
+  {% if branches %}
+    <ul class="divide-y divide-black/5">
+      {% for branch in branches %}
+        <li class="py-3 grid grid-cols-[1fr_auto] gap-3 items-start">
+          <div>
+            <a class="link font-medium" href="{% url 'organizations:branch_update' branch.pk %}">{{ branch.name }}</a>
+            <span class="font-mono text-xs text-muted ml-1">{{ branch.code }}</span>
+            {% if not branch.is_active %}
+              <span class="badge badge-ghost badge-sm ml-1">Not in use</span>
+            {% endif %}
+            {% if branch.show_on_prescription %}
+              <span class="badge badge-outline badge-sm ml-1">On prescriptions</span>
+            {% endif %}
+            {% if branch.address %}
+              <p class="text-sm text-muted whitespace-pre-line mt-1">{{ branch.address }}</p>
+            {% endif %}
+            <p class="text-sm text-muted">
+              {% if branch.phone %}{{ branch.phone }}{% endif %}
+              {% if branch.consulting_hours %}· {{ branch.consulting_hours }}{% endif %}
+              {% if branch.schedule_note %}· {{ branch.schedule_note }}{% endif %}
+            </p>
+          </div>
+          <a href="{% url 'organizations:branch_update' branch.pk %}" class="btn btn-xs btn-brand-ghost">Edit</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-sm text-muted">No chambers yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

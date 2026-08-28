@@ -24,6 +24,38 @@
   </form>
 
   {% comment %}
+    A second form rather than more fields on the first: this half belongs to
+    your membership of this clinic, not to your account, so somebody working at
+    two clinics edits two of them (accounts.models.PractitionerProfile). Its own
+    submit button is what tells the view which form was posted.
+  {% endcomment %}
+  {% if letterhead_form %}
+    <form method="post" class="card-surface rounded-xl p-6 space-y-4">
+      {% csrf_token %}
+      <div>
+        <h2 class="font-semibold">On printed prescriptions</h2>
+        <p class="text-xs text-muted mt-1">
+          How your name and qualifications appear at the top of a prescription
+          from {{ organization.name }}. Leave anything blank to print nothing.
+        </p>
+      </div>
+      {% for field in letterhead_form %}
+        <div>
+          <label class="label" for="{{ field.id_for_label }}">
+            <span class="label-text">{{ field.label }}</span>
+          </label>
+          {{ field }}
+          {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
+          {% for error in field.errors %}
+            <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <button type="submit" name="{{ letterhead_submit }}" value="1" class="btn btn-brand">Save</button>
+    </form>
+  {% endif %}
+
+  {% comment %}
     Phone number and role are read-only here on purpose. The phone is the
     sign-in identifier and has to stay unique across the whole deployment, so a
     collision has to be reported by somebody who can see both sides of it — an

@@ -27,9 +27,11 @@ from accounts.forms import (
     MemberCreateForm,
     MemberUpdateForm,
     PhoneLoginForm,
+    PractitionerProfileForm,
     ProfileForm,
     TemporaryPasswordForm,
 )
+from accounts.models import PRESCRIBING_ROLES
 from accounts.permissions import owner_required, require_membership
 
 __all__ = [
@@ -233,20 +235,56 @@ def member_reset_password(request, pk: int):
 # --- Your own account -----------------------------------------------------
 
 
+#: The letterhead form's submit button. Two forms share this page, so the one
+#: that was posted is identified by its own button rather than by guessing from
+#: the field names — the same trick as the visit form's ``save_draft``.
+LETTERHEAD_SUBMIT = 'save_letterhead'
+
+
 @login_required
 def profile(request):
-    """Your own name and email. Any role, no membership needed.
+    """Your own name and email, plus how you appear on a printed prescription.
 
     Deliberately not behind ``require_membership``: somebody whose access was
     withdrawn, or who is signed in before an administrator adds them, can still
-    reach their own account.
+    reach their own account. That is also why the letterhead half is absent for
+    them — it belongs to a membership, and they have none active.
     """
-    form = ProfileForm(request.POST or None, instance=request.user)
-    if request.method == 'POST' and form.is_valid():
+    membership = getattr(request, 'membership', None)
+    # Only somebody who can be recorded as the treating practitioner has a
+    # letterhead to edit. A DEVELOPER reads every note and never appears on a
+    # prescription, so PRESCRIBING_ROLES rather than CLINICAL_ROLES (ADR 0019).
+    letterhead_form = None
+    if membership is not None and membership.role in PRESCRIBING_ROLES:
+        letterhead_form = PractitionerProfileForm(
+            request.POST if LETTERHEAD_SUBMIT in request.POST else None,
+            instance=getattr(membership, 'practitioner_profile', None),
+        )
+
+    posting_details = request.method == 'POST' and LETTERHEAD_SUBMIT not in request.POST
+    form = ProfileForm(request.POST if posting_details else None, instance=request.user)
+
+    if posting_details and form.is_valid():
         form.save()
         messages.success(request, 'Your details are saved.')
         return redirect('accounts:profile')
-    return render(request, 'accounts/profile.html', {'form': form})
+    letterhead_posted = letterhead_form is not None and letterhead_form.is_bound
+    if letterhead_posted and letterhead_form.is_valid():
+        profile_row = letterhead_form.save(commit=False)
+        profile_row.membership = membership
+        profile_row.save()
+        messages.success(request, 'Your prescription letterhead is saved.')
+        return redirect('accounts:profile')
+
+    return render(
+        request,
+        'accounts/profile.html',
+        {
+            'form': form,
+            'letterhead_form': letterhead_form,
+            'letterhead_submit': LETTERHEAD_SUBMIT,
+        },
+    )
 
 
 @login_required

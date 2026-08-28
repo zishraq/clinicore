@@ -39,6 +39,8 @@
             <li><a href="{% url 'accounts:member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">{{ terms.member_plural }}</a></li>
             <li><a href="{% url 'organizations:billing_settings' %}" class="{% if request.resolver_match.url_name == 'billing_settings' %}active{% endif %}">Billing</a></li>
             <li><a href="{% url 'organizations:feature_settings' %}" class="{% if request.resolver_match.url_name == 'feature_settings' %}active{% endif %}">Features</a></li>
+            <li><a href="{% url 'organizations:prescription_settings' %}" class="{% if request.resolver_match.url_name == 'prescription_settings' %}active{% endif %}">Prescription</a></li>
+            <li><a href="{% url 'organizations:branch_list' %}" class="{% if 'branch' in request.resolver_match.url_name %}active{% endif %}">Chambers</a></li>
           </ul>
         </details>
       </li>

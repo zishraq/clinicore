@@ -1,20 +1,29 @@
 """Organization settings forms.
 
-SPEC §6.8, one screen per concern: what billing needs, and which optional
-features the clinic runs. Branding, terminology, and branches get their own
-screens later.
+SPEC §6.8, one screen per concern: what billing needs, which optional features
+the clinic runs, what the printed prescription's letterhead says, and where its
+chambers are. Terminology gets its own screen later.
 """
 
 from django import forms
 
 from organizations.models import (
+    CONTACT_MAX_LENGTH,
     DEFAULT_TERMINOLOGY,
     PRESCRIBING_FIELDS,
+    WATERMARK_MAX_LENGTH,
+    Branch,
     Organization,
     clean_suggestions,
+    hex_color_or,
 )
 
-__all__ = ['BillingSettingsForm', 'FeatureSettingsForm']
+__all__ = [
+    'BillingSettingsForm',
+    'BranchForm',
+    'FeatureSettingsForm',
+    'PrescriptionSettingsForm',
+]
 
 _INPUT = {'class': 'input input-bordered w-full'}
 _TEXTAREA = {'class': 'textarea textarea-bordered w-full', 'rows': 4}
@@ -162,3 +171,201 @@ class FeatureSettingsForm(forms.ModelForm):
         if commit:
             organization.save()
         return organization
+
+
+class PrescriptionSettingsForm(forms.ModelForm):
+    """What the printed prescription says that is not a visit or a chamber.
+
+    Three of the four controls are not model fields. The contact strip is a
+    JSON column edited one line at a time — the ``strength_options`` idiom, for
+    the same reason: the owner is typing a list and one per line needs no
+    explaining. The watermark and the brand colour live inside the ``branding``
+    JSON, which has no screen of its own yet; the colour is here because
+    without it this whole feature renders in the seed blue and cannot be made to
+    match the clinic's own design.
+    """
+
+    prescription_contacts = forms.CharField(
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                **_TEXTAREA,
+                'placeholder': 'Facebook: /YourClinic\nWhatsApp / Call: 01700-000000',
+            }
+        ),
+        label='Contact strip',
+        help_text=(
+            'One per line, printed along the foot of the prescription exactly '
+            'as typed. Leave blank for none.'
+        ),
+    )
+    watermark_text = forms.CharField(
+        required=False,
+        max_length=WATERMARK_MAX_LENGTH,
+        widget=forms.TextInput(attrs={**_INPUT, 'placeholder': 'GHC'}),
+        label='Watermark',
+        help_text=(
+            f'A few letters printed faintly behind the sheet, '
+            f'{WATERMARK_MAX_LENGTH} characters at most. Blank for none.'
+        ),
+    )
+    # A native colour control. The application draws its own date pickers
+    # (ADR 0016) because the native one renders its text in the device's
+    # locale; a colour swatch has no such problem, it always posts #rrggbb,
+    # and the alternative here is asking a non-developer to type hex.
+    primary_color = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'type': 'color', 'class': 'h-10 w-20'}),
+        label='Brand colour',
+        help_text='Used for the rules, headings and tints on printed documents.',
+    )
+
+    class Meta:
+        model = Organization
+        fields = ['prescription_notice']
+        labels = {'prescription_notice': 'Notice to the patient'}
+        help_texts = {
+            'prescription_notice': (
+                'Printed across the foot of every prescription, e.g. a reminder '
+                'to bring the sheet to the next visit.'
+            )
+        }
+        widgets = {
+            'prescription_notice': forms.Textarea(attrs={**_TEXTAREA, 'rows': 2})
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        organization = self.instance
+        self.fields['prescription_contacts'].initial = '\n'.join(organization.contacts)
+        self.fields['watermark_text'].initial = organization.watermark_text
+        self.fields['primary_color'].initial = organization.primary_color
+        self.order_fields(
+            [
+                'prescription_notice',
+                'prescription_contacts',
+                'watermark_text',
+                'primary_color',
+            ]
+        )
+
+    def clean_prescription_contacts(self) -> list[str]:
+        """One line per contact, cleaned the way the model cleans it on the way out."""
+        text = self.cleaned_data.get('prescription_contacts') or ''
+        return clean_suggestions(text.splitlines(), max_length=CONTACT_MAX_LENGTH)
+
+    def clean_primary_color(self) -> str:
+        """Refuse anything that is not a plain hex colour.
+
+        This value is interpolated into a ``<style>`` block, where escaping does
+        not protect you — the same reason ``hex_color_or`` exists. Validating
+        here as well means a bad value is a field error rather than a silently
+        ignored setting.
+        """
+        value = (self.cleaned_data.get('primary_color') or '').strip()
+        if not value:
+            return ''
+        if hex_color_or(value, '') != value:
+            raise forms.ValidationError('Use a hex colour, for example #007791.')
+        return value
+
+    def save(self, commit=True):
+        organization = super().save(commit=False)
+        organization.prescription_contacts = self.cleaned_data['prescription_contacts']
+        branding = dict(organization.branding or {})
+        branding['logo_text'] = self.cleaned_data['watermark_text'].strip()
+        color = self.cleaned_data['primary_color']
+        if color:
+            palette = dict(branding.get('palette') or {})
+            palette['primary'] = color
+            branding['palette'] = palette
+        organization.branding = branding
+        if commit:
+            organization.save()
+        return organization
+
+
+class BranchForm(forms.ModelForm):
+    """One chamber: where it is, when it opens, and whether it prints.
+
+    ``code`` is on the form even though it is not letterhead. It is NOT NULL
+    with a unique constraint per organization, so a create screen without it
+    cannot save a second branch — and it is the handle ``import_patients
+    --branch`` takes, so a generated one would be a value the operator has to go
+    and look up.
+    """
+
+    class Meta:
+        model = Branch
+        fields = [
+            'name',
+            'code',
+            'address',
+            'phone',
+            'consulting_hours',
+            'schedule_note',
+            'show_on_prescription',
+            'print_order',
+            'is_active',
+        ]
+        labels = {
+            'code': 'Short code',
+            'consulting_hours': 'Consulting hours',
+            'schedule_note': 'When this chamber is open',
+            'show_on_prescription': 'List this chamber on printed prescriptions',
+            'print_order': 'Order on the prescription',
+            'is_active': 'In use',
+        }
+        help_texts = {
+            'code': 'A short handle for this chamber, used when importing data.',
+            'consulting_hours': 'Printed in the header of a visit that happened here.',
+            'schedule_note': (
+                'Printed in the footer, e.g. every 2nd Friday of the month. '
+                'Leave blank for a chamber that opens daily.'
+            ),
+            'print_order': 'Lower numbers print first.',
+            'is_active': (
+                'Turn this off instead of deleting. A chamber cannot be removed '
+                'once patients or visits are recorded against it.'
+            ),
+        }
+        widgets = {
+            'name': forms.TextInput(attrs=_INPUT),
+            'code': forms.TextInput(attrs={**_INPUT, 'maxlength': 20}),
+            'address': forms.Textarea(attrs={**_TEXTAREA, 'rows': 3}),
+            'phone': forms.TextInput(attrs={**_INPUT, 'inputmode': 'tel'}),
+            'consulting_hours': forms.TextInput(attrs=_INPUT),
+            'schedule_note': forms.TextInput(attrs=_INPUT),
+            'show_on_prescription': forms.CheckboxInput(attrs=_CHECKBOX),
+            'print_order': forms.NumberInput(
+                attrs={**_INPUT, 'type': 'number', 'min': '0'}
+            ),
+            'is_active': forms.CheckboxInput(attrs=_CHECKBOX),
+        }
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if organization is not None:
+            self.instance.organization = organization
+
+    def clean_code(self) -> str:
+        """Upper-cased, and unique within this clinic.
+
+        Checked by hand rather than left to the model. The constraint is on
+        (organization, code) and ``organization`` is not a form field, so Django
+        drops the whole constraint from validation — seeding
+        ``instance.organization`` is not enough, because the exclusion is decided
+        by which fields the *form* carries. Without this, a repeated code is an
+        IntegrityError page instead of a message on the box that caused it.
+        """
+        code = self.cleaned_data['code'].strip().upper()
+        organization_id = self.instance.organization_id
+        if organization_id:
+            clash = Branch.all_objects.filter(
+                organization_id=organization_id, code=code
+            )
+            if self.instance.pk:
+                clash = clash.exclude(pk=self.instance.pk)
+            if clash.exists():
+                raise forms.ValidationError('Another chamber already uses this code.')
+        return code

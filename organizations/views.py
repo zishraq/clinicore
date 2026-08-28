@@ -1,18 +1,36 @@
 """Organization settings screens.
 
-Owner-only, one screen per concern (SPEC §6.8). Both are the same shape — bind a
-ModelForm to the active organization, save, redirect — so they share
+Owner-only, one screen per concern (SPEC §6.8). Three of them are the same shape
+— bind a ModelForm to the active organization, save, redirect — so they share
 ``_settings_screen`` and one template rather than growing a copy each.
+
+Branches are the exception and cannot use it: the form binds a *branch*, there
+are several of them, and one of them may not exist yet. They get their own two
+views and reuse the same field-rendering template.
 """
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.permissions import owner_required, require_membership
-from organizations.forms import BillingSettingsForm, FeatureSettingsForm
+from organizations.forms import (
+    BillingSettingsForm,
+    BranchForm,
+    FeatureSettingsForm,
+    PrescriptionSettingsForm,
+)
+from organizations.models import Branch
+from organizations.services import organization_branches
 
-__all__ = ['billing_settings', 'feature_settings']
+__all__ = [
+    'billing_settings',
+    'branch_create',
+    'branch_list',
+    'branch_update',
+    'feature_settings',
+    'prescription_settings',
+]
 
 
 def _settings_screen(request, *, form_class, heading: str, saved: str, url_name: str):
@@ -60,3 +78,68 @@ def feature_settings(request):
         saved='Feature settings saved.',
         url_name='feature_settings',
     )
+
+
+@login_required
+@owner_required
+def prescription_settings(request):
+    """What the printed prescription says, beyond the visit and the chamber."""
+    return _settings_screen(
+        request,
+        form_class=PrescriptionSettingsForm,
+        heading='Prescription',
+        saved='Prescription settings saved.',
+        url_name='prescription_settings',
+    )
+
+
+@login_required
+@owner_required
+def branch_list(request):
+    """Every chamber, in the order it prints.
+
+    There is no delete, and that is a decision rather than an omission:
+    ``Patient.registered_branch`` and ``Encounter.branch`` are both PROTECT, so
+    a delete button would be a 500 waiting for its first click. ``is_active`` is
+    the off switch and it already existed.
+    """
+    membership = require_membership(request)
+    return render(
+        request,
+        'organizations/branch_list.html',
+        {'branches': organization_branches(membership.organization)},
+    )
+
+
+def _branch_screen(request, branch=None):
+    """Create or edit one chamber. Both halves of the same short form."""
+    membership = require_membership(request)
+    organization = membership.organization
+    data = request.POST if request.method == 'POST' else None
+    form = BranchForm(data, instance=branch, organization=organization)
+    if request.method == 'POST' and form.is_valid():
+        saved = form.save(commit=False)
+        saved.organization = organization
+        saved.created_by = saved.created_by or membership.user
+        saved.save()
+        messages.success(request, f'{saved.name} saved.')
+        return redirect('organizations:branch_list')
+    return render(
+        request,
+        'organizations/branch_form.html',
+        {'form': form, 'branch': branch},
+    )
+
+
+@login_required
+@owner_required
+def branch_create(request):
+    return _branch_screen(request)
+
+
+@login_required
+@owner_required
+def branch_update(request, pk: int):
+    # Through the org-scoped manager, so another clinic's chamber is a 404
+    # rather than a permission message.
+    return _branch_screen(request, get_object_or_404(Branch, pk=pk))

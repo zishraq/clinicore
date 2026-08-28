@@ -10,8 +10,10 @@ from django.utils.text import slugify
 from core.models import OrgOwnedModel, TimeStampedModel
 
 __all__ = [
+    'CONTACT_MAX_LENGTH',
     'DEFAULT_TERMINOLOGY',
     'PRESCRIBING_FIELDS',
+    'WATERMARK_MAX_LENGTH',
     'Branch',
     'Organization',
     'PrescribingField',
@@ -94,6 +96,14 @@ DEFAULT_TERMINOLOGY = {
     # The verb for leaving draft. Composed with `encounter` at the call site
     # ("Finish visit") so relabelling the record relabels the button.
     'finish': 'Finish',
+    # The printed prescription's letterhead. The design the clinic supplied
+    # writes these two chips and the consulting-hours line in Bengali, so they
+    # go through the map like every other user-facing word — the rest of that
+    # sheet's chrome ("Name:", "Diagnosis", "Doctor's Signature") is English in
+    # the clinic's own design and needs no key.
+    'registration_number': 'Reg. no.',
+    'practitioner_phone': 'Mobile',
+    'consulting_hours': 'Consulting hours',
     # Photographs on a visit. One model covers the patient and the documents
     # they bring in, so there is one word rather than "photo" and "document" —
     # a clinic that mostly photographs referral letters maps these to
@@ -178,17 +188,28 @@ _TERM_MAX_LENGTH = 40
 #: Shared by every optional prescribing field so they stay one shape.
 PRESCRIBING_MAX_LENGTH = 40
 
+#: Longest one line of the printed prescription's contact strip may be. Four of
+#: them share a page width, so this is a layout limit rather than storage.
+CONTACT_MAX_LENGTH = 60
 
-def clean_suggestions(values) -> list[str]:
+#: Longest the watermark may be. It renders very large inside a fixed circle.
+WATERMARK_MAX_LENGTH = 8
+
+
+def clean_suggestions(values, *, max_length: int = PRESCRIBING_MAX_LENGTH) -> list[str]:
     """Suggested values, cleaned. One rule, used on the way in and on the way out.
 
     Blanks and case-insensitive duplicates are dropped, values are truncated,
     and the original order is kept — these are offered in the order the clinic
     thinks of them, not alphabetically.
+
+    ``max_length`` is a parameter because the second caller is the printed
+    prescription's contact bar, whose lines ("WhatsApp / Call: 01711-345387")
+    are longer than a potency. The rule is the same; only the width differs.
     """
     seen, cleaned = set(), []
     for value in values or []:
-        text = str(value).strip()[:PRESCRIBING_MAX_LENGTH]
+        text = str(value).strip()[:max_length]
         if text and text.casefold() not in seen:
             seen.add(text.casefold())
             cleaned.append(text)
@@ -304,6 +325,23 @@ class Organization(TimeStampedModel):
         blank=True,
         help_text='Suggested values, offered but never enforced.',
     )
+    # The line under the prescription's ℞ area — "bring this with you next
+    # time". Printed and read by a patient, so it is a column rather than a
+    # `branding` key (docs/adr/0017-dispensing-details.md states the rule).
+    prescription_notice = models.TextField(
+        blank=True,
+        help_text='Printed across the foot of every prescription.',
+    )
+    # The contact strip along the bottom of the prescription: one line each,
+    # printed verbatim and left to right. A list of whole lines rather than
+    # label/value pairs, because the clinic's own design styles the two halves
+    # identically — splitting them would buy a data shape and a filter and
+    # change nothing on paper.
+    prescription_contacts = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='One per line, printed along the foot of the prescription.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -349,9 +387,51 @@ class Organization(TimeStampedModel):
         return self.suggestions('strength')
 
     @property
+    def contacts(self) -> list[str]:
+        """The prescription's contact lines, cleaned on the way out.
+
+        Org-editable JSON reaches a printed document here, so it is cleaned at
+        the point of use like ``suggestions`` — a settings screen or a loader
+        can put anything in the column.
+        """
+        return clean_suggestions(
+            self.prescription_contacts, max_length=CONTACT_MAX_LENGTH
+        )
+
+    @property
+    def watermark_text(self) -> str:
+        """The mark printed faintly behind the prescription, or '' for none.
+
+        Capped hard: it renders at 140px inside a fixed circle, so a clinic that
+        types its whole name gets a ruined sheet rather than a small one.
+        """
+        return str((self.branding or {}).get('logo_text', '')).strip()[
+            :WATERMARK_MAX_LENGTH
+        ]
+
+    @property
     def primary_color(self) -> str:
         """Brand colour, safe to interpolate into CSS."""
         return hex_color_or(self.palette.get('primary'), SEED_PALETTE['primary'])
+
+    @property
+    def primary_dark_color(self) -> str:
+        """Darker brand tone, safe to interpolate into CSS.
+
+        A fallback only: the print stylesheet derives this from ``primary`` with
+        ``color-mix`` so that setting one colour is enough, and falls back to
+        this where that is unsupported.
+        """
+        return hex_color_or(
+            self.palette.get('primary-dark'), SEED_PALETTE['primary-dark']
+        )
+
+    @property
+    def primary_tint_color(self) -> str:
+        """Very light brand tone behind bars and chips. Same fallback role."""
+        return hex_color_or(
+            self.palette.get('surface-alt'), SEED_PALETTE['surface-alt']
+        )
 
     @property
     def letterhead(self) -> str:
@@ -366,9 +446,41 @@ class Branch(OrgOwnedModel):
     code = models.CharField(max_length=20)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=32, blank=True)
+    # When this chamber sees patients — printed in the prescription's header
+    # for the branch the visit happened at. On the branch rather than the
+    # organization because a clinic with three chambers keeps three different
+    # sets of hours, and the header must follow the encounter.
+    consulting_hours = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text='Printed in the header when a visit happens here.',
+    )
+    # How often this chamber is open at all — "every 2nd Friday". Printed as a
+    # chip in the prescription's footer, whole and verbatim: styling part of it
+    # would mean either markup in the column or a parser for the ordinal.
+    schedule_note = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Printed in the footer, e.g. every 2nd Friday of the month.',
+    )
+    # Defaults to off so the migration cannot silently grow a footer on an
+    # existing clinic's prescriptions. ``bootstrap_clinic`` turns it on for the
+    # branch it creates, because a clinic being stood up is naming a real
+    # chamber it wants printed.
+    show_on_prescription = models.BooleanField(
+        default=False,
+        help_text='List this chamber in the footer of printed prescriptions.',
+    )
+    print_order = models.PositiveSmallIntegerField(
+        default=0, help_text='Lower numbers print first.'
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        # Deliberately still by name: this ordering feeds every branch dropdown
+        # in the application, and ``print_order`` is a fact about one printed
+        # document. The prescription's own order comes from
+        # ``services.prescription_branches``.
         ordering = ['name']
         constraints = [
             models.UniqueConstraint(

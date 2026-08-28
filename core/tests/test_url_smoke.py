@@ -74,6 +74,7 @@ def _argument_sources() -> dict:
     from catalog.models import AdviceTemplate, Product
     from clinical.models import Encounter, EncounterPhoto
     from inventory.models import GoodsReceipt, StockBatch
+    from organizations.models import Branch
     from patients.models import Patient
     from scheduling.models import Appointment
 
@@ -126,6 +127,7 @@ def _argument_sources() -> dict:
         'inventory:adjustment_create': by(StockBatch),
         'inventory:product_stock': by(Product, is_stock_tracked=True),
         'inventory:receipt_detail': by(GoodsReceipt),
+        'organizations:branch_update': by(Branch),
         'patients:clinical_profile': by(Patient),
         'patients:delete': by(Patient),
         'patients:detail': by(Patient),

@@ -155,3 +155,40 @@ def test_it_has_no_reset():
     with pytest.raises(CommandError, match=r'unrecognized arguments|Unknown option'):
         call_command('bootstrap_clinic', '--reset', *REAL_CLINIC, stdout=StringIO())
     assert not Organization.objects.exists()
+
+
+def test_the_chamber_it_creates_prints_on_prescriptions():
+    """``show_on_prescription`` defaults to off so the migration cannot silently
+    grow a footer on an existing clinic. A clinic being stood up is the other
+    case: it is naming its real chamber, so that chamber prints."""
+    _build(*REAL_CLINIC)
+    organization = Organization.objects.get(slug='karim-homeo-hall')
+    with organization_context(organization):
+        branch = Branch.objects.get()
+    assert branch.show_on_prescription is True
+    assert branch.print_order == 0
+
+
+def test_the_chambers_printed_details_can_be_given_at_bootstrap():
+    _build(
+        *REAL_CLINIC,
+        '--branch-address=29 Ruhani Market, Mirpur-2',
+        '--branch-phone=01568-316095',
+        '--branch-hours=5pm - 9pm',
+        '--branch-schedule=Every 2nd Friday of the month',
+    )
+    organization = Organization.objects.get(slug='karim-homeo-hall')
+    with organization_context(organization):
+        branch = Branch.objects.get()
+    assert branch.address == '29 Ruhani Market, Mirpur-2'
+    assert branch.phone == '01568-316095'
+    assert branch.consulting_hours == '5pm - 9pm'
+    assert branch.schedule_note == 'Every 2nd Friday of the month'
+
+
+def test_it_says_what_still_has_to_be_filled_in_on_screen():
+    """Twelve of the printed prescription's fields have no value until somebody
+    types one, and none of them is discoverable from the command line."""
+    output = _build(*REAL_CLINIC)
+    assert 'Settings \u2192 Prescription' in output
+    assert 'Settings \u2192 Chambers' in output

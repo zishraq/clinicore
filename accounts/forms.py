@@ -8,19 +8,21 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 
-from accounts.models import ADMIN_ROLES, Role, User
+from accounts.models import ADMIN_ROLES, PractitionerProfile, Role, User
 from organizations.models import DEFAULT_TERMINOLOGY
 
 __all__ = [
     'MemberCreateForm',
     'MemberUpdateForm',
     'PhoneLoginForm',
+    'PractitionerProfileForm',
     'ProfileForm',
     'TemporaryPasswordForm',
 ]
 
 _INPUT = {'class': 'input input-bordered w-full'}
 _SELECT = {'class': 'select select-bordered w-full'}
+_TEXTAREA = {'class': 'textarea textarea-bordered w-full', 'rows': 2}
 
 
 class PhoneLoginForm(AuthenticationForm):
@@ -222,4 +224,50 @@ class ProfileForm(forms.ModelForm):
         widgets = {
             'full_name': forms.TextInput(attrs=_INPUT),
             'email': forms.EmailInput(attrs=_INPUT),
+        }
+
+
+class PractitionerProfileForm(forms.ModelForm):
+    """How you appear on this clinic's printed prescriptions.
+
+    Edited by the practitioner on their own account rather than by an
+    administrator on the team screen: these are somebody's degrees and
+    registration number, and the person who can spell them is the person they
+    belong to. It is per-membership, so editing it at one clinic leaves the
+    other clinic's letterhead alone (accounts.models.PractitionerProfile).
+    """
+
+    class Meta:
+        model = PractitionerProfile
+        fields = [
+            'print_name',
+            'degrees',
+            'designation',
+            'additional_note',
+            'registration_number',
+            'contact_phone',
+        ]
+        labels = {
+            'print_name': 'Name as printed',
+            'degrees': 'Degrees',
+            'designation': 'Designation',
+            'additional_note': 'Additional line',
+            'registration_number': 'Registration number',
+            'contact_phone': 'Phone as printed',
+        }
+        help_texts = {
+            'designation': 'One per line.',
+            'additional_note': 'Printed smaller, under the designation.',
+            'contact_phone': (
+                'Printed on the prescription. Leave blank to print none — this '
+                'is not the number you sign in with.'
+            ),
+        }
+        widgets = {
+            'print_name': forms.TextInput(attrs=_INPUT),
+            'degrees': forms.TextInput(attrs=_INPUT),
+            'designation': forms.Textarea(attrs={**_TEXTAREA, 'rows': 2}),
+            'additional_note': forms.Textarea(attrs={**_TEXTAREA, 'rows': 2}),
+            'registration_number': forms.TextInput(attrs=_INPUT),
+            'contact_phone': forms.TextInput(attrs={**_INPUT, 'inputmode': 'tel'}),
         }

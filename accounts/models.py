@@ -15,6 +15,7 @@ __all__ = [
     'CLINICAL_ROLES',
     'PRESCRIBING_ROLES',
     'Membership',
+    'PractitionerProfile',
     'Role',
     'User',
     'UserManager',
@@ -157,3 +158,80 @@ class Membership(TimeStampedModel):
         MVP: replace with permission layer (SPEC §6.1 RolePermission).
         """
         return self.role in ADMIN_ROLES
+
+
+class PractitionerProfile(models.Model):
+    """How one practitioner appears on this clinic's printed letterhead.
+
+    **Hangs off ``Membership``, not ``User``, and that is the decision worth
+    knowing.** A practitioner working at two clinics holds one account with two
+    memberships and may present differently at each — different degrees on the
+    sheet, a different registration line, a different public number. Putting it
+    on ``User`` would make one letterhead serve both, and the first clinic to
+    edit it would silently rewrite the other's prescriptions.
+
+    **A separate row rather than six more columns on ``Membership``**, for three
+    reasons. ``resolvers.resolve_active_membership`` reads ``Membership`` with
+    ``select_related('organization')`` on *every* request, and letterhead copy
+    has no business on that path. ``Membership``'s four columns are all facts
+    about access, and ``/team/`` renders them — degrees beside the deactivate
+    button is a form nobody can read. And ``Membership`` has no organization
+    filter of its own, so it is the one surface where a forgotten
+    ``.filter(organization=…)`` shows another clinic's staff; widening it widens
+    that.
+
+    Not an ``OrgOwnedModel``, like ``Membership`` itself: the organization is
+    already ``membership.organization``, and a second FK is a second answer that
+    can disagree with the first.
+
+    Every field is optional. A practitioner with no profile still prints — see
+    ``display_name`` — with the header's detail rows omitted rather than blank.
+    """
+
+    membership = models.OneToOneField(
+        Membership, on_delete=models.CASCADE, related_name='practitioner_profile'
+    )
+    # The name as it should appear on paper, which is not always the name the
+    # account is under: this clinic signs in with Latin characters and prints
+    # in Bengali.
+    print_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Leave blank to print the name on the account.',
+    )
+    degrees = models.CharField(max_length=200, blank=True)
+    designation = models.TextField(blank=True)
+    # Set smaller than the designation on the printed sheet — a supporting line
+    # rather than a second designation.
+    additional_note = models.TextField(blank=True)
+    registration_number = models.CharField(max_length=40, blank=True)
+    # Not ``User.phone``. That is the sign-in identifier and may be a private
+    # number; this one is printed on a document handed to patients.
+    contact_phone = models.CharField(max_length=32, blank=True)
+
+    class Meta:
+        verbose_name = 'practitioner profile'
+
+    def __str__(self) -> str:
+        return f'Letterhead — {self.membership.user.full_name}'
+
+    @property
+    def display_name(self) -> str:
+        return self.print_name.strip() or self.membership.user.full_name
+
+    @property
+    def has_details(self) -> bool:
+        """Whether anything below the name is worth printing.
+
+        The header degrades to a bare name rather than to a name followed by
+        four empty rows, so the read surfaces ask this rather than the switch.
+        """
+        return any(
+            (
+                self.degrees.strip(),
+                self.designation.strip(),
+                self.additional_note.strip(),
+                self.registration_number.strip(),
+                self.contact_phone.strip(),
+            )
+        )

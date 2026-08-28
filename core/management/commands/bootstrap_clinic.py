@@ -42,6 +42,23 @@ class Command(BaseCommand):
             help='IANA zone the clinic keeps its day in, e.g. Asia/Dhaka.',
         )
         parser.add_argument('--branch', required=True, help='Name of its one branch.')
+        # The chamber's own details. Optional because a clinic can be stood up
+        # before its letterhead is decided, and every one of them is editable
+        # afterwards at Settings → Chambers. They are flags rather than a
+        # second command because ``create_organization`` already takes the
+        # branch's fields as a dict — this widens what is put in it.
+        parser.add_argument('--branch-address', default='', help='Its address.')
+        parser.add_argument('--branch-phone', default='', help='Its phone number.')
+        parser.add_argument(
+            '--branch-hours',
+            default='',
+            help='When it sees patients, printed in the prescription header.',
+        )
+        parser.add_argument(
+            '--branch-schedule',
+            default='',
+            help='When it opens, printed in the prescription footer.',
+        )
         parser.add_argument(
             '--admin-phone', required=True, help="The administrator's phone number."
         )
@@ -78,7 +95,19 @@ class Command(BaseCommand):
             organization, _ = create_organization(
                 name=name,
                 timezone_name=zone,
-                branch={'name': branch_name},
+                branch={
+                    'name': branch_name,
+                    'address': options['branch_address'].strip(),
+                    'phone': options['branch_phone'].strip(),
+                    'consulting_hours': options['branch_hours'].strip(),
+                    'schedule_note': options['branch_schedule'].strip(),
+                    # The column defaults to off so that the migration cannot
+                    # grow a footer on an existing clinic's prescriptions. A
+                    # clinic being stood up is different: it is naming its real
+                    # chamber, so that chamber prints.
+                    'show_on_prescription': True,
+                    'print_order': 0,
+                },
             )
         except CannotCreateOrganization as error:
             raise CommandError(str(error)) from error
@@ -104,4 +133,10 @@ class Command(BaseCommand):
         self.stdout.write(f'  Administrator: {phone}  {admin_name}')
         self.stdout.write(f'  Password     : {password}  (must be changed at sign-in)')
         self.stdout.write("\n  Next: load the clinic's own medicine list —")
-        self.stdout.write(f'    python manage.py import_remedies {organization.slug}\n')
+        self.stdout.write(f'    python manage.py import_remedies {organization.slug}')
+        self.stdout.write(
+            '\n  Then sign in and fill in the printed letterhead:\n'
+            '    Settings → Prescription  (notice, contact strip, watermark, colour)\n'
+            '    Settings → Chambers      (address, hours, schedule, print order)\n'
+            '    Your account             (degrees, designation, registration)\n'
+        )
