@@ -892,6 +892,79 @@ three questions, all in
 - The migration is **choices-only**: `sqlmigrate` prints `BEGIN; -- (no-op)
   COMMIT;` on Postgres, `max_length` was already 20, and nothing rewrites a row.
 
+The printed prescription is the clinic's own design now (2026-08-28), and the
+whole point of the increment is that **none of that design is in the code**.
+`docs/reference/prescription-design.html` is one configuration of a letterhead:
+A4, Bengali, teal, a two-column body, a watermark, and a footer carrying the
+visiting chambers. Twelve fields and two settings screens carry it. **Browser-
+verified end to end** against the running stack, in Chrome's own print preview
+and by printing the page to PDF. Rules to know:
+
+- **The practitioner's letterhead hangs off `Membership`, not `User`**, as
+  `accounts.PractitionerProfile` — a OneToOne rather than six more columns.
+  `resolvers.resolve_active_membership` reads `Membership` with a
+  `select_related` on *every request*, `/team/` renders it, and it has no
+  organization filter of its own. Somebody working at two clinics presents
+  differently at each, so `User` would let one clinic rewrite the other's
+  prescriptions. Not an `OrgOwnedModel`: `membership.organization` is already
+  the answer and a second FK is a second answer that can disagree.
+- **The header follows `encounter.practitioner`**, and degrades to the
+  account's name with the degrees/designation/registration rows *dropped*
+  rather than printed empty (`PractitionerProfile.has_details`).
+- **The header's address is `Branch.address`, falling back to
+  `branding['letterhead']`.** A visit at the Daulatpur chamber must not print
+  the Mirpur address; a single-branch clinic that only filled in `letterhead`
+  prints what it always printed. `consulting_hours` is on `Branch` for the same
+  reason — three chambers keep three sets of hours.
+- **`Branch.show_on_prescription` defaults to `False`** so the migration cannot
+  grow a footer on an existing clinic's sheets; `bootstrap_clinic` sets it for
+  the branch it creates, and `services.prescription_branches` excludes the
+  visit's own chamber — it is already named in full at the top.
+- **The schedule note is one chip, not a styled ordinal.** The design wraps just
+  "২য়" out of the Bengali phrase, which from a free-text column needs either
+  markup in the database — an injection surface on a document handed to
+  patients — or a parser for Bengali ordinals.
+- **Colours are derived, so the clinic sets one.** `--primary` comes from the
+  validated `primary_color`; `--primary-dark` and `--primary-tint` are declared
+  twice, the second a `color-mix` that wins where supported and is dropped at
+  parse time where it is not. A literal `#007791` anywhere is a bug.
+- **`print-color-adjust: exact` is load-bearing and only visible on paper.**
+  Confirmed in the print preview with *Background graphics unchecked*: the
+  tinted patient bar and the teal schedule chip still print. Without it they
+  vanish, and nothing on screen ever shows it.
+- **The watermark is an element, not a CSS `content` string.** It is
+  org-editable text, and a quote in it would break out of the declaration —
+  escaping does not protect inside a style block. Capped at 8 characters
+  (`WATERMARK_MAX_LENGTH`): it renders at 38mm inside a fixed circle.
+- **℞ is an explicit serif stack, not a fourth font file and not an SVG.**
+  U+211E is absent from Hind Siliguri; `'DejaVu Serif', 'Liberation Serif',
+  'Times New Roman', 'Segoe UI Symbol', Georgia, serif` renders it correctly,
+  verified in the printed PDF. Hind Siliguri itself is self-hosted from
+  `static/fonts/` — the design's Google Fonts link would leave a Bengali sheet
+  unreadable on a box with no internet, not merely unstyled.
+- **Investigation maps to no field, deliberately.** `Encounter.plan` is the
+  plan; the case record's investigations table is per-patient and unbuilt. The
+  section prints ruled lines — the sheet is still something a doctor writes on.
+  Chief complaint is not on the paper design at all and prints only when it has
+  data, so nothing that printed before stops printing.
+- **A5 is not the design.** The design is A4-only; A5 collapses to one column
+  with the sidebar stacked above the ℞ area, and roughly twenty spacing values
+  are size-conditional because a full visit (3 medicines, 2 advice,
+  instructions, follow-up, chambers, contact strip) overflowed to a second page
+  by 172px before they were tuned. Measured by printing to PDF and reading the
+  page count, not by eye — `pdfinfo | grep Pages` is the check to repeat after
+  touching this template.
+- **One assertion in `test_prescription_print.py` was reversed and is
+  documented in place**: `'℞' not in body` for an advice-only sheet became
+  `'℞' in body`. It was a proxy for "the medicines section is absent" when the
+  mark lived inside that section; it now heads the whole right column, and
+  advice is half of what a practitioner prescribes. Its inverse — an empty
+  prescription carries no mark — is a new test.
+- **The "Generated <time>" stamp survived the redesign** even though the design
+  has no such line. It is ADR 0011's wall-clock claim on a handed-over document
+  and `test_the_print_views_stamp_the_clinics_local_time` pins it; dropping it
+  was caught by that test, not by reading.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployed to production on 2026-08-23 — one Oracle Cloud Always Free box,

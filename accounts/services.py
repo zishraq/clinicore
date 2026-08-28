@@ -13,6 +13,7 @@ __all__ = [
     'add_member',
     'create_member',
     'organization_members',
+    'practitioner_letterhead',
     'prescribing_users',
     'set_active_organization',
     'set_membership_active',
@@ -142,3 +143,15 @@ def create_member(
         defaults={'role': role or Role.STAFF},
     )
     return membership
+
+
+def practitioner_letterhead(organization, user):
+    """How ``user`` should appear at the top of ``organization``'s prescriptions.
+
+    ``None`` when they have never filled one in, which the printed header
+    degrades to a bare name for. Keyed on the membership rather than the user
+    because somebody working at two clinics presents differently at each
+    (``accounts.models.PractitionerProfile``).
+    """
+    membership = Membership.objects.filter(user=user, organization=organization).first()
+    return getattr(membership, 'practitioner_profile', None) if membership else None

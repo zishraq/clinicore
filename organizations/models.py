@@ -102,7 +102,10 @@ DEFAULT_TERMINOLOGY = {
     # sheet's chrome ("Name:", "Diagnosis", "Doctor's Signature") is English in
     # the clinic's own design and needs no key.
     'registration_number': 'Reg. no.',
-    'practitioner_phone': 'Mobile',
+    # Labels every phone number the prescription prints: the practitioner's
+    # chip in the header and each chamber's in the footer. One key because it
+    # is one word — the clinic's design writes "মোবা:" in both places.
+    'printed_phone': 'Mobile',
     'consulting_hours': 'Consulting hours',
     # Photographs on a visit. One model covers the patient and the documents
     # they bring in, so there is one word rather than "photo" and "document" —

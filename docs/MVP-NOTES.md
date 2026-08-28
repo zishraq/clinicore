@@ -161,6 +161,20 @@ this file covers what was **not** built and what keeps biting.
   checkbox posts nothing, so the QueryDict is empty and falsy, and the usual
   idiom silently rebuilds the form unbound and saves nothing — turning a feature
   off would look like it worked. Bind on `request.method` instead.
+- **A partial `ModelForm` silently drops the unique constraint that scopes a
+  row to its clinic.** Django decides which constraints to validate from the
+  fields the *form* carries, so a form over an org-owned model that omits
+  `organization` — which every one of them does, because the value comes from
+  the request — has `UniqueConstraint(fields=['organization', 'code'])` excluded
+  from validation entirely. The duplicate then reaches the database and comes
+  back as an `IntegrityError` page instead of a message on the box that caused
+  it. **Seeding `self.instance.organization` in `__init__` does not fix it**:
+  the exclusion is computed from the form's field list, not from what the
+  instance happens to hold. The form has to query for the clash itself —
+  `organizations.forms.BranchForm.clean_code` is the worked example. This is the
+  same class as the checkbox trap above: the failing path looks like the working
+  one until something collides, and every future org-scoped settings form will
+  meet it.
 
 ### The frontend
 

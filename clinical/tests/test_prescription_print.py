@@ -75,8 +75,15 @@ def test_advice_only_prescription_prints_without_a_medicines_table(
     assert '>Advice</th>' in body
     # No medicines section at all — not a header over an empty table.
     assert '>Medicine</th>' not in body
-    assert '℞' not in body
     assert 'No items prescribed' not in body
+    # The ℞ mark *is* here, and this assertion was reversed on 2026-08-28 when
+    # the sheet was rebuilt to the clinic's own design. It used to read
+    # `'℞' not in body`, which was a proxy for "the medicines section is
+    # entirely absent" back when the mark lived inside that section. It now
+    # heads the whole right-hand column, so the proxy no longer measures what it
+    # was written to measure — and advice is half of what a practitioner
+    # prescribes (SPEC §5), so an advice-only sheet is a prescription.
+    assert '℞' in body
 
 
 def test_medicine_only_prescription_prints_without_an_advice_table(
@@ -133,3 +140,17 @@ def test_the_printed_name_is_the_snapshot_not_the_live_catalog_row(
     body = response.content.decode()
     assert 'Original name' in body
     assert 'Renamed later' not in body
+
+
+def test_a_prescription_with_nothing_on_it_carries_no_rx_mark(
+    client, practitioner, organization, prescription
+):
+    """The other half of the assertion above: the mark says something was
+    prescribed, so an empty sheet must not claim one."""
+    client.force_login(practitioner)
+    response = client.get(
+        reverse('clinical:prescription_print', args=[prescription.encounter_id])
+    )
+    body = response.content.decode()
+    assert 'No items prescribed' in body
+    assert '℞' not in body

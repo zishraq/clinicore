@@ -10,13 +10,63 @@
     Print CSS is the one place where a utility framework's reset and its
     print-media rules fight you, and a prescription must render identically on a
     machine that cannot reach a CDN. Everything below is hand-written and inline.
+
+    The layout follows the design the clinic supplied
+    (docs/reference/prescription-design.html) and **none of that design's
+    content is here**. The doctor's degrees, the chamber's hours, the footer
+    chambers and their schedules, the notice line, the contact strip, the
+    watermark and the teal are all rows in the database, reached through
+    Settings. A second clinic is configuration, never a template edit
+    (SPEC §6.8).
   {% endcomment %}
   <style>
+    {% comment %}
+      Self-hosted, because this page must render on a machine with no internet
+      and the reference design's Google Fonts link would silently fall back to
+      a Latin face — which for a Bengali sheet is not a downgrade, it is
+      unreadable. Hind Siliguri carries Bengali and Latin, so it is the only
+      family the sheet needs.
+    {% endcomment %}
+    @font-face {
+      font-family: 'Hind Siliguri';
+      src: url('{% static "fonts/HindSiliguri-Regular.woff2" %}') format('woff2');
+      font-weight: 400;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Hind Siliguri';
+      src: url('{% static "fonts/HindSiliguri-SemiBold.woff2" %}') format('woff2');
+      font-weight: 600;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Hind Siliguri';
+      src: url('{% static "fonts/HindSiliguri-Bold.woff2" %}') format('woff2');
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    :root {
+      --primary: {{ letterhead_color }};
+      /* Declared twice on purpose. The second wins where color-mix is
+         supported, so a clinic that sets one brand colour gets a coherent
+         darker tone and tint; where it is not, the declaration is invalid at
+         parse time and dropped, leaving the validated palette value above. */
+      --primary-dark: {{ letterhead_dark }};
+      --primary-dark: color-mix(in srgb, var(--primary) 72%, #000);
+      --primary-tint: {{ letterhead_tint }};
+      --primary-tint: color-mix(in srgb, var(--primary) 8%, #fff);
+      --text: #1F2937;
+      --muted: #6B7280;
+      --border: #E5E7EB;
+      --rule: #D1D5DB;
+    }
+
     /* Page geometry. Chrome honours @page size, so the paper dropdown in the
        print dialog is preselected and the margins below are the real ones. */
     @page {
       size: {% if page_size == 'A4' %}A4{% else %}A5{% endif %};
-      margin: {% if page_size == 'A4' %}16mm 14mm{% else %}10mm 9mm{% endif %};
+      margin: {% if page_size == 'A4' %}14mm 16mm{% else %}10mm 9mm{% endif %};
     }
 
     * { box-sizing: border-box; }
@@ -25,69 +75,233 @@
       margin: 0;
       padding: 0;
       background: #fff;
-      color: #1E293B;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-      font-size: {% if page_size == 'A4' %}12pt{% else %}10.5pt{% endif %};
+      color: var(--text);
+      font-family: 'Hind Siliguri', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: {% if page_size == 'A4' %}11pt{% else %}9pt{% endif %};
       line-height: 1.45;
+      /* Without this Chrome drops every background on paper, and the tinted
+         patient bar and the footer's chips vanish — a defect that only ever
+         appears in the print dialog, never on screen. */
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     /* On screen, mimic the sheet so what you see is what prints. */
     .sheet {
+      position: relative;
       width: {% if page_size == 'A4' %}210mm{% else %}148mm{% endif %};
       min-height: {% if page_size == 'A4' %}297mm{% else %}210mm{% endif %};
       margin: 12mm auto;
-      padding: {% if page_size == 'A4' %}16mm 14mm{% else %}10mm 9mm{% endif %};
+      padding: {% if page_size == 'A4' %}14mm 16mm{% else %}10mm 9mm{% endif %};
       background: #fff;
       box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08);
-    }
-
-    .letterhead {
-      border-bottom: 2px solid {{ letterhead_color }};
-      padding-bottom: 6mm;
-      margin-bottom: 6mm;
-    }
-    .clinic-name { font-size: 1.5em; font-weight: 700; color: {{ letterhead_color }}; margin: 0; }
-    .clinic-meta { margin: 1mm 0 0; font-size: .82em; color: #64748B; }
-
-    .patient-bar {
       display: flex;
-      flex-wrap: wrap;
-      gap: 2mm 8mm;
-      font-size: .88em;
-      border-bottom: 1px solid #E2E8F0;
-      padding-bottom: 4mm;
-      margin-bottom: 5mm;
+      flex-direction: column;
     }
-    .patient-bar dt { color: #64748B; margin: 0; font-size: .85em; }
-    .patient-bar dd { margin: 0; font-weight: 600; }
+
+    {% comment %}
+      A real element rather than the reference design's ::before with a CSS
+      `content` string. The text is organization-editable, and a value carrying
+      a quote would break out of the declaration — escaping does not protect
+      inside a style block, which is the same reason the colours go through
+      hex_color_or.
+    {% endcomment %}
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: {% if page_size == 'A4' %}80mm{% else %}56mm{% endif %};
+      height: {% if page_size == 'A4' %}80mm{% else %}56mm{% endif %};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: {% if page_size == 'A4' %}38mm{% else %}26mm{% endif %};
+      font-weight: 700;
+      letter-spacing: .02em;
+      color: var(--primary);
+      opacity: .05;
+      border: 6px solid var(--primary);
+      border-radius: 50%;
+      /* Behind everything. Every band below carries z-index 1 so the watermark
+         sits under the text rather than washing over it. */
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .band { position: relative; z-index: 1; }
+
+    /* --- Header ---------------------------------------------------------- */
+    .header {
+      display: grid;
+      /* Two columns on both sizes. Stacking them on A5 was the single
+         largest block of vertical space on the sheet, and it was what pushed a
+         full visit onto a second page. */
+      grid-template-columns: {% if page_size == 'A4' %}1.3fr 1fr{% else %}1.15fr 1fr{% endif %};
+      gap: {% if page_size == 'A4' %}8mm{% else %}4mm{% endif %};
+      padding-bottom: {% if page_size == 'A4' %}3mm{% else %}1.8mm{% endif %};
+      border-bottom: 2px solid var(--primary);
+    }
+    .doc-name {
+      margin: 0 0 1mm;
+      font-size: {% if page_size == 'A4' %}1.7em{% else %}1.35em{% endif %};
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--primary-dark);
+    }
+    .doc-degrees { font-size: .95em; font-weight: 600; color: #374151; }
+    .doc-designation { font-size: .88em; line-height: 1.35; color: var(--muted); }
+    .doc-note { font-size: .8em; color: var(--muted); }
+    .chips { margin-top: 1.5mm; display: flex; flex-wrap: wrap; gap: 3mm; }
+    .chip {
+      background: var(--primary-tint);
+      color: var(--primary);
+      font-size: .82em;
+      font-weight: 600;
+      padding: .5mm 2mm;
+      border-radius: 1mm;
+    }
+
+    .clinic { text-align: right; }
+    .clinic-name {
+      margin: 0 0 1mm;
+      font-size: {% if page_size == 'A4' %}1.4em{% else %}1.15em{% endif %};
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--primary);
+    }
+    .clinic-address {
+      margin: 0;
+      font-size: .9em;
+      line-height: 1.35;
+      color: var(--muted);
+      white-space: pre-line;
+    }
+    .clinic-hours { margin-top: 1mm; font-size: .86em; font-weight: 600; }
+    .clinic-phone {
+      margin: .5mm 0 0;
+      font-size: 1.05em;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    /* --- Patient bar ----------------------------------------------------- */
+    .patient-bar {
+      margin-top: {% if page_size == 'A4' %}3mm{% else %}2mm{% endif %};
+      background: var(--primary-tint);
+      border-radius: 1.5mm;
+      padding: {% if page_size == 'A4' %}2mm{% else %}1.1mm{% endif %} 3.5mm;
+      display: grid;
+      /* A4 fits all five on one line. A5 is 130mm of usable width, so the
+         same five wrap onto two rows rather than being squeezed or dropped —
+         Wt is a box the doctor writes in at every visit. */
+      grid-template-columns: {% if page_size == 'A4' %}2fr .8fr .9fr .8fr 1.1fr{% else %}1.8fr 1fr 1fr{% endif %};
+      gap: {% if page_size == 'A4' %}2mm{% else %}1mm{% endif %} 3mm;
+      font-size: .92em;
+    }
+    .field { display: flex; align-items: baseline; gap: 1.5mm; min-width: 0; }
+    .field > span:first-child { font-weight: 600; color: var(--primary-dark); white-space: nowrap; }
+    .field .value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    /* A dashed rule where a value would be, so an unrecorded field is written
+       in by hand rather than reading as nothing to record. */
+    .field .blank { flex: 1; border-bottom: 1px dashed var(--rule); min-height: 3.5mm; }
+
+    /* --- Body ------------------------------------------------------------ */
+    .body {
+      flex: 1;
+      margin-top: {% if page_size == 'A4' %}4mm{% else %}1.8mm{% endif %};
+      display: grid;
+      {% if page_size == 'A4' %}
+        grid-template-columns: 62mm 1fr;
+        min-height: 150mm;
+      {% else %}
+        /* A5 is 148mm wide: a 62mm sidebar would leave the Rx area under
+           55mm, which cannot hold a medicines table. The sections stack above
+           it instead. */
+        grid-template-columns: 1fr;
+        gap: 3mm;
+      {% endif %}
+    }
+
+    .sidebar {
+      {% if page_size == 'A4' %}
+        border-right: 1px solid var(--border);
+        padding-right: 4mm;
+        display: flex;
+        flex-direction: column;
+        gap: 6mm;
+      {% else %}
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2mm 4mm;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 1.8mm;
+      {% endif %}
+    }
+    .sidebar h4 {
+      margin: 0 0 {% if page_size == 'A4' %}1.5mm{% else %}.8mm{% endif %};
+      font-size: .82em;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .sidebar p { margin: 0; font-size: .92em; white-space: pre-line; }
+    .rules { display: flex; flex-direction: column; gap: 5mm; margin-top: 3mm; }
+    .rules span { border-bottom: 1px dotted var(--border); }
+
+    .rx-area {
+      {% if page_size == 'A4' %}padding-left: 6mm;{% endif %}
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    {% comment %}
+      U+211E is not in Hind Siliguri, so this is the one place the sheet asks
+      for a different family. An explicit serif stack rather than the reference
+      design's Playfair Display, which is a CDN font, and rather than a fourth
+      self-hosted file for a single glyph.
+    {% endcomment %}
+    .rx-mark {
+      margin: 0 0 {% if page_size == 'A4' %}2mm{% else %}1mm{% endif %};
+      font-family: 'DejaVu Serif', 'Liberation Serif', 'Times New Roman', 'Segoe UI Symbol', Georgia, serif;
+      font-size: {% if page_size == 'A4' %}2.6em{% else %}1.9em{% endif %};
+      font-weight: 600;
+      line-height: 1;
+      color: var(--primary);
+    }
+    .rx-content { flex: 1; min-width: 0; }
 
     .section-title {
-      font-size: .78em;
-      letter-spacing: .08em;
+      font-size: .8em;
+      letter-spacing: .06em;
       text-transform: uppercase;
-      color: #64748B;
-      margin: 0 0 2mm;
+      color: var(--muted);
+      margin: 0 0 1.5mm;
     }
 
-    .notes p { margin: 0 0 3mm; white-space: pre-line; }
-
-    /* The Rx mark is the visual anchor practitioners scan for. */
-    .rx-mark { font-size: 1.8em; font-weight: 700; color: {{ letterhead_color }}; line-height: 1; }
-
-    table.items { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    /* Auto layout, deliberately: a fixed one held the name column to its
+       declared width and broke "Azithromycin" across two lines, and the
+       medicine's name is the one thing on this sheet that must be read
+       without effort. The widths below stay as hints. */
+    table.items { width: 100%; border-collapse: collapse; margin-top: 1mm; }
     table.items th {
       text-align: left;
       font-size: .78em;
       text-transform: uppercase;
-      letter-spacing: .05em;
-      color: #64748B;
-      border-bottom: 1px solid #CBD5E1;
-      padding: 1.5mm 2mm 1.5mm 0;
+      letter-spacing: .04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--primary);
+      padding: {% if page_size == 'A4' %}1.2mm 2mm 1.2mm 0{% else %}0.8mm 2mm 0.8mm 0{% endif %};
     }
     table.items td {
-      padding: 2mm 2mm 2mm 0;
+      padding: {% if page_size == 'A4' %}1.6mm 2mm 1.6mm 0{% else %}0.85mm 2mm 0.85mm 0{% endif %};
       border-bottom: 1px solid #F1F5F9;
       vertical-align: top;
+      /* break-word, not anywhere: only a word that cannot fit at all is
+         split, so ordinary names stay whole. */
+      overflow-wrap: break-word;
     }
     table.items td.name { font-weight: 600; width: 34%; }
     /* Advice lines are sentences, not names, so they get the room. */
@@ -95,30 +309,84 @@
     /* Never split a prescribed item across two sheets. */
     table.items tr { break-inside: avoid; page-break-inside: avoid; }
 
-    .signature {
-      margin-top: 14mm;
-      text-align: right;
-      break-inside: avoid;
-    }
+    /* A5 cannot afford an A4's worth of white space above the rule; the
+       sheet running to a second page costs more than a roomy signature. */
+    .signature { margin-top: {% if page_size == 'A4' %}12mm{% else %}2mm{% endif %}; text-align: right; break-inside: avoid; }
     .signature .line {
       display: inline-block;
-      border-top: 1px solid #1E293B;
-      padding-top: 1.5mm;
-      min-width: 55mm;
+      border-top: 1px solid var(--text);
+      padding-top: 1mm;
+      min-width: 45mm;
       font-size: .85em;
+      color: var(--muted);
+      text-align: center;
     }
 
-    .footer-note {
-      margin-top: 6mm;
-      font-size: .72em;
-      color: #94A3B8;
-      border-top: 1px solid #F1F5F9;
-      padding-top: 2mm;
+    /* --- Footer ---------------------------------------------------------- */
+    .notice {
+      text-align: center;
+      font-size: .82em;
+      color: var(--muted);
+      margin: {% if page_size == 'A4' %}3mm{% else %}1.2mm{% endif %} 0 0.8mm;
+      white-space: pre-line;
+    }
+    .footer { border-top: 1.5px solid var(--primary); padding-top: {% if page_size == 'A4' %}2mm{% else %}0.8mm{% endif %}; }
+    .chambers {
+      display: grid;
+      grid-template-columns: {% if page_size == 'A4' %}1fr 1fr{% else %}1fr{% endif %};
+      gap: 1.5mm 3mm;
+      font-size: {% if page_size == 'A4' %}.78em{% else %}.72em{% endif %};
+      line-height: 1.3;
+      background: #FAFAFA;
+      padding: {% if page_size == 'A4' %}1.5mm{% else %}1mm{% endif %} 2.5mm;
+      border-radius: 1mm;
+    }
+    .chamber strong { color: var(--primary-dark); }
+    /* A phone number broken across two lines is unusable. */
+    .nowrap { white-space: nowrap; }
+    {% comment %}
+      The whole schedule note is the chip. The reference design wraps only the
+      ordinal — "২য়" out of "প্রতি ইংরেজি মাসের ২য় শুক্রবার" — which cannot be
+      done from a free-text column without either storing markup, an injection
+      surface on a document handed to patients, or a parser for Bengali
+      ordinals. Visually near-identical, and it survives a clinic that writes
+      "every Tuesday".
+    {% endcomment %}
+    .badge-day {
+      background: var(--primary);
+      color: #fff;
+      font-size: .92em;
+      padding: .3mm 1.2mm;
+      border-radius: .8mm;
+      white-space: nowrap;
+    }
+    {% comment %}
+      Not on the clinic's design, and kept anyway. "Generated <time>" on a
+      document handed to a patient is a wall-clock claim, and it is what
+      docs/adr/0011-organization-timezone-per-request.md pins: the whole MVP
+      rendered this six hours behind the clinic. Small and last, so it reads as
+      a system stamp rather than as part of the letterhead.
+    {% endcomment %}
+    .stamp {
+      margin: {% if page_size == 'A4' %}1.5mm{% else %}.4mm{% endif %} 1mm 0;
+      text-align: right;
+      font-size: .7em;
+      color: var(--muted);
+    }
+    .contacts {
+      margin-top: {% if page_size == 'A4' %}1.5mm{% else %}0.6mm{% endif %};
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: .5mm 3mm;
+      font-size: {% if page_size == 'A4' %}.76em{% else %}.68em{% endif %};
+      color: var(--muted);
+      padding: 0 1mm;
     }
 
     /* Screen-only controls. */
     .toolbar {
-      max-width: 210mm;
+      max-width: {% if page_size == 'A4' %}210mm{% else %}148mm{% endif %};
       margin: 8mm auto 0;
       display: flex;
       gap: 8px;
@@ -129,13 +397,13 @@
       font: inherit;
       padding: 6px 12px;
       border-radius: 6px;
-      border: 1px solid #CBD5E1;
+      border: 1px solid var(--rule);
       background: #fff;
-      color: #1E293B;
+      color: var(--text);
       text-decoration: none;
       cursor: pointer;
     }
-    .toolbar .current { background: {{ letterhead_color }}; color: #fff; border-color: {{ letterhead_color }}; }
+    .toolbar .current { background: var(--primary); color: #fff; border-color: var(--primary); }
 
     @media print {
       /* No app chrome on paper: the toolbar and the simulated sheet disappear. */
@@ -161,115 +429,214 @@
 </div>
 
 <article class="sheet">
-  <header class="letterhead">
-    <h1 class="clinic-name">{{ organization.name }}</h1>
-    {% if letterhead %}<p class="clinic-meta">{{ letterhead|linebreaksbr }}</p>{% endif %}
-    <p class="clinic-meta">
-      {{ encounter.branch.name }}{% if encounter.branch.address %} · {{ encounter.branch.address }}{% endif %}{% if encounter.branch.phone %} · {{ encounter.branch.phone }}{% endif %}
-    </p>
+  {% if watermark %}<div class="watermark">{{ watermark }}</div>{% endif %}
+
+  <header class="header band">
+    {% comment %}
+      The practitioner who saw the patient, not an organization-level "the
+      doctor" — a clinic with two of them hands out two different sheets. With
+      no letterhead filled in this degrades to the account's name and the rows
+      below it are dropped rather than printed empty.
+    {% endcomment %}
+    <div>
+      <h1 class="doc-name">
+        {% if letterhead_practitioner %}{{ letterhead_practitioner.display_name }}{% else %}{{ encounter.practitioner.full_name }}{% endif %}
+      </h1>
+      {% if letterhead_practitioner.has_details %}
+        {% if letterhead_practitioner.degrees %}
+          <div class="doc-degrees">{{ letterhead_practitioner.degrees }}</div>
+        {% endif %}
+        {% if letterhead_practitioner.designation %}
+          <div class="doc-designation">{{ letterhead_practitioner.designation|linebreaksbr }}</div>
+        {% endif %}
+        {% if letterhead_practitioner.additional_note %}
+          <div class="doc-note">{{ letterhead_practitioner.additional_note|linebreaksbr }}</div>
+        {% endif %}
+        {% if letterhead_practitioner.registration_number or letterhead_practitioner.contact_phone %}
+          <div class="chips">
+            {% if letterhead_practitioner.registration_number %}
+              <span class="chip">{{ terms.registration_number }}: {{ letterhead_practitioner.registration_number }}</span>
+            {% endif %}
+            {% if letterhead_practitioner.contact_phone %}
+              <span class="chip">{{ terms.printed_phone }}: {{ letterhead_practitioner.contact_phone }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% comment %}
+      The chamber this visit happened at, not a fixed address. Falling back to
+      the organization's letterhead block keeps a single-branch clinic that only
+      ever filled that in printing exactly what it printed before.
+    {% endcomment %}
+    <div class="clinic">
+      <h2 class="clinic-name">{{ organization.name }}</h2>
+      {% if encounter.branch.address %}
+        <p class="clinic-address">{{ encounter.branch.address }}</p>
+      {% elif letterhead %}
+        <p class="clinic-address">{{ letterhead }}</p>
+      {% endif %}
+      {% if encounter.branch.consulting_hours %}
+        <div class="clinic-hours">{{ terms.consulting_hours }}: {{ encounter.branch.consulting_hours }}</div>
+      {% endif %}
+      {% if encounter.branch.phone %}
+        <p class="clinic-phone">{{ encounter.branch.phone }}</p>
+      {% endif %}
+    </div>
   </header>
 
-  <dl class="patient-bar">
-    <div><dt>Patient</dt><dd>{{ encounter.patient.full_name }}</dd></div>
-    <div><dt>Code</dt><dd>{{ encounter.patient.code }}</dd></div>
-    <div><dt>Age</dt><dd>{{ encounter.patient.age_display }}</dd></div>
-    <div><dt>Sex</dt><dd>{{ encounter.patient.get_sex_display }}</dd></div>
-    <div><dt>Date</dt><dd>{{ encounter.occurred_at|date:'d M Y' }}</dd></div>
-  </dl>
-
-  {% if encounter.chief_complaint or encounter.assessment %}
-    <section class="notes">
-      {% if encounter.chief_complaint %}
-        <p class="section-title">Complaint</p>
-        <p>{{ encounter.chief_complaint }}</p>
-      {% endif %}
-      {% if encounter.assessment %}
-        <p class="section-title">Assessment</p>
-        <p>{{ encounter.assessment }}</p>
-      {% endif %}
-    </section>
-  {% endif %}
-
-  <section>
-    {% comment %}
-      Two sections, each omitted when empty. Names come from name_snapshot, never
-      from the live catalog row: a medicine renamed next year must not silently
-      rewrite what this patient was handed today.
-    {% endcomment %}
-    {% if medicines %}
-      <p class="rx-mark">℞</p>
-      <table class="items">
-        <thead>
-          {% comment %}
-            Every column is gated on the prescription's own data, like the
-            name_snapshot rule above: reprinting a visit years later must
-            reproduce what the patient was handed, whatever the clinic records
-            today. That now covers dosage, frequency, duration and instructions
-            as well — seven optional columns will not fit across an A5 sheet,
-            and four of them empty is the worse document
-            (clinical/views.py _prescription_sections).
-          {% endcomment %}
-          <tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}{% if show_pack_size %}<th>{{ terms.pack_size }}</th>{% endif %}{% if show_preparation %}<th>{{ terms.preparation }}</th>{% endif %}{% if show_dosage %}<th>Dosage</th>{% endif %}{% if show_frequency %}<th>Frequency</th>{% endif %}{% if show_duration %}<th>Duration</th>{% endif %}{% if show_instructions %}<th>Instructions</th>{% endif %}</tr>
-        </thead>
-        <tbody>
-          {% for item in medicines %}
-            <tr>
-              <td class="name">{{ item.name_snapshot }}</td>
-              {% if show_strength %}<td>{{ item.strength|default:'—' }}</td>{% endif %}
-              {% if show_pack_size %}<td>{{ item.pack_size|default:'—' }}</td>{% endif %}
-              {% if show_preparation %}<td>{{ item.preparation|default:'—' }}</td>{% endif %}
-              {% if show_dosage %}<td>{{ item.dosage|default:'—' }}</td>{% endif %}
-              {% if show_frequency %}<td>{{ item.frequency|default:'—' }}</td>{% endif %}
-              {% if show_duration %}<td>{{ item.duration|default:'—' }}</td>{% endif %}
-              {% if show_instructions %}<td>{{ item.instructions|default:'—' }}</td>{% endif %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-
-    {% if advice_items %}
-      <p class="section-title" {% if medicines %}style="margin-top:6mm"{% endif %}>Advice</p>
-      <table class="items advice">
-        <thead>
-          <tr><th>Advice</th><th>Frequency</th><th>Duration</th><th>Notes</th></tr>
-        </thead>
-        <tbody>
-          {% for item in advice_items %}
-            <tr>
-              <td class="name">{{ item.name_snapshot }}</td>
-              <td>{{ item.frequency|default:'—' }}</td>
-              <td>{{ item.duration|default:'—' }}</td>
-              <td>{{ item.instructions|default:'—' }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-
-    {% if not medicines and not advice_items %}
-      <p>No items prescribed.</p>
-    {% endif %}
-
-    {% if prescription.general_instructions %}
-      <p class="section-title" style="margin-top:5mm">Instructions</p>
-      <p style="white-space:pre-line">{{ prescription.general_instructions }}</p>
-    {% endif %}
-
-    {% if encounter.follow_up_date %}
-      <p class="section-title" style="margin-top:5mm">Follow-up</p>
-      <p>{{ encounter.follow_up_date|date:'d M Y' }}</p>
-    {% endif %}
-  </section>
-
-  <div class="signature">
-    <div class="line">{{ encounter.practitioner.full_name }}</div>
+  <div class="patient-bar band">
+    <div class="field"><span>Name:</span><span class="value">{{ encounter.patient.full_name }}</span></div>
+    <div class="field"><span>Age:</span><span class="value">{{ encounter.patient.age_display }}</span></div>
+    <div class="field"><span>Sex:</span><span class="value">{{ encounter.patient.get_sex_display }}</span></div>
+    {# TODO: encounter.weight_kg, once the per-visit measurements land. #}
+    <div class="field"><span>Wt:</span><span class="blank"></span></div>
+    <div class="field"><span>Date:</span><span class="value">{{ encounter.occurred_at|date:'d M Y' }}</span></div>
   </div>
 
-  <p class="footer-note">
-    {{ organization.name }} · Generated {{ now|date:'d M Y, H:i' }}
-    {% if prescription.issued_at %}· Issued {{ prescription.issued_at|date:'d M Y' }}{% endif %}
-  </p>
+  <div class="body band">
+    <div class="sidebar">
+      {% comment %}
+        Data where there is data, ruled lines where there is not — the sheet is
+        still something a doctor writes on. The lines are A4 only: A5 has no
+        room for four sets of them, and printing them there would push the
+        medicines table off the page. Sections gate on their own content, never
+        on a current setting (the rule ADR 0015 states for the strength column).
+      {% endcomment %}
+      {% for section in sidebar_sections %}
+        {% if section.text or section.rules and page_size == 'A4' %}
+          <div>
+            <h4>{{ section.label }}</h4>
+            {% if section.text %}
+              <p>{{ section.text }}</p>
+            {% else %}
+              <div class="rules">{% for _ in section.rules %}<span></span>{% endfor %}</div>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="rx-area">
+      {% comment %}
+        Present whenever anything was prescribed, medicines or advice alike.
+        The clinic's design puts this at the head of the whole right-hand
+        column rather than over the medicines table — it is the anchor of the
+        sheet — and advice is half of what a practitioner prescribes (SPEC §5,
+        A3), so an advice-only sheet is a prescription and gets the mark. A
+        sheet with nothing on it does not.
+      {% endcomment %}
+      {% if medicines or advice_items %}<div class="rx-mark">℞</div>{% endif %}
+      <div class="rx-content">
+        {% comment %}
+          Two sections, each omitted when empty. Names come from name_snapshot,
+          never from the live catalog row: a medicine renamed next year must not
+          silently rewrite what this patient was handed today.
+        {% endcomment %}
+        {% if medicines %}
+          <table class="items">
+            <thead>
+              {% comment %}
+                Every column is gated on the prescription's own data, like the
+                name_snapshot rule above: reprinting a visit years later must
+                reproduce what the patient was handed, whatever the clinic
+                records today. That now covers dosage, frequency, duration and
+                instructions as well — seven optional columns will not fit
+                across an A5 sheet, and four of them empty is the worse document
+                (clinical/views.py _prescription_sections).
+              {% endcomment %}
+              <tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}{% if show_pack_size %}<th>{{ terms.pack_size }}</th>{% endif %}{% if show_preparation %}<th>{{ terms.preparation }}</th>{% endif %}{% if show_dosage %}<th>Dosage</th>{% endif %}{% if show_frequency %}<th>Frequency</th>{% endif %}{% if show_duration %}<th>Duration</th>{% endif %}{% if show_instructions %}<th>Instructions</th>{% endif %}</tr>
+            </thead>
+            <tbody>
+              {% for item in medicines %}
+                <tr>
+                  <td class="name">{{ item.name_snapshot }}</td>
+                  {% if show_strength %}<td>{{ item.strength|default:'—' }}</td>{% endif %}
+                  {% if show_pack_size %}<td>{{ item.pack_size|default:'—' }}</td>{% endif %}
+                  {% if show_preparation %}<td>{{ item.preparation|default:'—' }}</td>{% endif %}
+                  {% if show_dosage %}<td>{{ item.dosage|default:'—' }}</td>{% endif %}
+                  {% if show_frequency %}<td>{{ item.frequency|default:'—' }}</td>{% endif %}
+                  {% if show_duration %}<td>{{ item.duration|default:'—' }}</td>{% endif %}
+                  {% if show_instructions %}<td>{{ item.instructions|default:'—' }}</td>{% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+
+        {% if advice_items %}
+          <p class="section-title" {% if medicines %}style="margin-top:5mm"{% endif %}>Advice</p>
+          <table class="items advice">
+            <thead>
+              <tr><th>Advice</th><th>Frequency</th><th>Duration</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              {% for item in advice_items %}
+                <tr>
+                  <td class="name">{{ item.name_snapshot }}</td>
+                  <td>{{ item.frequency|default:'—' }}</td>
+                  <td>{{ item.duration|default:'—' }}</td>
+                  <td>{{ item.instructions|default:'—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+
+        {% if not medicines and not advice_items %}
+          <p>No items prescribed.</p>
+        {% endif %}
+
+        {% if prescription.general_instructions %}
+          <p class="section-title" style="margin-top:4mm">Instructions</p>
+          <p style="white-space:pre-line;margin:0">{{ prescription.general_instructions }}</p>
+        {% endif %}
+
+        {% if encounter.follow_up_date %}
+          <p class="section-title" style="margin-top:4mm">Follow-up</p>
+          <p style="margin:0">{{ encounter.follow_up_date|date:'d M Y' }}</p>
+        {% endif %}
+      </div>
+
+      <div class="signature">
+        <div class="line">
+          {% if letterhead_practitioner %}{{ letterhead_practitioner.display_name }}{% else %}{{ encounter.practitioner.full_name }}{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="band">
+    {% if organization.prescription_notice %}
+      <p class="notice">{{ organization.prescription_notice }}</p>
+    {% endif %}
+
+    {# Always rendered: the generated-at stamp below is on every sheet. #}
+    <div class="footer">
+      {% if footer_branches %}
+        <div class="chambers">
+          {% for chamber in footer_branches %}
+            <div class="chamber">
+              <strong>{{ chamber.name }}:</strong>
+              {% if chamber.address %}{{ chamber.address|linebreaksbr }}{% endif %}
+              {% if chamber.schedule_note %}<span class="badge-day">{{ chamber.schedule_note }}</span>{% endif %}
+              {% if chamber.phone %}<span class="nowrap">| <strong>{{ terms.printed_phone }}:</strong> {{ chamber.phone }}</span>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if contacts %}
+        <div class="contacts">
+          {% for line in contacts %}<span>{{ line }}</span>{% endfor %}
+        </div>
+      {% endif %}
+      <p class="stamp">
+        {{ organization.name }} · Generated {{ now|date:'d M Y, H:i' }}
+        {% if prescription.issued_at %}· Issued {{ prescription.issued_at|date:'d M Y' }}{% endif %}
+      </p>
+    </div>
+  </div>
 </article>
 
 </body>

@@ -453,10 +453,51 @@ def prescription_item_row(request):
     return HttpResponse(html.replace('__prefix__', str(index)))
 
 
+def _sidebar_sections(encounter) -> list[dict]:
+    """The printed sheet's left column: what was found, and room to write.
+
+    ``rules`` is how many ruled lines the clinic's paper form prints under each
+    heading, used when nothing is recorded — the sheet is still something a
+    doctor writes on. A ``range`` rather than an int so the template can loop
+    over it directly, and because an empty one is falsy, which lets one
+    condition cover both "has content" and "has room to write".
+
+    An empty range means the section is simply absent when empty, which is what
+    Complaint gets: it is not a heading on the paper design at all, and appears
+    here only so that a complaint already recorded goes on being printed.
+
+    **Investigation maps to no field, and that is deliberate.**
+    ``Encounter.plan`` is the plan; putting it under this heading would be the
+    same misuse as a potency typed into ``dosage`` (ADR 0015). The case record's
+    investigations table is per-patient and unbuilt, so ruled lines are the
+    honest answer until it exists.
+    """
+    return [
+        {'label': 'Complaint', 'text': encounter.chief_complaint, 'rules': range(0)},
+        {
+            'label': 'Clinical Findings',
+            'text': encounter.examination,
+            'rules': range(3),
+        },
+        {'label': 'Investigation', 'text': '', 'rules': range(2)},
+        {'label': 'Diagnosis', 'text': encounter.assessment, 'rules': range(1)},
+    ]
+
+
 @login_required
 @clinical_access_required
 def prescription_print(request, pk: int):
-    """Chrome-free print page. Size comes from the query string, A5 by default."""
+    """Chrome-free print page. Size comes from the query string, A5 by default.
+
+    Every specific thing on this sheet is the clinic's own data — the
+    practitioner's degrees, the chamber's hours, the footer chambers, the notice
+    line, the contact strip, the watermark and the colour. Nothing about one
+    clinic's design is in the template, so onboarding a second one is a settings
+    job (SPEC §6.8).
+    """
+    from accounts.services import practitioner_letterhead
+    from organizations.services import prescription_branches
+
     encounter = get_object_or_404(
         Encounter.objects.select_related('patient', 'practitioner', 'branch'), pk=pk
     )
@@ -465,6 +506,7 @@ def prescription_print(request, pk: int):
     if size not in PrintSize.values:
         size = PrintSize.A5
     items = list(prescription.items.all())
+    organization = request.organization
     return render(
         request,
         'print/prescription.html',
@@ -474,10 +516,28 @@ def prescription_print(request, pk: int):
             # Two sections: medicines carry a dose, advice does not. Each is
             # omitted entirely when empty rather than printing a bare header.
             **_prescription_sections(items),
+            'sidebar_sections': _sidebar_sections(encounter),
             'page_size': size,
-            # Interpolated into CSS, so it comes from the validated accessor.
-            'letterhead_color': request.organization.primary_color,
-            'letterhead': request.organization.letterhead,
+            # Interpolated into CSS, so all three come from validated accessors.
+            # The template derives the darker tone and the tint from the first
+            # with ``color-mix`` and falls back to these, so a clinic that sets
+            # one colour gets a coherent sheet.
+            'letterhead_color': organization.primary_color,
+            'letterhead_dark': organization.primary_dark_color,
+            'letterhead_tint': organization.primary_tint_color,
+            # The branch's own address, falling back to the organization's
+            # block. A visit at the Daulatpur chamber must not print the Mirpur
+            # address at the top; a single-branch clinic that only ever filled
+            # in the letterhead prints exactly what it printed before.
+            'letterhead': organization.letterhead,
+            'letterhead_practitioner': practitioner_letterhead(
+                organization, encounter.practitioner
+            ),
+            'footer_branches': prescription_branches(
+                organization, exclude_pk=encounter.branch_id
+            ),
+            'contacts': organization.contacts,
+            'watermark': organization.watermark_text,
             'now': timezone.localtime(),
         },
     )
