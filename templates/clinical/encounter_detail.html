@@ -9,10 +9,12 @@
     the record is no longer a draft — billing a visit still being written up is
     how a half-finished line ends up on a receipt.
   {% endcomment %}
-  {% if invoice %}
-    <a href="{% url 'billing:invoice_detail' invoice.pk %}" class="btn btn-sm btn-brand-ghost">{{ invoice.number }} · {{ invoice.currency }} {{ invoice.balance }} due</a>
-  {% elif encounter.is_locked %}
-    <a href="{% url 'billing:invoice_create' %}?encounter={{ encounter.pk }}" class="btn btn-sm btn-brand">Create {{ terms.invoice|lower }}</a>
+  {% if organization.billing_enabled %}
+    {% if invoice %}
+      <a href="{% url 'billing:invoice_detail' invoice.pk %}" class="btn btn-sm btn-brand-ghost">{{ invoice.number }} · {{ invoice.currency }} {{ invoice.balance }} due</a>
+    {% elif encounter.is_locked %}
+      <a href="{% url 'billing:invoice_create' %}?encounter={{ encounter.pk }}" class="btn btn-sm btn-brand">Create {{ terms.invoice|lower }}</a>
+    {% endif %}
   {% endif %}
   <a href="{% url 'clinical:prescription_print' encounter.pk %}" class="btn btn-sm btn-brand" target="_blank">Print prescription</a>
   <a href="{% url 'clinical:encounter_history' encounter.pk %}" class="btn btn-sm btn-ghost">History</a>

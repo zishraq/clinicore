@@ -1,19 +1,33 @@
-"""Role checks for views.
+"""View-boundary gates: who may do a thing, and whether the thing exists here.
 
-MVP: replace with permission layer. SPEC §6.1 wants a data-driven, per-org
-``RolePermission`` table resolved through a custom auth backend so that
-``user.has_perm('clinical.view_narrative')`` works. Until then these are plain
-role comparisons, deliberately concentrated here and greppable by the marker
-comment above so the swap is mechanical.
+Two different questions live in this module and must not be confused.
+
+- **Role checks** answer "may this member do this?" and refuse with 403.
+  MVP: replace with permission layer. SPEC §6.1 wants a data-driven, per-org
+  ``RolePermission`` table resolved through a custom auth backend so that
+  ``user.has_perm('clinical.view_narrative')`` works. Until then these are
+  plain role comparisons, deliberately concentrated here and greppable by the
+  marker comment above so the swap is mechanical.
+- **Capability checks** answer "does this clinic run this feature at all?" and
+  refuse with 404. They are org configuration, not permission, and they will
+  not be replaced by the permission layer.
+
+Both are here because ADR 0012 puts authorisation at the view boundary and this
+is the one file to read to find out what guards a view. Every gate below is a
+decorator for exactly that reason: a check written inside a view body is one a
+new view can forget.
 """
 
 from functools import wraps
 
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 
 from accounts.models import ADMIN_ROLES, CLINICAL_ROLES
 
 __all__ = [
+    'billing_enabled_required',
+    'capability_required',
     'clinical_access_required',
     'owner_required',
     'require_membership',
@@ -62,3 +76,41 @@ clinical_access_required = role_required(*CLINICAL_ROLES)
 
 # MVP: replace with permission layer
 owner_required = role_required(*ADMIN_ROLES)
+
+
+def capability_required(field: str):
+    """Refuse the view when the organization has this capability switched off.
+
+    **404, not 403, and the difference is the whole point.** 403 says the thing
+    exists and you may not have it, which invites the user to go and ask for
+    access to a feature their clinic has deliberately not turned on. 404 says
+    there is nothing here, which is true: the switch is off, so the URL is not
+    part of this clinic's application.
+
+    Hiding the nav link is presentation, never access control —
+    ``templates/partials/_sidebar.html`` says so in its own comment, and a
+    hidden link is one bookmark away from being reached anyway.
+
+    Runs *before* any role check on the views it guards, so a STAFF user gets
+    the same 404 as everybody else rather than a 403 that reveals the feature.
+    A request with no active organization falls through untouched: there is no
+    flag to read, and ``require_membership`` already refuses it.
+    """
+
+    def decorator(view):
+        @wraps(view)
+        def wrapper(request, *args, **kwargs):
+            organization = getattr(request, 'organization', None)
+            if organization is not None and not getattr(organization, field):
+                raise Http404(f'{field} is off for this organization.')
+            return view(request, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+#: Billing is a whole app behind one switch: a clinic that is not ready to put
+#: money in the system turns it off, and nothing is deleted (A3's rule at app
+#: scale). Applied to every view in ``billing/views.py``.
+billing_enabled_required = capability_required('billing_enabled')

@@ -110,9 +110,15 @@ def _day_context(request) -> dict:
     # Only the roles that may see money get the bills looked up at all, so a
     # STAFF request cannot leak one through a template that forgot to check
     # (SPEC §6.1 as amended puts every billing surface behind PRACTITIONER/OWNER
-    # even on a screen STAFF otherwise owns).
+    # even on a screen STAFF otherwise owns). A clinic with billing switched off
+    # skips the lookup for the same reason it skips the column: hidden by not
+    # being read, so there is nothing for a template to render by accident.
     membership = getattr(request, 'membership', None)
-    if membership is not None and membership.can_view_clinical:
+    if (
+        membership is not None
+        and membership.can_view_clinical
+        and request.organization.billing_enabled
+    ):
         rows = services.with_bills(request.organization, rows)
     # Evaluated once here so the empty state can be decided without the
     # template triggering a second pass over the queryset.

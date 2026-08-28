@@ -15,7 +15,9 @@
     <li><a href="{% url 'scheduling:day' %}" class="{% if 'scheduling' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.appointment_plural }}</a></li>
     {% if membership.can_view_clinical %}
       <li><a href="{% url 'clinical:encounter_list' %}" class="{% if 'clinical' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.encounter_plural }}</a></li>
-      <li><a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.invoice_plural }}</a></li>
+      {% if organization.billing_enabled %}
+        <li><a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.invoice_plural }}</a></li>
+      {% endif %}
       <li><a href="{% url 'inventory:stock_list' %}" class="{% if 'inventory' in request.resolver_match.namespaces %}active{% endif %}">{{ terms.stock }}</a></li>
       <li>
         <details {% if 'catalog' in request.resolver_match.namespaces %}open{% endif %}>
@@ -37,7 +39,9 @@
           <ul>
             {# Lives in the accounts app, but it is a settings job and belongs where an administrator looks for one. #}
             <li><a href="{% url 'accounts:member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">{{ terms.member_plural }}</a></li>
-            <li><a href="{% url 'organizations:billing_settings' %}" class="{% if request.resolver_match.url_name == 'billing_settings' %}active{% endif %}">Billing</a></li>
+            {% if organization.billing_enabled %}
+              <li><a href="{% url 'organizations:billing_settings' %}" class="{% if request.resolver_match.url_name == 'billing_settings' %}active{% endif %}">Billing</a></li>
+            {% endif %}
             <li><a href="{% url 'organizations:feature_settings' %}" class="{% if request.resolver_match.url_name == 'feature_settings' %}active{% endif %}">Features</a></li>
             <li><a href="{% url 'organizations:prescription_settings' %}" class="{% if request.resolver_match.url_name == 'prescription_settings' %}active{% endif %}">Prescription</a></li>
             <li><a href="{% url 'organizations:branch_list' %}" class="{% if 'branch' in request.resolver_match.url_name %}active{% endif %}">Chambers</a></li>

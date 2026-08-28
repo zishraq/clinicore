@@ -13,7 +13,11 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 
-from accounts.permissions import owner_required, require_membership
+from accounts.permissions import (
+    billing_enabled_required,
+    owner_required,
+    require_membership,
+)
 from organizations.forms import (
     BillingSettingsForm,
     BranchForm,
@@ -56,8 +60,15 @@ def _settings_screen(request, *, form_class, heading: str, saved: str, url_name:
 
 @login_required
 @owner_required
+@billing_enabled_required
 def billing_settings(request):
-    """The fee that prefills every new bill, changeable without a developer."""
+    """The fee that prefills every new bill, changeable without a developer.
+
+    Behind the same switch as the billing app itself, though it lives here.
+    Both its fields — the currency and the consultation fee — are read only by
+    billing surfaces, so with the switch off this screen configures nothing that
+    renders anywhere and a "Billing" link in Settings would read as an oversight.
+    """
     return _settings_screen(
         request,
         form_class=BillingSettingsForm,

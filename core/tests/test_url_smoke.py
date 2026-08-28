@@ -194,12 +194,21 @@ def populated(db):
         )
         photo.image.save('probe.jpg', ContentFile(b'not a real jpeg'), save=False)
         photo.save()
+    # Asserted rather than assumed. With billing off every billing URL answers
+    # 404, which is not a 5xx, so the whole walk would go on passing while
+    # testing nothing across a third of the application. See
+    # ``test_every_billing_url_is_404_when_the_switch_is_off`` for the other
+    # side of it.
+    assert organization.billing_enabled, 'the walk must run with billing on'
     return organization
 
 
 @pytest.fixture
 def empty(organization, branch):
     """An organization with a branch and nothing else in it."""
+    # Same reason as ``populated``: a 404 is not a 5xx, so a walk with billing
+    # off would pass without visiting any of it.
+    assert organization.billing_enabled, 'the walk must run with billing on'
     return organization
 
 
@@ -291,3 +300,53 @@ def test_the_walk_actually_reaches_most_of_the_application(client, populated):
             reached += 1
 
     assert reached >= 40, f'only {reached} URLs returned 200; the walk is not walking'
+
+
+BILLING_PREFIX = 'billing:'
+
+
+@pytest.mark.parametrize('role', ROLES)
+def test_every_billing_url_is_404_when_the_switch_is_off(
+    client, populated, make_member, role
+):
+    """The other side of the fixtures' assertion above.
+
+    The walk only fails on a 5xx, so switching billing off would turn every
+    billing route into a silent pass. This asserts the routes are gone rather
+    than merely quiet — 404 for **every** role, including the ones that would
+    otherwise be allowed through, because the feature is off rather than
+    forbidden and a 403 would tell the user it exists.
+    """
+    populated.billing_enabled = False
+    populated.save(update_fields=['billing_enabled', 'updated_at'])
+
+    phone = DEMO_PHONES.get(role)
+    user = (
+        User.objects.get(phone=phone)
+        if phone
+        else make_member(populated, role=role, phone='01711000004')
+    )
+    sources = _argument_sources()
+    checked, wrong = 0, []
+    for name, arguments in sorted(_named_patterns()):
+        if not name.startswith(BILLING_PREFIX):
+            continue
+        # Resolved before the switch is read, so a row that exists is still
+        # reachable by URL — the point is that the *route* refuses, not that
+        # the data vanished.
+        with organization_context(populated):
+            kwargs = sources[name](populated) if arguments else {}
+        assert kwargs is not None, f'{name} has no row to point at'
+        url = reverse(name, kwargs=kwargs)
+        client.force_login(user)
+        status = client.get(url).status_code
+        checked += 1
+        if status != 404:
+            wrong.append(f'{role}: GET {url} ({name}) -> {status}')
+
+    assert not wrong, 'billing routes did not 404 with the switch off:\n' + '\n'.join(
+        wrong
+    )
+    # A loop that matched nothing would pass silently, which is the failure this
+    # whole pair of tests exists to prevent.
+    assert checked >= 7, f'only {checked} billing URLs were checked'

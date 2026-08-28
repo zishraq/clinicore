@@ -4,6 +4,12 @@ The whole app is PRACTITIONER/OWNER: in the workflow this was built for the
 practitioner raises the bill and takes the money, with no reception handoff, so
 ``clinical_access_required`` runs before every view here and a STAFF user
 hitting any of these URLs directly gets a 403 (SPEC §6.1).
+
+The whole app is also behind ``Organization.billing_enabled``, and that check
+runs *first* — a clinic with the switch off answers 404 to every role,
+including the ones that would otherwise be allowed. Off hides the feature and
+never the data: the invoices, payments and stock movements are all still there,
+and turning the switch back on restores every screen exactly as it was.
 """
 
 from django.contrib import messages
@@ -16,7 +22,11 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from accounts.permissions import clinical_access_required, require_membership
+from accounts.permissions import (
+    billing_enabled_required,
+    clinical_access_required,
+    require_membership,
+)
 from billing import services
 from billing.forms import (
     InvoiceForm,
@@ -56,6 +66,7 @@ def _invoice(pk: int) -> Invoice:
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 def invoice_list(request):
     require_membership(request)
@@ -101,6 +112,7 @@ def _prefill_lines(organization, encounter, *, branch=None) -> list[dict]:
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 def invoice_create(request):
     """New bill, either from a visit (``?encounter=``) or standalone."""
@@ -167,6 +179,7 @@ def invoice_create(request):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 def invoice_update(request, pk: int):
     """Edit a bill that has not been paid against; the service enforces that."""
@@ -217,6 +230,7 @@ def invoice_update(request, pk: int):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 def invoice_detail(request, pk: int):
     require_membership(request)
@@ -237,6 +251,7 @@ def invoice_detail(request, pk: int):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 @require_POST
 def payment_create(request, pk: int):
@@ -272,6 +287,7 @@ def payment_create(request, pk: int):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 @require_POST
 def payment_void(request, pk: int, payment_pk: int):
@@ -294,6 +310,7 @@ def payment_void(request, pk: int, payment_pk: int):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 @require_POST
 def invoice_void(request, pk: int):
@@ -315,6 +332,7 @@ def invoice_void(request, pk: int):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 def invoice_line_row(request):
     """One blank formset row for the HTMX 'add line' button.
@@ -334,6 +352,7 @@ def invoice_line_row(request):
 
 
 @login_required
+@billing_enabled_required
 @clinical_access_required
 def receipt_print(request, pk: int):
     """Chrome-free receipt, same paper geometry as the prescription."""

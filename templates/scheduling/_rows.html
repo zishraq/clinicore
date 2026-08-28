@@ -60,7 +60,7 @@ carries its own state as a badge and offers only the actions that apply to it.
           container and swap it back.
         {% endcomment %}
         <div class="col-span-2 flex flex-wrap items-center gap-2 sm:col-auto">
-          {% if membership.can_view_clinical and row.status == 'SEEN' %}
+          {% if organization.billing_enabled and membership.can_view_clinical and row.status == 'SEEN' %}
             {% comment %}
               Display only, and never for STAFF — the row is theirs, the money
               is not. Read through to the visit's bill rather than stored here,

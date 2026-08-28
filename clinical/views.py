@@ -124,9 +124,16 @@ def encounter_detail(request, pk: int):
     )
     prescription = getattr(encounter, 'prescription', None)
     items = list(prescription.items.all()) if prescription else []
-    # Deferred import: billing depends on clinical, and the encounter page only
-    # needs to know whether a bill was already raised for this visit.
-    from billing.services import invoice_for_encounter
+    invoice = None
+    if request.organization.billing_enabled:
+        # Deferred import: billing depends on clinical, and the encounter page
+        # only needs to know whether a bill was already raised for this visit.
+        # Inside the check rather than above it, so a clinic with billing off
+        # runs neither the import nor the query — the action and the pill are
+        # both gone from the page, so there is nothing to look up.
+        from billing.services import invoice_for_encounter
+
+        invoice = invoice_for_encounter(request.organization, encounter)
 
     return render(
         request,
@@ -135,7 +142,7 @@ def encounter_detail(request, pk: int):
             'encounter': encounter,
             'prescription': prescription,
             **_prescription_sections(items),
-            'invoice': invoice_for_encounter(request.organization, encounter),
+            'invoice': invoice,
             'photos': encounter.photos.all(),
             'photo_form': PhotoUploadForm(),
         },

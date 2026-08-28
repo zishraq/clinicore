@@ -965,6 +965,60 @@ and by printing the page to PDF. Rules to know:
   and `test_the_print_views_stamp_the_clinics_local_time` pins it; dropping it
   was caught by that test, not by reading.
 
+Billing is behind a switch (2026-08-28). `Organization.billing_enabled`,
+**default True**, so nothing changes for a clinic that never touches it; Global
+Homeopathy Clinic is not ready to put money in the system and turns it off.
+This is A3's `advice_enabled` pattern one size larger — a whole app rather than
+half a form — and the rule is the same: **off hides the feature, never the
+data.** Browser-verified in both positions and through the round trip. Rules:
+
+- **`accounts.permissions.capability_required` refuses with 404, not 403**, and
+  `billing_enabled_required` is its one instance so far. 403 says the thing
+  exists and you may not have it, which invites somebody to ask for access to a
+  feature their own clinic switched off; 404 says there is nothing here, which
+  is true. That module now holds two kinds of gate — role checks (403, to be
+  replaced by the permission layer) and capability checks (404, which will not
+  be) — and its docstring says so.
+- **The capability check runs above the role check** on all nine billing views,
+  so STAFF gets the same 404 as everyone rather than a 403 that reveals the
+  feature. Decorator order is load-bearing and asserted.
+- **Hidden means not looked up, not merely not rendered.**
+  `patients.views.patient_detail` skips `outstanding_balance` and
+  `patient_invoices`, `clinical.views.encounter_detail` skips
+  `invoice_for_encounter` (the deferred import moved *inside* the check), and
+  `scheduling.views._day_context` skips `with_bills`. A template that forgot its
+  conditional then has nothing to leak — the posture the day list already took
+  for STAFF.
+- **`Settings → Billing` went with it**, though it lives in `organizations`.
+  Its only two fields, currency and the consultation fee, are read exclusively
+  by billing surfaces, so with the switch off it configures nothing that
+  renders. This was not on the original list and is a judgement call: a
+  "Billing" link in Settings that sets a consultation fee reads as an oversight.
+- **The Features screen itself is never gated**, or the clinic could not turn
+  billing back on. Verified by loading it with the switch off.
+- **The smoke walk would have passed while testing nothing.** It fails only on
+  5xx, and 404 is not one — so with billing off a third of the application
+  would go unvisited and green. Both fixtures now *assert*
+  `billing_enabled`, and `test_every_billing_url_is_404_when_the_switch_is_off`
+  is the other half, with a floor on how many routes it checked so a loop that
+  matched nothing cannot pass quietly.
+- **`bootstrap_clinic` takes `--no-billing`; it does not know the clinic's
+  name.** Same rule as the chamber details: it is the generic command, and
+  which clinic is being stood up next is not a fact the product holds (SPEC §1).
+  `bootstrap_demo` keeps billing on — the demo exists to show the whole product.
+
+Two consequences surfaced with it, neither decided nor built:
+
+- **Stock drifts while billing is off.** The invoice is the only stock event
+  (ADR 0009), so dispensing posts no movements and on-hand only ever rises from
+  goods receipts. My recommendation is **its own switch, defaulting to on**,
+  gated the same way — inventory is independently useful for expiry and reorder
+  even when nothing is sold, so tying it to billing would remove a working
+  feature to fix a reporting problem, while leaving it alone lets the stock
+  screens quietly become fiction.
+- **`Encounter` still has no per-visit measurements**, so the prescription's
+  `Wt` box is still a blank rule.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps. Deployed to production on 2026-08-23 — one Oracle Cloud Always Free box,

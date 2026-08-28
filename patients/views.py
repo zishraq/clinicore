@@ -171,7 +171,6 @@ def patient_detail(request, pk: int):
     if show_clinical:
         # Deferred imports keep patients free of a hard dependency on the
         # feature apps that point at it.
-        from billing.services import outstanding_balance, patient_invoices
         from clinical.models import Encounter
 
         encounters = list(
@@ -179,10 +178,17 @@ def patient_detail(request, pk: int):
                 :20
             ]
         )
-        # What a returning patient still owes, visible without opening a bill
-        # (SPEC §6.2).
-        outstanding = outstanding_balance(request.organization, patient)
-        invoices = list(patient_invoices(request.organization, patient)[:10])
+        # Not merely hidden in the template: a clinic with billing switched off
+        # should not be running the two queries behind a section nobody renders,
+        # and computing a balance nobody is shown is how a figure ends up
+        # leaking through a template that forgot its check.
+        if request.organization.billing_enabled:
+            from billing.services import outstanding_balance, patient_invoices
+
+            # What a returning patient still owes, visible without opening a
+            # bill (SPEC §6.2).
+            outstanding = outstanding_balance(request.organization, patient)
+            invoices = list(patient_invoices(request.organization, patient)[:10])
     return render(
         request,
         'patients/detail.html',

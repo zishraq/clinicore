@@ -59,6 +59,16 @@ class Command(BaseCommand):
             default='',
             help='When it opens, printed in the prescription footer.',
         )
+        # A flag rather than a clinic name in the code: this command is the
+        # generic one, and the clinic it happens to be standing up next is not
+        # a fact the product knows (SPEC §1). Off is a switch, not a decision
+        # about the schema — Settings → Features turns it back on and every
+        # bill recorded meanwhile is still there.
+        parser.add_argument(
+            '--no-billing',
+            action='store_true',
+            help='Start with bills, payments and receipts hidden.',
+        )
         parser.add_argument(
             '--admin-phone', required=True, help="The administrator's phone number."
         )
@@ -95,6 +105,7 @@ class Command(BaseCommand):
             organization, _ = create_organization(
                 name=name,
                 timezone_name=zone,
+                billing_enabled=not options['no_billing'],
                 branch={
                     'name': branch_name,
                     'address': options['branch_address'].strip(),
@@ -131,6 +142,8 @@ class Command(BaseCommand):
         self.stdout.write(f'  Time zone    : {zone}')
         self.stdout.write(f'  Branch       : {branch_name}')
         self.stdout.write(f'  Administrator: {phone}  {admin_name}')
+        if options['no_billing']:
+            self.stdout.write('  Billing      : off  (Settings → Features turns it on)')
         self.stdout.write(f'  Password     : {password}  (must be changed at sign-in)')
         self.stdout.write("\n  Next: load the clinic's own medicine list —")
         self.stdout.write(f'    python manage.py import_remedies {organization.slug}')

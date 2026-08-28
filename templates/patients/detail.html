@@ -90,6 +90,7 @@
         {% endif %}
       </section>
 
+      {% if organization.billing_enabled %}
       <section class="card-surface rounded-xl p-6">
         <div class="flex items-center justify-between gap-4">
           <div>
@@ -127,6 +128,7 @@
           <p class="text-sm text-muted mt-3">No {{ terms.invoice_plural|lower }} raised.</p>
         {% endif %}
       </section>
+      {% endif %}
 
       <section class="card-surface rounded-xl p-6">
         <h2 class="font-semibold">{{ terms.encounter_plural }}</h2>

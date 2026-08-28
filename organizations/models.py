@@ -345,6 +345,17 @@ class Organization(TimeStampedModel):
         blank=True,
         help_text='One per line, printed along the foot of the prescription.',
     )
+    # A capability switch like ``advice_enabled``, one size larger: it hides a
+    # whole app rather than half a form. Default True, so nothing changes for a
+    # clinic that never touches it — the clinic that is not ready to put money
+    # in the system turns it off. Off hides the feature and never the data:
+    # every invoice, payment and stock movement stays exactly where it is, and
+    # turning it back on restores the lot (A3's rule, and the point of the
+    # switch existing rather than the feature being removed).
+    billing_enabled = models.BooleanField(
+        default=True,
+        help_text='Raise bills, take payments, and print receipts.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:

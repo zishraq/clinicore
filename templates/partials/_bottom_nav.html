@@ -50,13 +50,15 @@ screen reader announcing "calendar Appointments" is worse than "Appointments".
       </svg>
       <span class="btm-nav-label">{{ terms.encounter_plural }}</span>
     </a>
-    <a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
-      {# Receipt, torn edge and all: the thing the patient is handed. #}
-      <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M5 3.5h14v17l-2.3-1.6-2.35 1.6-2.35-1.6-2.35 1.6L7.3 18.9 5 20.5z"/>
-        <path d="M9 8h6M9 12h6"/>
-      </svg>
-      <span class="btm-nav-label">{{ terms.invoice_plural }}</span>
-    </a>
+    {% if organization.billing_enabled %}
+      <a href="{% url 'billing:invoice_list' %}" class="{% if 'billing' in request.resolver_match.namespaces %}active text-[var(--cc-primary)]{% endif %}">
+        {# Receipt, torn edge and all: the thing the patient is handed. #}
+        <svg class="btm-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 3.5h14v17l-2.3-1.6-2.35 1.6-2.35-1.6-2.35 1.6L7.3 18.9 5 20.5z"/>
+          <path d="M9 8h6M9 12h6"/>
+        </svg>
+        <span class="btm-nav-label">{{ terms.invoice_plural }}</span>
+      </a>
+    {% endif %}
   {% endif %}
 </nav>

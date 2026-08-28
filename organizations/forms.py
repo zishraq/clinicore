@@ -85,16 +85,30 @@ class FeatureSettingsForm(forms.ModelForm):
     class Meta:
         model = Organization
         fields = [
+            'billing_enabled',
             'advice_enabled',
             *(field.enabled_field for field in PRESCRIBING_FIELDS),
         ]
         widgets = {name: forms.CheckboxInput(attrs=_CHECKBOX) for name in fields}
         labels = {
+            # What the clinic gets, not what the column is called.
+            'billing_enabled': 'Bill patients and take payments',
             'advice_enabled': 'Prescribe advice',
             **{
                 field.enabled_field: _SWITCH_LABELS[field.key]
                 for field in PRESCRIBING_FIELDS
             },
+        }
+        help_texts = {
+            # Said plainly because the switch looks destructive and is not: a
+            # clinic that is not ready to put money in the system has to be able
+            # to turn this off without wondering what it costs them.
+            'billing_enabled': (
+                'Turning this off hides bills, payments and receipts everywhere '
+                'in the application. Nothing is deleted — whatever has already '
+                'been recorded comes back exactly as it was when you turn it '
+                'back on.'
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -103,7 +117,10 @@ class FeatureSettingsForm(forms.ModelForm):
         #: Which fields open a new capability, so the screen can rule between
         #: them (templates/organizations/settings_form.html).
         self.capability_switches = [field.enabled_field for field in PRESCRIBING_FIELDS]
-        order = ['advice_enabled']
+        # Billing leads: it is the largest thing on this screen — a whole app
+        # rather than a field on a form — and it is what the clinic came here
+        # to change.
+        order = ['billing_enabled', 'advice_enabled']
         for field in PRESCRIBING_FIELDS:
             term = DEFAULT_TERMINOLOGY[field.key]
             label_placeholder, options_placeholder = _PLACEHOLDERS[field.key]
