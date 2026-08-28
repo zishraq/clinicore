@@ -14,12 +14,12 @@ pytestmark = pytest.mark.django_db
 
 LETTERHEAD = {
     'save_letterhead': '1',
-    'print_name': 'ডা. আনোয়ার এইচ বিশ্বাস',
+    'print_name': 'ডা. রফিকুল ইসলাম',
     'degrees': 'BHMS (DU), MPH',
     'designation': 'Head of Community Medicine\nGovt. Homeopathic Medical College',
     'additional_note': 'International seminars: India, Thailand, Malaysia',
-    'registration_number': 'H-472',
-    'contact_phone': '01711345387',
+    'registration_number': 'H-1001',
+    'contact_phone': '01700000000',
 }
 
 
@@ -34,8 +34,8 @@ def test_a_practitioner_saves_their_own_letterhead(client, practitioner, organiz
     assert response.status_code == 302
 
     profile = _profile_of(practitioner, organization)
-    assert profile.print_name == 'ডা. আনোয়ার এইচ বিশ্বাস'
-    assert profile.registration_number == 'H-472'
+    assert profile.print_name == 'ডা. রফিকুল ইসলাম'
+    assert profile.registration_number == 'H-1001'
     assert profile.has_details is True
 
 
@@ -46,7 +46,7 @@ def test_the_saved_letterhead_comes_back_onto_the_page(
     client.post(reverse('accounts:profile'), LETTERHEAD)
 
     body = client.get(reverse('accounts:profile')).content.decode()
-    assert 'H-472' in body
+    assert 'H-1001' in body
     assert 'BHMS (DU), MPH' in body
 
 
@@ -59,12 +59,12 @@ def test_saving_your_name_does_not_wipe_the_letterhead(
     client.post(reverse('accounts:profile'), LETTERHEAD)
 
     client.post(
-        reverse('accounts:profile'), {'full_name': 'Dr Anwar H Biswas', 'email': ''}
+        reverse('accounts:profile'), {'full_name': 'Dr Rafiqul Islam', 'email': ''}
     )
 
     practitioner.refresh_from_db()
-    assert practitioner.full_name == 'Dr Anwar H Biswas'
-    assert _profile_of(practitioner, organization).registration_number == 'H-472'
+    assert practitioner.full_name == 'Dr Rafiqul Islam'
+    assert _profile_of(practitioner, organization).registration_number == 'H-1001'
 
 
 def test_saving_the_letterhead_does_not_wipe_your_name(
@@ -121,7 +121,7 @@ def test_two_clinics_hold_two_letterheads_for_one_account(
         reverse('accounts:profile'), {**LETTERHEAD, 'registration_number': 'H-999'}
     )
 
-    assert _profile_of(practitioner, organization).registration_number == 'H-472'
+    assert _profile_of(practitioner, organization).registration_number == 'H-1001'
     assert second.practitioner_profile.registration_number == 'H-999'
 
 
@@ -132,11 +132,11 @@ def test_a_profile_with_nothing_below_the_name_reports_no_details(
     client.force_login(practitioner)
     client.post(
         reverse('accounts:profile'),
-        {'save_letterhead': '1', 'print_name': 'Dr A H Biswas'},
+        {'save_letterhead': '1', 'print_name': 'Dr R Islam'},
     )
     profile = _profile_of(practitioner, organization)
     assert profile.has_details is False
-    assert profile.display_name == 'Dr A H Biswas'
+    assert profile.display_name == 'Dr R Islam'
 
 
 def test_a_blank_print_name_falls_back_to_the_account_name(

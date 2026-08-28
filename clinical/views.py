@@ -533,8 +533,8 @@ def prescription_print(request, pk: int):
             'letterhead_dark': organization.primary_dark_color,
             'letterhead_tint': organization.primary_tint_color,
             # The branch's own address, falling back to the organization's
-            # block. A visit at the Daulatpur chamber must not print the Mirpur
-            # address at the top; a single-branch clinic that only ever filled
+            # block. A visit at the second chamber must not print the main
+            # chamber's address at the top; a single-branch clinic that only filled
             # in the letterhead prints exactly what it printed before.
             'letterhead': organization.letterhead,
             'letterhead_practitioner': practitioner_letterhead(

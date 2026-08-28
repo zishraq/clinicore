@@ -219,7 +219,7 @@ class PrescriptionSettingsForm(forms.ModelForm):
     watermark_text = forms.CharField(
         required=False,
         max_length=WATERMARK_MAX_LENGTH,
-        widget=forms.TextInput(attrs={**_INPUT, 'placeholder': 'GHC'}),
+        widget=forms.TextInput(attrs={**_INPUT, 'placeholder': 'ABC'}),
         label='Watermark',
         help_text=(
             f'A few letters printed faintly behind the sheet, '
@@ -283,7 +283,7 @@ class PrescriptionSettingsForm(forms.ModelForm):
         if not value:
             return ''
         if hex_color_or(value, '') != value:
-            raise forms.ValidationError('Use a hex colour, for example #007791.')
+            raise forms.ValidationError('Use a hex colour, for example #336699.')
         return value
 
     def save(self, commit=True):

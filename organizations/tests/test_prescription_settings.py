@@ -33,10 +33,10 @@ def test_the_contact_strip_is_one_line_per_contact(client, owner, organization):
         client,
         organization,
         prescription_contacts=(
-            'Facebook: /DrAnwarHBiswas\n'
+            'Facebook: /DrRafiqulIslam\n'
             '\n'
-            '  YouTube: Dr. Anwar H Biswas  \n'
-            'facebook: /dranwarhbiswas\n'
+            '  YouTube: Dr. Rafiqul Islam  \n'
+            'facebook: /drrafiqulislam\n'
         ),
     )
     assert response.status_code == 302
@@ -45,8 +45,8 @@ def test_the_contact_strip_is_one_line_per_contact(client, owner, organization):
     # Blanks dropped, whitespace trimmed, a case-only repeat dropped, order kept
     # — the same rule the suggestion lists are cleaned by.
     assert organization.contacts == [
-        'Facebook: /DrAnwarHBiswas',
-        'YouTube: Dr. Anwar H Biswas',
+        'Facebook: /DrRafiqulIslam',
+        'YouTube: Dr. Rafiqul Islam',
     ]
 
 
@@ -78,10 +78,10 @@ def test_the_watermark_is_stored_in_branding_and_capped(client, owner, organizat
 
 def test_the_brand_colour_is_written_into_the_palette(client, owner, organization):
     client.force_login(owner)
-    _post(client, organization, primary_color='#007791')
+    _post(client, organization, primary_color='#336699')
 
     organization.refresh_from_db()
-    assert organization.primary_color == '#007791'
+    assert organization.primary_color == '#336699'
     # The rest of the seed palette survives being written through.
     assert organization.palette['success']
 

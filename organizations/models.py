@@ -104,7 +104,8 @@ DEFAULT_TERMINOLOGY = {
     'registration_number': 'Reg. no.',
     # Labels every phone number the prescription prints: the practitioner's
     # chip in the header and each chamber's in the footer. One key because it
-    # is one word — the clinic's design writes "মোবা:" in both places.
+    # is one word — a clinic printing in Bengali writes one label in both
+    # places.
     'printed_phone': 'Mobile',
     'consulting_hours': 'Consulting hours',
     # Photographs on a visit. One model covers the patient and the documents
@@ -207,7 +208,7 @@ def clean_suggestions(values, *, max_length: int = PRESCRIBING_MAX_LENGTH) -> li
     thinks of them, not alphabetically.
 
     ``max_length`` is a parameter because the second caller is the printed
-    prescription's contact bar, whose lines ("WhatsApp / Call: 01711-345387")
+    prescription's contact bar, whose lines ("WhatsApp / Call: 01700-000000")
     are longer than a potency. The rule is the same; only the width differs.
     """
     seen, cleaned = set(), []

@@ -21,7 +21,7 @@ def _fields(**overrides):
         'name': 'Kushtia Chamber',
         'code': 'KUS',
         'address': 'Fultala Mor, Chourhas, Kushtia',
-        'phone': '01718-184122',
+        'phone': '01700-000000',
         'consulting_hours': '',
         'schedule_note': 'Every 2nd Friday of the month',
         'print_order': '1',

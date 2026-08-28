@@ -234,3 +234,8 @@ allocation are row-lock guarantees, and both tests call `pytest.skip` on SQLite
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
+
+Hind Siliguri, self-hosted in `static/fonts/`, is a separate work: copyright © 2015
+Indian Type Foundry, licensed under the SIL Open Font License 1.1. The licence
+travels with the font files as required by its section 2 — see
+[static/fonts/OFL.txt](static/fonts/OFL.txt).

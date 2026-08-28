@@ -336,8 +336,8 @@ def test_bootstrap_clinic_can_start_a_clinic_with_billing_off():
         '--name=Global Homeopathy Clinic',
         '--timezone=Asia/Dhaka',
         '--branch=Mirpur Chamber',
-        '--admin-phone=01711345387',
-        '--admin-name=Dr Anwar H Biswas',
+        '--admin-phone=01700000000',
+        '--admin-name=Dr Rafiqul Islam',
         '--no-billing',
         stdout=StringIO(),
     )
