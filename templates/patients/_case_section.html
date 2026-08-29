@@ -1,0 +1,26 @@
+{% comment %}
+One anchored prose card of the case record.
+
+The prompts are the product: the reason a case-taking form exists on paper is
+that it asks its questions one at a time, and a doctor scanning the record at
+the next visit reads them back one at a time. So each is its own labelled box
+rather than one textarea per section.
+
+Sections are open, never collapsed — a closed section is an unasked question.
+{% endcomment %}
+<section id="{{ section.anchor }}" class="card-surface rounded-xl p-6 scroll-mt-20">
+  <h2 class="font-semibold">{{ section.title }}</h2>
+  <div class="grid gap-4 sm:grid-cols-2 mt-4">
+    {% for field in section.fields %}
+      <div class="{% if field.field.widget.attrs.rows > 2 %}sm:col-span-2{% endif %}">
+        <label class="label py-1" for="{{ field.id_for_label }}">
+          <span class="label-text text-sm">{{ field.label }}</span>
+        </label>
+        {{ field }}
+        {% for error in field.errors %}
+          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+</section>

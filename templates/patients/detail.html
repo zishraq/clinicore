@@ -100,26 +100,54 @@
 
   <div class="lg:col-span-2 space-y-4">
     {% if show_clinical %}
+      {% comment %}
+        The case record card. First in this column, above bills and visits, and
+        deliberately not a fourth button in page_actions — that row already
+        carries three, and the 2026-08-14 responsive pass is a fresh record of
+        what a crowded action row does to a 375px screen.
+
+        Three states, and the third is nothing at all: with the capability off
+        and no record taken, this whole card is absent rather than showing a
+        disabled button. A record that *exists* is always offered, whatever the
+        switch says — turning a capability off hides a feature, never a clinical
+        record (ADR 0020 §4).
+      {% endcomment %}
+      {% if case_record or organization.case_record_enabled %}
       <section class="card-surface rounded-xl p-6">
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold">Clinical profile</h2>
-          <a href="{% url 'patients:clinical_profile' patient.pk %}" class="btn btn-xs btn-brand-ghost">Edit</a>
+        <div class="flex items-center justify-between gap-4">
+          <h2 class="font-semibold">{{ terms.case_record }}</h2>
+          {% if case_record %}
+            <a href="{% url 'patients:case_record' patient.pk %}" class="btn btn-xs btn-brand-ghost">Open {{ terms.case_record|lower }}</a>
+          {% else %}
+            {# "Start" rather than "Add": it is a twenty-minute document and the word should say so. #}
+            <a href="{% url 'patients:case_record' patient.pk %}" class="btn btn-sm btn-brand">Start {{ terms.case_record|lower }}</a>
+          {% endif %}
         </div>
-        {% if clinical_profile %}
-          <div class="mt-4 space-y-4 text-sm">
+        {% if case_record %}
+          {% comment %}
+            The summary earns its place the way the bills card's outstanding
+            total does: the glance answers a question.
+          {% endcomment %}
+          <dl class="mt-4 space-y-2 text-sm">
             <div>
-              <p class="text-muted">Medical history</p>
-              <p class="whitespace-pre-line">{{ clinical_profile.medical_history|default:'—' }}</p>
+              <dt class="text-muted">{{ terms.complaint_plural }}</dt>
+              <dd>{{ case_record.leading_complaints|default:'—' }}</dd>
             </div>
             <div>
-              <p class="text-muted">Allergies</p>
-              <p class="whitespace-pre-line">{{ clinical_profile.allergies|default:'—' }}</p>
+              <dt class="text-muted">Taken</dt>
+              {# The date the case was taken on paper, falling back to when it was entered. #}
+              <dd>{% if case_record.taken_on %}{{ case_record.taken_on|date:'d M Y' }}{% else %}{{ case_record.created_at|date:'d M Y' }}{% endif %}</dd>
             </div>
-          </div>
+            <div>
+              <dt class="text-muted">Last updated</dt>
+              <dd>{{ case_record.updated_at|date:'d M Y' }}</dd>
+            </div>
+          </dl>
         {% else %}
-          <p class="text-sm text-muted mt-3">Nothing recorded yet.</p>
+          <p class="text-sm text-muted mt-3">Not taken yet.</p>
         {% endif %}
       </section>
+      {% endif %}
 
       {% if organization.billing_enabled %}
       <section class="card-surface rounded-xl p-6">

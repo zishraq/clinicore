@@ -1,0 +1,26 @@
+{% comment %}
+One row of a growable case-record table — §2 complaints, §12 investigations,
+§14 analysis. Also served standalone to each table's HTMX add-row button, which
+substitutes __prefix__ for the new index.
+
+`prefix` is passed by the including page and by the view that serves this
+fragment; the Alpine component needs it to find its own TOTAL_FORMS, because
+unlike the prescription rows there are three formsets on this page.
+{% endcomment %}
+<div class="border border-black/5 rounded-lg p-3" x-data="caseRow('{{ prefix }}')" x-show="!removed">
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% comment %}
+    A saved row cannot just vanish from the DOM — the formset only deletes it if
+    this box comes back ticked. Hidden, and driven by the Remove button.
+  {% endcomment %}
+  {% if form.DELETE %}{{ form.DELETE }}{% endif %}
+  <div class="flex flex-col sm:flex-row items-stretch sm:items-start gap-2">
+    <div class="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
+      {% include 'patients/_case_row_fields.html' %}
+    </div>
+    {% include 'partials/_remove_row_button.html' %}
+  </div>
+  {% for error in form.non_field_errors %}
+    <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+  {% endfor %}
+</div>

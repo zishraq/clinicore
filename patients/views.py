@@ -7,16 +7,27 @@ URL hit on another clinic's patient is a 404 rather than a permission message.
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 
 from accounts.permissions import clinical_access_required, require_membership
 from patients import services
-from patients.forms import ClinicalProfileForm, PatientForm
+from patients.case_forms import (
+    CaseAnalysisFormSet,
+    CaseComplaintFormSet,
+    CaseInvestigationFormSet,
+    CaseModalityFormSet,
+    CaseRecordForm,
+    page_sections,
+)
+from patients.forms import PatientForm
 from patients.models import Patient
 from patients.phone import looks_like_phone
 
 __all__ = [
-    'clinical_profile_edit',
+    'case_record_edit',
+    'case_record_row',
     'patient_create',
     'patient_delete',
     'patient_detail',
@@ -165,7 +176,7 @@ def patient_detail(request, pk: int):
     patient = get_object_or_404(Patient, pk=pk)
     # MVP: replace with permission layer
     show_clinical = membership.can_view_clinical
-    profile = getattr(patient, 'clinical_profile', None) if show_clinical else None
+    record = services.case_record_for(patient) if show_clinical else None
     encounters = []
     invoices = []
     outstanding = None
@@ -195,7 +206,7 @@ def patient_detail(request, pk: int):
         'patients/detail.html',
         {
             'patient': patient,
-            'clinical_profile': profile,
+            'case_record': record,
             'show_clinical': show_clinical,
             'encounters': encounters,
             'invoices': invoices,
@@ -269,24 +280,122 @@ def patient_delete(request, pk: int):
     return render(request, 'patients/confirm_delete.html', {'patient': patient})
 
 
+# --- The case record -------------------------------------------------------
+#
+# Every view here is PRACTITIONER / OWNER / DEVELOPER, including the HTMX
+# fragment: a fragment is a URL, and ADR 0012 puts authorisation at the view
+# boundary. The decorator reads CLINICAL_ROLES rather than naming roles, so
+# STAFF gets a 403 by direct URL and nobody has to remember a pair (ADR 0019).
+
+#: Which formset each HTMX add-row button asks for. Named in the URL rather
+#: than guessed, and looked up here rather than built from the segment, so an
+#: unknown kind is a 404 instead of a crash.
+_ROW_FORMSETS = {
+    'complaint': (CaseComplaintFormSet, 'patients/_case_complaint_row.html'),
+    'investigation': (
+        CaseInvestigationFormSet,
+        'patients/_case_investigation_row.html',
+    ),
+    'analysis': (CaseAnalysisFormSet, 'patients/_case_analysis_row.html'),
+}
+
+
+def _case_formsets(request, record, *, data=None):
+    """The four tables, in the order the paper prints them."""
+    common = {'instance': record, 'organization': request.organization}
+    return [
+        CaseComplaintFormSet(data, prefix='complaints', **common),
+        CaseModalityFormSet(data, prefix='modalities', **common),
+        CaseInvestigationFormSet(data, prefix='investigations', **common),
+        CaseAnalysisFormSet(data, prefix='analysis', **common),
+    ]
+
+
 @login_required
 @clinical_access_required
-def clinical_profile_edit(request, pk: int):
-    """PRACTITIONER/OWNER only — STAFF gets a 403 even by direct URL."""
+def case_record_edit(request, pk: int):
+    """The whole case on one page: one form, one Save, one history entry.
+
+    Not a wizard. A wizard writes sixteen partial saves and sixteen history
+    rows, and "at which step was this record valid" becomes a question the model
+    has to answer — and it needs a progress indicator, a back button, a resume
+    rule and an unsaved-changes guard, which is four things to explain to three
+    users. Same call this repo already made for the visit form.
+
+    The capability switch gates **creation and the offer, never reading or
+    editing what exists**. A clinic that turns the switch off must not lose
+    access to a record it has already taken, any more than turning billing off
+    deletes an invoice (A3). So this is not ``capability_required``, which is
+    unconditional: a patient with no record and the switch off is a 404, and a
+    patient with one is always reachable.
+    """
     membership = require_membership(request)
     patient = get_object_or_404(Patient, pk=pk)
-    profile = getattr(patient, 'clinical_profile', None)
-    form = ClinicalProfileForm(request.POST or None, instance=profile)
-    if request.method == 'POST' and form.is_valid():
-        profile = form.save(commit=False)
-        profile.patient = patient
-        profile.organization = request.organization
-        profile.created_by = profile.created_by or membership.user
-        profile.save()
-        messages.success(request, 'Clinical profile saved.')
-        return redirect('patients:detail', pk=patient.pk)
+    record = services.case_record_for(patient)
+    if record is None and not request.organization.case_record_enabled:
+        raise Http404('case_record_enabled is off for this organization.')
+
+    data = request.POST if request.method == 'POST' else None
+    form = CaseRecordForm(data, instance=record, organization=request.organization)
+    formsets = _case_formsets(request, record, data=data)
+
+    # Every formset is validated before anything is saved, so a refusal in one
+    # redisplays the other three with what was typed into them still there. A
+    # refusal never costs the note.
+    if (
+        request.method == 'POST'
+        and form.is_valid()
+        and all(formset.is_valid() for formset in formsets)
+    ):
+        services.save_case_record(
+            request.organization,
+            patient=patient,
+            actor=membership.user,
+            form=form,
+            formsets=formsets,
+        )
+        label = request.organization.terms['case_record']
+        messages.success(request, f'{label} saved.')
+        return redirect('patients:case_record', pk=patient.pk)
+
     return render(
         request,
-        'patients/clinical_profile_form.html',
-        {'form': form, 'patient': patient},
+        'patients/case_record_form.html',
+        {
+            'patient': patient,
+            'record': record,
+            'form': form,
+            'page_sections': page_sections(request.organization),
+            'complaint_formset': formsets[0],
+            'modality_formset': formsets[1],
+            'investigation_formset': formsets[2],
+            'analysis_formset': formsets[3],
+        },
     )
+
+
+@login_required
+@clinical_access_required
+def case_record_row(request, kind: str):
+    """One blank row for an HTMX add button.
+
+    The formset's management form counts rows, so the caller sends its current
+    TOTAL_FORMS and the placeholder in ``empty_form``'s input names is replaced
+    by that number here; the button increments the counter afterwards. Same
+    idiom as the prescription item, bill line and goods receipt rows.
+
+    **The substitution is the whole job.** ``empty_form`` names its inputs
+    ``complaints-__prefix__-complaint``, and a row posted under that name is not
+    a row Django's formset can see — so without this the button appears to work,
+    the practitioner types into the new row, and the save drops it in silence.
+    """
+    entry = _ROW_FORMSETS.get(kind)
+    if entry is None:
+        raise Http404(f'No such case record table: {kind}')
+    formset_class, template = entry
+    prefix = request.GET.get('prefix', kind)
+    raw = request.GET.get(f'{prefix}-TOTAL_FORMS', '0')
+    index = int(raw) if raw.isdigit() else 0
+    formset = formset_class(prefix=prefix, organization=request.organization)
+    html = render_to_string(template, {'form': formset.empty_form}, request=request)
+    return HttpResponse(html.replace('__prefix__', str(index)))

@@ -27,9 +27,9 @@ def test_staff_can_search_patients(client, staff, patient):
     assert b'Rahima Begum' in response.content
 
 
-def test_staff_is_denied_the_clinical_profile(client, staff, patient):
+def test_staff_is_denied_the_case_record(client, staff, patient):
     client.force_login(staff)
-    response = client.get(reverse('patients:clinical_profile', args=[patient.pk]))
+    response = client.get(reverse('patients:case_record', args=[patient.pk]))
     assert response.status_code == 403
 
 

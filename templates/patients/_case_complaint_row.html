@@ -1,0 +1,5 @@
+{% comment %}
+One complaints row. A thin wrapper that names the formset prefix, so the shared
+row template and the add-row view do not have to guess which table they are in.
+{% endcomment %}
+{% include 'patients/_case_growable_row.html' with prefix='complaints' %}

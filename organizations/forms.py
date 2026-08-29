@@ -88,6 +88,7 @@ class FeatureSettingsForm(forms.ModelForm):
         fields = [
             'billing_enabled',
             'advice_enabled',
+            'case_record_enabled',
             'temperature_unit',
             *(field.enabled_field for field in PRESCRIBING_FIELDS),
         ]
@@ -103,6 +104,7 @@ class FeatureSettingsForm(forms.ModelForm):
             # What the clinic gets, not what the column is called.
             'billing_enabled': 'Bill patients and take payments',
             'advice_enabled': 'Prescribe advice',
+            'case_record_enabled': 'Take a full case history',
             'temperature_unit': 'Temperature unit',
             **{
                 field.enabled_field: _SWITCH_LABELS[field.key]
@@ -110,6 +112,15 @@ class FeatureSettingsForm(forms.ModelForm):
             },
         }
         help_texts = {
+            # The same reassurance billing carries, and needed for the same
+            # reason: the switch gates the offer to *start* a case record, never
+            # reading or correcting one that exists.
+            'case_record_enabled': (
+                'Adds a case record to each patient — a long structured '
+                'history, taken once and revised. Turning it off stops new ones '
+                'being started; records already taken stay readable and '
+                'editable.'
+            ),
             # Said explicitly because the reassurance is the point: an operator
             # who thinks this rewrites history will never touch it, and one who
             # thinks it does nothing will not understand why an old reading
@@ -147,7 +158,12 @@ class FeatureSettingsForm(forms.ModelForm):
         # Billing leads: it is the largest thing on this screen — a whole app
         # rather than a field on a form — and it is what the clinic came here
         # to change.
-        order = ['billing_enabled', 'advice_enabled', 'temperature_unit']
+        order = [
+            'billing_enabled',
+            'advice_enabled',
+            'case_record_enabled',
+            'temperature_unit',
+        ]
         for field in PRESCRIBING_FIELDS:
             term = DEFAULT_TERMINOLOGY[field.key]
             label_placeholder, options_placeholder = _PLACEHOLDERS[field.key]

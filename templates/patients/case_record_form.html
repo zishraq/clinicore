@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block alpine_components %}
+  <script src="{% static 'js/case-record.js' %}" defer></script>
+{% endblock %}
+
+{% block title %}{{ terms.case_record }} — {{ patient.full_name }}{% endblock %}
+{% block page_title %}{{ terms.case_record }}{% endblock %}
+{% block page_actions %}
+  <a href="{% url 'patients:detail' patient.pk %}" class="btn btn-sm btn-brand-ghost">{{ patient.full_name }}</a>
+{% endblock %}
+
+{% block content %}
+{% comment %}
+  One page, one form, one Save — not a wizard. One POST is one transaction and
+  one history entry; a wizard writes sixteen partial saves and makes "at which
+  step was this record valid" a question the model has to answer. It also needs
+  a progress indicator, a back button, a resume rule and an unsaved-changes
+  guard: four things to explain, for three users. See ADR 0020 §8.
+
+  The record is created on the first Save with whatever is filled in, and the
+  page redisplays with everything intact, so "save early, save often" is a real
+  strategy rather than advice.
+{% endcomment %}
+<form method="post" class="lg:grid lg:grid-cols-4 lg:gap-6 lg:items-start">
+  {% csrf_token %}
+
+  {% comment %}
+    The jump list. From lg up only: on a phone it would be a screenful of links
+    above the thing it navigates. Built from one declaration in
+    patients/case_forms.py, so it cannot disagree with the page about what is on
+    it or what the clinic calls it.
+  {% endcomment %}
+  <nav class="hidden lg:block lg:col-span-1 sticky top-20 self-start">
+    <ul class="text-sm space-y-1">
+      {% for entry in page_sections %}
+        <li><a class="link text-muted hover:text-[var(--cc-text)]" href="#{{ entry.anchor }}">{{ entry.title }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+
+  <div class="lg:col-span-3 space-y-4">
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">
+        {% for error in form.non_field_errors %}<span>{{ error }}</span>{% endfor %}
+      </div>
+    {% endif %}
+
+    <section class="card-surface rounded-xl p-6">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="label py-1" for="{{ form.taken_on.id_for_label }}">
+            <span class="label-text text-sm">{{ form.taken_on.label }}</span>
+          </label>
+          {{ form.taken_on }}
+          {% for error in form.taken_on.errors %}
+            <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    {% include 'patients/_case_table.html' with anchor='complaints' title=terms.complaint_plural formset=complaint_formset row_template='patients/_case_complaint_row.html' prefix='complaints' kind='complaint' %}
+
+    {% include 'patients/_case_section.html' with section=form.section_map.hpc %}
+    {% include 'patients/_case_section.html' with section=form.section_map.past %}
+    {% include 'patients/_case_section.html' with section=form.section_map.family %}
+    {% include 'patients/_case_section.html' with section=form.section_map.habits %}
+    {% include 'patients/_case_section.html' with section=form.section_map.mental %}
+    {% include 'patients/_case_section.html' with section=form.section_map.generals %}
+
+    {% comment %}
+      §9 is fixed at eight rows seeded with the record, so it has no add control
+      and no delete control — an add would offer a ninth the unique constraint
+      refuses, and a delete would leave a gap nothing refills. It is the one
+      table that is not the shared growable one for exactly that reason.
+    {% endcomment %}
+    <section id="modalities" class="card-surface rounded-xl p-6 scroll-mt-20">
+      <h2 class="font-semibold">{{ terms.modality_plural }}</h2>
+      <p class="text-sm text-muted mt-1">What makes it better, and what makes it worse.</p>
+      {{ modality_formset.non_form_errors }}
+      {{ modality_formset.management_form }}
+      <div class="space-y-3 mt-4">
+        {% for row in modality_formset %}
+          <div class="border border-black/5 rounded-lg p-3">
+            {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
+            <p class="font-medium text-sm">{{ row.instance.factor }}</p>
+            <div class="flex flex-col sm:flex-row gap-2 mt-1">
+              {% include 'patients/_case_row_fields.html' with form=row %}
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm text-muted">Saved once, this section fills itself in.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% include 'patients/_case_section.html' with section=form.section_map.systems %}
+
+    {% include 'patients/_case_table.html' with anchor='investigations' title=terms.investigation_plural formset=investigation_formset row_template='patients/_case_investigation_row.html' prefix='investigations' kind='investigation' %}
+
+    {% include 'patients/_case_section.html' with section=form.section_map.assessment %}
+
+    {% include 'patients/_case_table.html' with anchor='analysis' title=terms.case_analysis formset=analysis_formset row_template='patients/_case_analysis_row.html' prefix='analysis' kind='analysis' %}
+
+    {% comment %}
+      Save is reachable at every scroll position, because this is a long page and
+      a button only at the foot means scrolling past sixteen sections to keep
+      work that is already typed. Sticky, and clear of the fixed 64px bottom nav
+      below lg — base.html's pb-24 sm:pb-24 lg:pb-6 exists for that nav, and this
+      bar sits in the same space. Checked in a browser, not only in a test:
+      core/tests/test_layout.py is a canary, not a proof.
+    {% endcomment %}
+    <div class="sticky bottom-20 lg:bottom-4 z-10 flex gap-3 card-surface rounded-xl px-4 py-3">
+      <button type="submit" class="btn btn-brand">Save {{ terms.case_record|lower }}</button>
+      <a href="{% url 'patients:detail' patient.pk %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

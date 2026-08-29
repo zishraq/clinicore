@@ -46,7 +46,8 @@ from inventory.models import (
 )
 from organizations.models import Branch as BranchModel
 from organizations.models import Organization
-from patients.models import Patient, PatientClinicalProfile, Sex
+from patients import services as patient_services
+from patients.models import CaseRecord, MaritalStatus, Patient, Sex
 from scheduling import services as scheduling
 from scheduling.models import Appointment, AppointmentStatus, DayPart
 
@@ -221,6 +222,11 @@ class Command(BaseCommand):
             # This clinic prescribes medicines only. The capability ships on by
             # default; the seed is what turns it off (A3).
             advice_enabled=False,
+            # On, so the demo shows the whole product — and so the URL smoke
+            # walk reaches the case record pages at all. It ships off by
+            # default, which is the opposite reason: a general practice does not
+            # take a seventy-box constitutional history (ADR 0020 §4).
+            case_record_enabled=True,
             branch={
                 'name': 'Main Chamber',
                 'code': 'MAIN',
@@ -349,9 +355,9 @@ class Command(BaseCommand):
             # After the items that PROTECT them.
             Product.all_objects.filter(organization=organization).delete()
             AdviceTemplate.all_objects.filter(organization=organization).delete()
-            PatientClinicalProfile.all_objects.filter(
-                organization=organization
-            ).delete()
+            # ``Patient`` CASCADEs the case record and its four child tables, so
+            # unlike ADR 0014's photographs there is nothing on disk to orphan
+            # and the queryset delete below is enough.
             Patient.all_objects.filter(organization=organization).delete()
             BranchModel.all_objects.filter(organization=organization).delete()
         Membership.objects.filter(organization=organization).delete()
@@ -389,23 +395,92 @@ class Command(BaseCommand):
                     f'Road {random.randint(1, 20)}, Dhaka'
                 ),
                 registered_branch=branch,
-            )
-            PatientClinicalProfile.objects.create(
-                organization=organization,
-                created_by=actor,
-                patient=patient,
-                medical_history=random.choice(
-                    [
-                        'No significant past history.',
-                        'Hypertension, controlled on medication since 2021.',
-                        'Type 2 diabetes, diet controlled.',
-                        'Childhood asthma, no recent episodes.',
-                    ]
+                marital_status=random.choice(
+                    [MaritalStatus.SINGLE, MaritalStatus.MARRIED, MaritalStatus.UNKNOWN]
                 ),
-                allergies=random.choice(['None known', 'Penicillin', 'Dust, pollen']),
+                occupation=random.choice(
+                    ['Schoolteacher', 'Shopkeeper', 'Driver', 'Homemaker', '']
+                ),
             )
             patients.append(patient)
+        # One case record, on the first patient. One rather than fifteen: the
+        # point is that the URL smoke walk reaches the page with a real record
+        # on it, and a demo where every patient has a twenty-minute history
+        # taken is not a clinic anybody would recognise.
+        self._case_record(organization, actor, patients[0])
         return patients
+
+    def _case_record(self, organization, actor, patient) -> CaseRecord:
+        """One worked case, through the service that saves a real one.
+
+        Goes through ``save_case_record`` rather than writing rows, so the
+        seeded record cannot be a shape the application would refuse — the same
+        rule the appointment seeding follows.
+        """
+        from patients.case_forms import (
+            CaseAnalysisFormSet,
+            CaseComplaintFormSet,
+            CaseInvestigationFormSet,
+            CaseModalityFormSet,
+            CaseRecordForm,
+        )
+
+        form = CaseRecordForm(
+            {
+                'taken_on': timezone.localdate().isoformat(),
+                'hpc_progression': 'Gradually worse over four months.',
+                'hpc_narrative': (
+                    'Started after a change of job. Worse in the evenings, '
+                    'better after rest.'
+                ),
+                'past_allergies': 'None known.',
+                'past_other_history': 'Childhood asthma, no recent episodes.',
+                'family_father': 'Hypertension, alive.',
+                'habits_sleep': 'Six hours, wakes at three, sleeps on the right.',
+                'generals_thermal_state': 'Chilly',
+                'generals_thirst': 'Large quantities, infrequently.',
+                'systems_respiratory': 'No cough. No breathlessness at rest.',
+                'assessment_provisional': 'Tension headache.',
+            },
+            organization=organization,
+        )
+        blank = {
+            'TOTAL_FORMS': '1',
+            'INITIAL_FORMS': '0',
+            'MIN_NUM_FORMS': '0',
+            'MAX_NUM_FORMS': '1000',
+        }
+        data = {
+            **{f'complaints-{key}': value for key, value in blank.items()},
+            'complaints-0-complaint': 'Headache, both temples',
+            'complaints-0-onset': 'Four months ago',
+            'complaints-0-duration': 'Most days',
+            'complaints-0-character': 'Tight, band-like',
+            'complaints-0-intensity': 'Moderate',
+            **{f'modalities-{key}': value for key, value in blank.items()},
+            'modalities-TOTAL_FORMS': '0',
+            **{f'investigations-{key}': value for key, value in blank.items()},
+            'investigations-0-name': 'CBC',
+            'investigations-0-result': 'Within normal limits',
+            **{f'analysis-{key}': value for key, value in blank.items()},
+            'analysis-0-finding': 'Head, pain, band-like sensation',
+            'analysis-0-grade': '2',
+            'analysis-0-candidate': 'Example remedy',
+        }
+        formsets = [
+            CaseComplaintFormSet(data, prefix='complaints', organization=organization),
+            CaseModalityFormSet(data, prefix='modalities', organization=organization),
+            CaseInvestigationFormSet(
+                data, prefix='investigations', organization=organization
+            ),
+            CaseAnalysisFormSet(data, prefix='analysis', organization=organization),
+        ]
+        assert form.is_valid(), form.errors
+        for formset in formsets:
+            assert formset.is_valid(), formset.errors
+        return patient_services.save_case_record(
+            organization, patient=patient, actor=actor, form=form, formsets=formsets
+        )
 
     def _catalogs(self, organization, actor) -> dict:
         products = [

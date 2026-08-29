@@ -7,9 +7,12 @@ from core.services import next_document_number
 from patients.models import Patient
 
 __all__ = [
+    'case_record_for',
+    'case_record_revisions',
     'create_patient',
     'generate_patient_code',
     'possible_duplicates',
+    'save_case_record',
     'search_patients',
 ]
 
@@ -114,3 +117,72 @@ def create_patient(organization, *, actor, form) -> Patient:
     patient.code = patient.code or generate_patient_code(organization)
     patient.save()
     return patient
+
+
+# --- The case record -------------------------------------------------------
+
+
+def case_record_for(patient):
+    """This patient's case record, or ``None``.
+
+    A helper rather than ``getattr(patient, 'case_record', None)`` at each call
+    site, because the reverse accessor raises rather than returning None and
+    every caller would have to remember which.
+    """
+    from patients.models import CaseRecord
+
+    return CaseRecord.objects.filter(patient=patient).first()
+
+
+@transaction.atomic
+def save_case_record(organization, *, patient, actor, form, formsets) -> 'CaseRecord':  # noqa: F821
+    """One POST, one transaction, one history row per changed model.
+
+    The record is created on this first save with whatever is filled in, so
+    "save early, save often" is a real strategy rather than advice. §9's eight
+    rows are seeded here rather than by a signal: they are part of what it means
+    for a case record to exist, and a signal would put that fact somewhere a
+    reader of this function cannot see it.
+    """
+    from patients.models import MODALITY_FACTORS, CaseModality
+
+    record = form.save(commit=False)
+    record.patient = patient
+    record.organization = organization
+    record.created_by = record.created_by or actor
+    is_new = record.pk is None
+    record.save()
+
+    if is_new:
+        CaseModality.objects.bulk_create(
+            [
+                CaseModality(
+                    organization=organization,
+                    created_by=actor,
+                    case_record=record,
+                    factor=factor,
+                    sort_order=index,
+                )
+                for index, factor in enumerate(MODALITY_FACTORS)
+            ]
+        )
+
+    for formset in formsets:
+        formset.instance = record
+        for row in formset.save(commit=False):
+            row.organization = organization
+            row.created_by = row.created_by or actor
+            row.save()
+        for row in formset.deleted_objects:
+            row.delete()
+    return record
+
+
+def case_record_revisions(organization, record):
+    """History rows for one case record, filtered by tenant.
+
+    ``simple_history`` generates its own manager, which is **not** org-scoped —
+    so every query against ``.history`` filters ``organization`` explicitly or
+    it reads every clinic's rows. See docs/adr/0006-encounter-amendments.md.
+    """
+    return record.history.filter(organization=organization).order_by('-history_date')

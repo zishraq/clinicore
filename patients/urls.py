@@ -16,5 +16,10 @@ urlpatterns = [
     path('<int:pk>/', views.patient_detail, name='detail'),
     path('<int:pk>/edit/', views.patient_update, name='update'),
     path('<int:pk>/delete/', views.patient_delete, name='delete'),
-    path('<int:pk>/clinical/', views.clinical_profile_edit, name='clinical_profile'),
+    # The case record. One page, one Save (ADR 0020 §8). The clinical profile
+    # that used to live at /clinical/ was absorbed into it and its URL is gone.
+    path('<int:pk>/case/', views.case_record_edit, name='case_record'),
+    # An HTMX add-row fragment is a URL, so it carries the same role gate as the
+    # page (ADR 0012).
+    path('case/row/<str:kind>/', views.case_record_row, name='case_record_row'),
 ]

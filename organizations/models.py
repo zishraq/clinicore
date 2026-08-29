@@ -184,6 +184,33 @@ DEFAULT_TERMINOLOGY = {
     'status_adjustment': 'Adjusted',
     'status_return': 'Returned',
     'status_wastage': 'Written off',
+    # The case record (ADR 0020). One structured clinical document per patient,
+    # taken from the clinic's paper form. Every one of these names something the
+    # doctor already has a word for, and the words differ by tradition — a
+    # classical homeopath's "Repertorization" is a physician's ranked
+    # differential and an Ayurvedic practitioner's own analysis. The columns are
+    # named for what they record; these are what the screens say.
+    'case_record': 'Case record',
+    'case_record_plural': 'Case records',
+    'complaint': 'Complaint',
+    'complaint_plural': 'Complaints',
+    # What makes a complaint better or worse. The paper form's own word, and
+    # generic across traditions.
+    'modality': 'Modality',
+    'modality_plural': 'Modalities',
+    'investigation': 'Investigation',
+    'investigation_plural': 'Investigations',
+    # The worked shortlist: findings, and the treatments they point to, scored.
+    # This clinic maps it to "Repertorization" and the three words below to
+    # "Rubric", "Grade" and "Remedy".
+    'case_analysis': 'Case analysis',
+    'finding': 'Finding',
+    'grade': 'Grade',
+    'candidate': 'Candidate',
+    # "What underlying pattern does this case belong to", as opposed to what
+    # disease it is. The neutral word is on the paper form itself, which reads
+    # "Miasmatic / constitutional assessment".
+    'constitutional_assessment': 'Constitutional assessment',
 }
 
 #: Longest an override may be. These are chrome — a nav item, a badge, a button.
@@ -357,6 +384,16 @@ class Organization(TimeStampedModel):
     billing_enabled = models.BooleanField(
         default=True,
         help_text='Raise bills, take payments, and print receipts.',
+    )
+    # A capability switch like ``advice_enabled`` and ``strength_enabled``, off
+    # by default: a general practice seeing a patient for fifteen minutes does
+    # not take a seventy-box constitutional history. It gates **creation and the
+    # offer only** — a patient who already has a record still shows the card,
+    # still opens it, and can still have a typo fixed. Turning a switch off must
+    # not hide a clinical record any more than it may erase one (A3's rule).
+    case_record_enabled = models.BooleanField(
+        default=False,
+        help_text='Take a full structured case history for each patient.',
     )
     # Which unit this clinic *works in*. Presentation only, and deliberately
     # so: temperature is stored in Fahrenheit in one column whatever this says,

@@ -71,10 +71,15 @@ def test_staff_can_save_all_seven(client, organization, branch, staff):
 
 
 def test_none_of_them_reaches_the_clinical_form():
-    """The permission boundary is structural: two forms, not a hidden block."""
-    from patients.forms import ClinicalProfileForm
+    """The permission boundary is structural: two forms, not a hidden block.
 
-    overlap = set(NEW_VALUES) & set(ClinicalProfileForm().fields)
+    STAFF is served PatientForm; the case record is the clinical half, behind
+    clinical_access_required. A demographic appearing on both would put a field
+    a receptionist owns behind a gate she cannot pass.
+    """
+    from patients.case_forms import CaseRecordForm
+
+    overlap = set(NEW_VALUES) & set(CaseRecordForm().fields)
     assert not overlap, f'demographics leaked onto the clinical form: {overlap}'
 
 

@@ -34,7 +34,14 @@ from inventory.models import (
     StockMovement,
 )
 from organizations.models import Branch
-from patients.models import Patient, PatientClinicalProfile
+from patients.models import (
+    CaseAnalysisEntry,
+    CaseComplaint,
+    CaseInvestigation,
+    CaseModality,
+    CaseRecord,
+    Patient,
+)
 from scheduling.models import Appointment
 
 pytestmark = pytest.mark.django_db
@@ -60,11 +67,43 @@ def _build_patient(organization):
     )
 
 
-def _build_clinical_profile(organization):
-    return PatientClinicalProfile.objects.create(
+def _build_case_record(organization):
+    return CaseRecord.objects.create(
         organization=organization,
         patient=_build_patient(organization),
-        medical_history='none',
+        assessment_provisional='none',
+    )
+
+
+def _build_case_complaint(organization):
+    return CaseComplaint.objects.create(
+        organization=organization,
+        case_record=_build_case_record(organization),
+        complaint='Headache',
+    )
+
+
+def _build_case_modality(organization):
+    return CaseModality.objects.create(
+        organization=organization,
+        case_record=_build_case_record(organization),
+        factor='Time',
+    )
+
+
+def _build_case_investigation(organization):
+    return CaseInvestigation.objects.create(
+        organization=organization,
+        case_record=_build_case_record(organization),
+        name='CBC',
+    )
+
+
+def _build_case_analysis_entry(organization):
+    return CaseAnalysisEntry.objects.create(
+        organization=organization,
+        case_record=_build_case_record(organization),
+        finding='Head, pain',
     )
 
 
@@ -235,7 +274,11 @@ BUILDERS = {
     'inventory.StockMovement': _build_stock_movement,
     'organizations.Branch': _build_branch,
     'patients.Patient': _build_patient,
-    'patients.PatientClinicalProfile': _build_clinical_profile,
+    'patients.CaseAnalysisEntry': _build_case_analysis_entry,
+    'patients.CaseComplaint': _build_case_complaint,
+    'patients.CaseInvestigation': _build_case_investigation,
+    'patients.CaseModality': _build_case_modality,
+    'patients.CaseRecord': _build_case_record,
     'scheduling.Appointment': _build_appointment,
 }
 

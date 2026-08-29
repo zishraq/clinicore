@@ -34,9 +34,12 @@ docstring-quotes = "double"
 [tool.ruff.lint.per-file-ignores]
 # Django's Meta options, ModelAdmin options, and form Meta.fields are
 # declarative class-level lists by design; RUF012 wants ClassVar on all of them.
+# The forms glob is deliberately wider than one filename: the case record is
+# big enough to keep out of patients/forms.py, and a form Meta is a form Meta
+# wherever it is declared.
 "*/models.py" = ["RUF012"]
 "*/admin.py" = ["RUF012"]
-"*/forms.py" = ["RUF012"]
+"*/*forms.py" = ["RUF012"]
 "*/views.py" = ["RUF012"]
 
 [tool.ruff.lint.isort]

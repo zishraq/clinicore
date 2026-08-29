@@ -93,7 +93,9 @@ this file covers what was **not** built and what keeps biting.
   history query must filter on `organization_id` by hand.
 - **No soft delete on `Encounter`.** SPEC §4 lists clinical records as
   soft-delete; there is no encounter-delete path at all, so the mixin would be
-  unused columns. `Patient` and `PatientClinicalProfile` do soft delete.
+  unused columns. `Patient` does soft delete; `CaseRecord` does not, because it
+  is only ever reached through a patient and a soft-deleted patient takes it out
+  of every screen already.
 - **`Encounter.practitioner` is a FK to `User`, not to `Membership`**
   (`docs/phase-0-proposal.md` §1.3). Simpler while there is one organization per
   session; changing it later is a data migration, so it is worth revisiting

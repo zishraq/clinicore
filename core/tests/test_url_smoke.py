@@ -91,6 +91,10 @@ def _argument_sources() -> dict:
         )
         return {'pk': row.invoice_id, 'payment_pk': row.pk} if row else None
 
+    def case_row(organization):
+        # Not a pk: the fragment is parameterised by which table it belongs to.
+        return {'kind': 'complaint'}
+
     def switch(organization):
         return {'organization_id': organization.pk}
 
@@ -128,7 +132,8 @@ def _argument_sources() -> dict:
         'inventory:product_stock': by(Product, is_stock_tracked=True),
         'inventory:receipt_detail': by(GoodsReceipt),
         'organizations:branch_update': by(Branch),
-        'patients:clinical_profile': by(Patient),
+        'patients:case_record': by(Patient),
+        'patients:case_record_row': case_row,
         'patients:delete': by(Patient),
         'patients:detail': by(Patient),
         'patients:update': by(Patient),
@@ -299,7 +304,9 @@ def test_the_walk_actually_reaches_most_of_the_application(client, populated):
         if client.get(reverse(name, kwargs=kwargs)).status_code == 200:
             reached += 1
 
-    assert reached >= 40, f'only {reached} URLs returned 200; the walk is not walking'
+    # The floor moves with the application. It was 40 when 51 pages answered
+    # 200; the case record and its add-row fragment brought that to 56.
+    assert reached >= 50, f'only {reached} URLs returned 200; the walk is not walking'
 
 
 BILLING_PREFIX = 'billing:'

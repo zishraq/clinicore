@@ -211,7 +211,7 @@ core/            abstract bases, org-scoping machinery, dashboard, healthz,
                  terminology tags, bootstrap_clinic / bootstrap_demo
 organizations/   Organization (branding, terminology, timezone), Branch
 accounts/        custom User (phone login), Membership, roles, auth views
-patients/        Patient, PatientClinicalProfile
+patients/        Patient, CaseRecord and its four tables, the case record form
 catalog/         Product, AdviceTemplate, autocomplete, quick-add
 scheduling/      Appointment, the day list, walk-ins, follow-ups
 clinical/        Encounter, Prescription, PrescriptionItem, print view

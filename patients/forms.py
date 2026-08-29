@@ -1,16 +1,17 @@
-"""Patient forms. Demographics and clinical narrative are separate forms.
+"""Patient demographics. The clinical narrative is a different form entirely.
 
-STAFF is served ``PatientForm`` only — the split is what makes the permission
-boundary structural rather than a hidden template block.
+STAFF is served this module only — the split is what makes the permission
+boundary structural rather than a hidden template block. The clinical half is
+``patients/case_forms.py``, behind ``clinical_access_required``.
 """
 
 from django import forms
 
 from core.forms import date_widget, org_scoped_formfield
 from organizations.services import active_branches, default_branch
-from patients.models import MaritalStatus, Patient, PatientClinicalProfile
+from patients.models import MaritalStatus, Patient
 
-__all__ = ['ClinicalProfileForm', 'PatientForm']
+__all__ = ['PatientForm']
 
 _INPUT = {'class': 'input input-bordered w-full'}
 _TEXTAREA = {'class': 'textarea textarea-bordered w-full', 'rows': 3}
@@ -152,13 +153,3 @@ class PatientForm(forms.ModelForm):
             # has to resolve the pair.
             self.instance.approx_age_years = None
         return cleaned
-
-
-class ClinicalProfileForm(forms.ModelForm):
-    class Meta:
-        model = PatientClinicalProfile
-        fields = ['medical_history', 'allergies']
-        widgets = {
-            'medical_history': forms.Textarea(attrs={**_TEXTAREA, 'rows': 6}),
-            'allergies': forms.Textarea(attrs=_TEXTAREA),
-        }

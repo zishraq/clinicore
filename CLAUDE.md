@@ -1019,9 +1019,110 @@ Two consequences surfaced with it, neither decided nor built:
 - **`Encounter` still has no per-visit measurements**, so the prescription's
   `Wt` box is still a blank rule.
 
+The case record landed 2026-08-29 (ADR 0020) — one structured clinical document
+per patient, from the sixteen-section paper form the clinic uses, reached from
+the patient profile. `patients.CaseRecord` plus four child tables, seventy-two
+prose columns on the parent, `PatientClinicalProfile` absorbed and deleted.
+**Browser-verified end to end** against the running stack as PRACTITIONER,
+STAFF and OWNER: the form saved and redisplayed every section with Bengali
+intact, §9 seeded its eight rows on the first save, STAFF got 403 on the page
+*and* both HTMX fragments while still editing every new demographic, and the
+patient card showed both of its states. Shipped in three commits; §11 vitals and
+the case-record print view are **not built** and stay proposals.
+
+- **Generic column names, and the clinic's word comes from `terminology`.** The
+  alternative — `miasm` and `repertorization` behind a capability switch — was
+  refused because a flag is not a quarantine: the models, migrations, history
+  tables and a public repo carry the word whether the switch is on or off.
+  Thirteen new keys. A hardcoded "Repertorization", "Rubric", "Miasm", "Remedy"
+  or "Potency" in a template or a `*forms.py` is a bug, and
+  `patients/tests/test_case_naming.py` enforces it — over *renderable strings
+  only*, parsed with `ast` for Python and comment-stripped for templates,
+  because a raw grep cannot tell a rule from a note about the rule. One stated
+  exception: the Features screen's "Potency" placeholder, which teaches the
+  owner the field is theirs to rename. (Its own comment calls the placeholders
+  "deliberately ordinary words"; that one is not. Worth a look.)
+- **`patients/tests/test_case_shape.py` is what makes a seventy-two-column
+  migration reviewable.** It parses `docs/reference/case-taking-form.md` and
+  fails in *three* directions: a prompt with no column, a mapping naming a
+  column that does not exist, and a mapping for a prompt the paper no longer
+  asks. §9's eight factors are read off the document too, not hardcoded. Both
+  directions were confirmed to fail against planted drift. The §6/§8 duplicates
+  are in an explicit `DROPPED` dict with their reasons — "we decided not to" and
+  "we forgot" look identical otherwise.
+- **The add-row fragment must substitute `__prefix__`, and this shipped broken
+  past a green test.** `empty_form` names its inputs
+  `complaints-__prefix__-complaint`, which is not a name Django's formset binds:
+  the button *appears* to work, the practitioner types into the new row, and the
+  save drops it in silence. The three existing add-row views (clinical, billing,
+  inventory) all replace it server-side; mine did not, and the test I wrote
+  asserted the placeholder was *present*. Caught in a browser. The test now
+  fetches a row, posts it, and reads it back.
+- **The capability switch gates creation and the offer, never reading or
+  editing.** So it is *not* `capability_required`, which is unconditional: a
+  patient with no record and the switch off is a 404, a patient with one is
+  always reachable and still saves. Verified in the browser in both positions,
+  including an edit with the switch off.
+- **§9 is eight rows seeded with the record, in `save_case_record`** rather than
+  by a signal — they are part of what it means for a case record to exist, and a
+  signal would hide that from a reader of the function. `extra=0`, no add
+  control, no delete control, and a `unique_together`. The absorption migration
+  seeds them too, or the one patient whose record came from a migration renders
+  an empty §9.
+- **`DELETE` is a checkbox, so a bare `visible_fields` loop renders its label.**
+  Every growable row carried a stray "Delete" caption over an invisible control.
+  Found in a browser, now asserted.
+- **`PatientClinicalProfile` is gone, and `/patients/<pk>/clinical/` with it.**
+  `allergies` → `past_allergies`, `medical_history` → `past_other_history`
+  **whole**, never distributed across §4's eight prompts — nothing tells "had
+  measles as a child" from "appendix out in 2019" and a guess corrupts a
+  clinical record. Reversible. Verified against the dev database's fifteen real
+  profile rows before reseeding: every value landed, every record got its grid.
+- **`ruff`'s RUF012 per-file-ignore is now `*/*forms.py`**, so the case record
+  can live in `patients/case_forms.py` rather than being buried in the
+  demographics module. A form Meta is a form Meta wherever it is declared.
+
+Not verified, and the harness is why: **the `lg` two-column layout could not be
+seen at first.** Django's `X-Frame-Options: DENY` blocks CLAUDE.md's sized-iframe
+technique, and Chrome clamps its CSS viewport at ~950px however the X11 frame is
+resized. What worked: a real `--new-window`, `wmctrl -r <title> -e` to move it
+off the second monitor, then **three `ctrl+-` zoom-outs driven by python-xlib**,
+which widens the CSS viewport past the `lg` breakpoint. Add that to the toolkit —
+it is the only route found to a width this harness cannot otherwise produce.
+
+Also landed, ahead of the vitals it exists for: **temperature is stored in
+Fahrenheit, always, in one column** (`core/temperature.py`, amending ADR 0020
+§7, whose Celsius-only decision is superseded rather than edited away).
+`Organization.temperature_unit` decides the label, what the form accepts and
+what is rendered back — **never what a stored number means**. A unit flag that
+reinterprets stored values would make flipping the setting rewrite every reading
+ever taken, with nothing to tell the two apart afterwards. Same family as the
+derived invoice balance and summed stock on hand. The range check validates
+against the unit *entered* (90–110 °F, 32–43 °C) then converts, so the refusal
+names a bound in the unit the person used. Fahrenheit is canonical because it is
+this clinic's unit and because it is the finer grid at one decimal place — a
+Celsius reading round-trips as itself, asserted rather than assumed. `Encounter`
+has no temperature column yet.
+
+The seven `Patient` demographic columns landed with it — marital status,
+occupation, email, a second phone, an emergency contact (two columns, so it can
+be dialled) and who referred them. All STAFF-editable, all behind a "More
+details" disclosure that **still posts what it contains**. `marital_status` is
+not required on the form, unlike `sex`: a required field inside a collapsed
+section fails validation where the person filling it in cannot see it. The ADR
+says "five of the seven" go behind the disclosure but lists six items covering
+all seven columns, and names the visible desk set as exactly the original six
+fields — the lists won. `alt_phone` joins `search_patients` **and**
+`possible_duplicates` (all four directions, both numbers against both), which is
+the whole price of the column: a second number the search cannot find is worse
+than no second number, because reception concludes the patient is not registered
+and creates the duplicate.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
-gaps. Deployed to production on 2026-08-23 — one Oracle Cloud Always Free box,
+gaps, along with ADR 0020's own two unbuilt halves — `Encounter` vitals (§11,
+whose panel on the case record is not built either) and the case-record print
+view, which the ADR recommends deciding after two weeks of real use. Deployed to production on 2026-08-23 — one Oracle Cloud Always Free box,
 Ubuntu 24.04 on ARM, Docker Compose behind Caddy for TLS.
 
 ## Standing rules

@@ -1,0 +1,27 @@
+{% comment %}
+One growable case-record table: §2, §12 or §14.
+
+All three are the same shape — management form, rows, an HTMX add button — so
+they share this rather than growing a near-identical block each. The add button
+fetches one blank row and bumps TOTAL_FORMS itself, because Django ignores any
+row beyond that count on submit.
+{% endcomment %}
+<section id="{{ anchor }}" class="card-surface rounded-xl p-6 scroll-mt-20">
+  <h2 class="font-semibold">{{ title }}</h2>
+  {% if intro %}<p class="text-sm text-muted mt-1">{{ intro }}</p>{% endif %}
+  {{ formset.non_form_errors }}
+  {{ formset.management_form }}
+  <div id="{{ anchor }}-rows" class="space-y-3 mt-4">
+    {% for row in formset %}
+      {% include row_template with form=row %}
+    {% endfor %}
+  </div>
+  <button type="button" class="btn btn-sm btn-brand-ghost mt-4"
+          hx-get="{% url 'patients:case_record_row' kind %}?prefix={{ prefix }}"
+          hx-include="[name='{{ prefix }}-TOTAL_FORMS']"
+          hx-target="#{{ anchor }}-rows"
+          hx-swap="beforeend"
+          hx-on::after-request="const total = document.getElementById('id_{{ prefix }}-TOTAL_FORMS'); total.value = parseInt(total.value) + 1;">
+    Add another row
+  </button>
+</section>
