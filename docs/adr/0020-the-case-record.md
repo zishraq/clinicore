@@ -1,8 +1,10 @@
 # 0020 — The case record is one document per patient, named for what it records
 
-Status: **proposed, 2026-08-28.** Nothing built. Awaiting sign-off on the six
-decisions below; §11 and the new `Patient` columns are separable and can be
-approved on their own.
+Status: **accepted, 2026-08-29**, with one decision amended — see
+*Amended: temperature is stored in Fahrenheit* below, which supersedes the
+Celsius-only paragraph in §7. Built in three increments: the `Patient` columns,
+the temperature setting, and the case record itself. §11's `Encounter` columns
+and the print view are **not built** and remain proposals.
 
 Source document: `docs/reference/case-taking-form.md` — a transcription of the
 paper sheet Dr Anwar uses at Global Homeopathy Clinic, sixteen sections.
@@ -482,6 +484,54 @@ erase an occupation recorded last month.
   editing this?" prompt on that screen is friction in the wrong place. Every
   save still writes a history row with who and when, which is what stops a
   silent overwrite. A History link shows the diff, like the encounter's.
+
+
+## Amended: temperature is stored in Fahrenheit, and the unit is presentation
+
+**2026-08-29. This supersedes the "Temperature is stored in Celsius only"
+paragraph in §7 above**, which is left in place so the reasoning that was
+rejected can still be read.
+
+The original decision refused a dual-unit input on the ground that it is a
+silent conversion bug, and it was right about the danger and wrong about the
+remedy. Refusing the clinic's own unit does not remove the conversion; it moves
+it into the clinician's head, which is where a wrong conversion becomes
+invisible. What is settled instead:
+
+- **One canonical column, always Fahrenheit.** `core/temperature.py` converts on
+  the way in and on the way out. Fahrenheit rather than Celsius because it is
+  the unit this clinic works in, and the canonical unit is the one whose stored
+  values are exactly what somebody typed.
+- **`Organization.temperature_unit` (`F` or `C`, default `F`) controls the label,
+  what the form accepts, and what is rendered back — never what a stored number
+  means.** A unit flag that reinterprets stored values would make flipping the
+  setting silently rewrite every reading ever recorded: a 38 taken in Celsius
+  becomes a 38 read as Fahrenheit, with nothing to tell the two apart afterwards
+  and no migration able to guess. It is the same family as the rule that keeps
+  an invoice balance derived rather than stored (ADR 0008) and stock on hand
+  summed rather than counted (ADR 0009).
+- **The range check validates against the unit that was entered** — 90–110 °F,
+  32–43 °C — and converts afterwards. Checking a converted value would report a
+  bound in a unit nobody typed. Both halves of the original mistake are still
+  caught: 98.6 in a Celsius box and 37 in a Fahrenheit box are each refused.
+- **One decimal place, and Fahrenheit is the finer grid.** 0.1 °F is smaller
+  than 0.1 °C, so every distinct Celsius reading lands on a distinct stored
+  value and returns as itself. A Celsius canonical column would have rounded a
+  Fahrenheit clinic's own numbers under it.
+- **The setting is on the Features screen**, owner-settable like every other
+  capability, with help text saying in as many words that changing it converts
+  what you see rather than altering what is recorded. An operator who believes
+  it rewrites history will never touch it.
+
+**Built ahead of the vitals it exists for**, deliberately: one migration rather
+than two, and the case record's §8 thermal-state prompt reads the same unit
+label. `Encounter` has no temperature column yet.
+
+**Also settled by production, not by argument:** `PatientClinicalProfile` had
+zero rows with content on the deployed database, so §3's absorption is a schema
+move and the data migration carries no risk. It is still written to copy both
+fields, and still reversible, because the next clinic to run these migrations
+will not have an empty table.
 
 ## Delivery
 

@@ -8,6 +8,7 @@ from django.db import models
 from django.utils.text import slugify
 
 from core.models import OrgOwnedModel, TimeStampedModel
+from core.temperature import TemperatureUnit, symbol
 
 __all__ = [
     'CONTACT_MAX_LENGTH',
@@ -357,6 +358,17 @@ class Organization(TimeStampedModel):
         default=True,
         help_text='Raise bills, take payments, and print receipts.',
     )
+    # Which unit this clinic *works in*. Presentation only, and deliberately
+    # so: temperature is stored in Fahrenheit in one column whatever this says,
+    # so flipping the switch relabels the box and converts what is typed into
+    # it — it never reinterprets a reading already on file. See
+    # core/temperature.py, which amends docs/adr/0020-the-case-record.md.
+    temperature_unit = models.CharField(
+        max_length=1,
+        choices=TemperatureUnit.choices,
+        default=TemperatureUnit.FAHRENHEIT,
+        help_text='The unit temperatures are entered and shown in.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -369,6 +381,11 @@ class Organization(TimeStampedModel):
         if not self.slug:
             self.slug = slugify(self.name)[:60]
         super().save(*args, **kwargs)
+
+    @property
+    def temperature_symbol(self) -> str:
+        """``°F`` or ``°C``, for every label that names the unit."""
+        return symbol(self.temperature_unit)
 
     @property
     def palette(self) -> dict:

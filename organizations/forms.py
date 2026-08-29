@@ -28,6 +28,7 @@ __all__ = [
 _INPUT = {'class': 'input input-bordered w-full'}
 _TEXTAREA = {'class': 'textarea textarea-bordered w-full', 'rows': 4}
 _CHECKBOX = {'class': 'checkbox'}
+_SELECT = {'class': 'select select-bordered w-full'}
 
 
 class BillingSettingsForm(forms.ModelForm):
@@ -87,19 +88,37 @@ class FeatureSettingsForm(forms.ModelForm):
         fields = [
             'billing_enabled',
             'advice_enabled',
+            'temperature_unit',
             *(field.enabled_field for field in PRESCRIBING_FIELDS),
         ]
-        widgets = {name: forms.CheckboxInput(attrs=_CHECKBOX) for name in fields}
+        widgets = {
+            **{name: forms.CheckboxInput(attrs=_CHECKBOX) for name in fields},
+            # The one control on this screen that is not a switch. It belongs
+            # here rather than on a screen of its own because it is the same
+            # kind of answer — how this clinic works — and a settings screen
+            # with one dropdown on it is a screen that needs explaining.
+            'temperature_unit': forms.Select(attrs=_SELECT),
+        }
         labels = {
             # What the clinic gets, not what the column is called.
             'billing_enabled': 'Bill patients and take payments',
             'advice_enabled': 'Prescribe advice',
+            'temperature_unit': 'Temperature unit',
             **{
                 field.enabled_field: _SWITCH_LABELS[field.key]
                 for field in PRESCRIBING_FIELDS
             },
         }
         help_texts = {
+            # Said explicitly because the reassurance is the point: an operator
+            # who thinks this rewrites history will never touch it, and one who
+            # thinks it does nothing will not understand why an old reading
+            # reads differently.
+            'temperature_unit': (
+                'What temperatures are entered and shown in. Readings are '
+                'always stored the same way, so changing this converts what '
+                'you see rather than altering anything already recorded.'
+            ),
             # Said plainly because the switch looks destructive and is not: a
             # clinic that is not ready to put money in the system has to be able
             # to turn this off without wondering what it costs them.
@@ -114,13 +133,21 @@ class FeatureSettingsForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         organization = self.instance
+        # Not required, so this screen keeps one idiom. Every other control here
+        # is a checkbox, and an unticked checkbox posts nothing at all — absence
+        # is how the screen says "no". A required select would turn one absent
+        # key into a refusal to save the *switches the owner did toggle*, which
+        # is a worse answer than keeping the unit they already had. The control
+        # going missing from the page is caught by asserting that it renders
+        # (organizations/tests/test_feature_settings.py), not by validation.
+        self.fields['temperature_unit'].required = False
         #: Which fields open a new capability, so the screen can rule between
         #: them (templates/organizations/settings_form.html).
         self.capability_switches = [field.enabled_field for field in PRESCRIBING_FIELDS]
         # Billing leads: it is the largest thing on this screen — a whole app
         # rather than a field on a form — and it is what the clinic came here
         # to change.
-        order = ['billing_enabled', 'advice_enabled']
+        order = ['billing_enabled', 'advice_enabled', 'temperature_unit']
         for field in PRESCRIBING_FIELDS:
             term = DEFAULT_TERMINOLOGY[field.key]
             label_placeholder, options_placeholder = _PLACEHOLDERS[field.key]
@@ -159,6 +186,17 @@ class FeatureSettingsForm(forms.ModelForm):
             )
             order += [field.enabled_field, label_name, field.options_field]
         self.order_fields(order)
+
+    def clean_temperature_unit(self) -> str:
+        """Absent means unchanged, never reset to the default.
+
+        Resetting would quietly move a Celsius clinic back to Fahrenheit labels
+        the first time anyone saved this screen from a form that did not carry
+        the control.
+        """
+        return (
+            self.cleaned_data.get('temperature_unit') or self.instance.temperature_unit
+        )
 
     def clean(self) -> dict:
         """One value per line, cleaned the way the model cleans it on the way out."""
