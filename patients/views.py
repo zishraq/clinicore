@@ -126,6 +126,7 @@ def patient_quick_create(request):
                 request.organization,
                 full_name=request.POST.get('full_name', ''),
                 phone=request.POST.get('phone', ''),
+                alt_phone=request.POST.get('alt_phone', ''),
             )
         )
         confirmed = request.POST.get('duplicates_acknowledged') == '1'
@@ -214,6 +215,7 @@ def patient_create(request):
                 request.organization,
                 full_name=request.POST.get('full_name', ''),
                 phone=request.POST.get('phone', ''),
+                alt_phone=request.POST.get('alt_phone', ''),
             )
         )
         # The dedupe guard warns once; a second submit with the flag set saves.

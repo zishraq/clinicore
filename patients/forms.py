@@ -8,7 +8,7 @@ from django import forms
 
 from core.forms import date_widget, org_scoped_formfield
 from organizations.services import active_branches, default_branch
-from patients.models import Patient, PatientClinicalProfile
+from patients.models import MaritalStatus, Patient, PatientClinicalProfile
 
 __all__ = ['ClinicalProfileForm', 'PatientForm']
 
@@ -37,6 +37,16 @@ class PatientForm(forms.ModelForm):
             'date_of_birth',
             'address',
             'registered_branch',
+            # The seven demographics the desk also takes (ADR 0020 §9). None is
+            # clinical narrative, so none of them belongs on the far side of the
+            # split SPEC §6.1 draws — STAFF records all of these.
+            'marital_status',
+            'occupation',
+            'email',
+            'alt_phone',
+            'emergency_contact_name',
+            'emergency_contact_phone',
+            'referred_by',
         ]
         widgets = {
             'full_name': forms.TextInput(attrs=_INPUT),
@@ -45,10 +55,73 @@ class PatientForm(forms.ModelForm):
             'date_of_birth': date_widget(),
             'address': forms.Textarea(attrs=_TEXTAREA),
             'registered_branch': forms.Select(attrs=_SELECT),
+            'marital_status': forms.Select(attrs=_SELECT),
+            'occupation': forms.TextInput(attrs=_INPUT),
+            'email': forms.EmailInput(attrs=_INPUT),
+            'alt_phone': forms.TextInput(attrs={**_INPUT, 'inputmode': 'tel'}),
+            'emergency_contact_name': forms.TextInput(attrs=_INPUT),
+            'emergency_contact_phone': forms.TextInput(
+                attrs={**_INPUT, 'inputmode': 'tel'}
+            ),
+            'referred_by': forms.TextInput(attrs=_INPUT),
         }
+        labels = {
+            'alt_phone': 'Alternative phone',
+            'emergency_contact_name': 'Emergency contact',
+            'emergency_contact_phone': 'Emergency contact phone',
+        }
+
+    #: What reception fills in at the desk for everybody, in order. Everything
+    #: else on the form goes behind the disclosure — asked when it is relevant,
+    #: never in the way of registering someone in ten seconds.
+    DESK_FIELDS = (
+        'full_name',
+        'phone',
+        'sex',
+        'date_of_birth',
+        'address',
+        'registered_branch',
+    )
+
+    @property
+    def desk_fields(self) -> list:
+        return [self[name] for name in self.DESK_FIELDS]
+
+    @property
+    def detail_fields(self) -> list:
+        """The rest, rendered inside "More details".
+
+        Behind a disclosure, and **still on the form and in the DOM** — a closed
+        ``<details>`` posts what is inside it. Omitting them with a template
+        conditional, or popping them in ``__init__``, would let
+        ``construct_instance`` rebuild them as empty and erase an occupation
+        recorded last month (ADR 0017's rule, ADR 0020 §9 reuses it).
+        """
+        return [field for field in self if field.name not in self.DESK_FIELDS]
+
+    @property
+    def has_details(self) -> bool:
+        """Whether the collapsed half already holds something worth showing.
+
+        Decided server-side through ``BoundField.value()``, so editing a patient
+        who has an occupation on file opens the section without JavaScript.
+        ``marital_status`` is compared against its default rather than tested
+        for truth: every row carries "U", and treating that as content would
+        open the disclosure for every patient in the clinic.
+        """
+        return any(
+            field.value() not in (None, '', MaritalStatus.UNKNOWN)
+            for field in self.detail_fields
+        )
 
     def __init__(self, *args, organization=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # Not required, unlike ``sex``, and the disclosure is the whole reason.
+        # A required field inside a closed ``<details>`` fails validation
+        # somewhere the person filling in the form cannot see, and this is a
+        # demographic nobody should be stopped by. Absent means "not recorded",
+        # which the column already has a value for — see ``clean_marital_status``.
+        self.fields['marital_status'].required = False
         self.organization = organization
         if organization is None:
             return
@@ -60,6 +133,14 @@ class PatientForm(forms.ModelForm):
             branch = default_branch(organization)
             if branch is not None:
                 self.initial.setdefault('registered_branch', branch.pk)
+
+    def clean_marital_status(self) -> str:
+        """Blank is the stored "not recorded" value, never an empty string.
+
+        The column mirrors ``Sex``: an explicit unknown rather than a blank that
+        cannot be told apart from a question nobody asked.
+        """
+        return self.cleaned_data.get('marital_status') or MaritalStatus.UNKNOWN
 
     def clean(self):
         cleaned = super().clean()

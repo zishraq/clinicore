@@ -1,0 +1,15 @@
+{% comment %}
+One labelled field on a patient form. Shared by the full page and the modal so
+the two cannot render the same box differently, and so a field added to
+PatientForm appears on both.
+{% endcomment %}
+<div class="{% if field.name == 'address' %}sm:col-span-2{% endif %}">
+  <label class="label" for="{{ field.id_for_label }}">
+    <span class="label-text">{{ field.label }}</span>
+  </label>
+  {{ field }}
+  {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
+  {% for error in field.errors %}
+    <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
+  {% endfor %}
+</div>

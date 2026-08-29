@@ -33,19 +33,32 @@
   {% endif %}
 
   <div class="grid gap-4 sm:grid-cols-2">
-    {% for field in form %}
-      <div class="{% if field.name == 'address' %}sm:col-span-2{% endif %}">
-        <label class="label" for="{{ field.id_for_label }}">
-          <span class="label-text">{{ field.label }}</span>
-        </label>
-        {{ field }}
-        {% if field.help_text %}<p class="text-xs text-muted mt-1">{{ field.help_text }}</p>{% endif %}
-        {% for error in field.errors %}
-          <p class="text-sm text-[var(--cc-danger)] mt-1">{{ error }}</p>
-        {% endfor %}
-      </div>
+    {% for field in form.desk_fields %}
+      {% include 'patients/_field.html' %}
     {% endfor %}
   </div>
+
+  {% comment %}
+    The rest of the demographics, behind a disclosure. Registering someone takes
+    ten seconds at a desk and these are asked when they are relevant, so putting
+    all thirteen boxes in one column would slow down the common path to serve
+    the rare one.
+
+    The fields are inside the disclosure, not conditional on it: a closed
+    details element still posts everything it contains, which is what stops a
+    later save rebuilding an occupation as empty. open= is decided server-side
+    by form.has_details, so editing a patient who already has any of these on
+    file shows them without JavaScript. See docs/adr/0017-dispensing-details.md
+    and docs/adr/0020-the-case-record.md.
+  {% endcomment %}
+  <details class="mt-6" {% if form.has_details %}open{% endif %}>
+    <summary class="text-sm text-muted cursor-pointer select-none py-1">More details</summary>
+    <div class="grid gap-4 sm:grid-cols-2 mt-3">
+      {% for field in form.detail_fields %}
+        {% include 'patients/_field.html' %}
+      {% endfor %}
+    </div>
+  </details>
 
   <div class="flex gap-3 mt-8">
     <button type="submit" class="btn btn-brand">{% if is_create %}Add patient{% else %}Save changes{% endif %}</button>

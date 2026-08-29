@@ -11,12 +11,29 @@ from core.managers import AliveOrgScopedManager
 from core.models import OrgOwnedModel, SoftDeleteModel
 from patients.phone import dial_string
 
-__all__ = ['Patient', 'PatientClinicalProfile', 'Sex']
+__all__ = ['MaritalStatus', 'Patient', 'PatientClinicalProfile', 'Sex']
 
 
 class Sex(models.TextChoices):
     FEMALE = 'F', 'Female'
     MALE = 'M', 'Male'
+    OTHER = 'O', 'Other'
+    UNKNOWN = 'U', 'Not recorded'
+
+
+class MaritalStatus(models.TextChoices):
+    """Mirrors ``Sex`` exactly, down to the "not recorded" default.
+
+    A demographic the desk takes, so it has the same shape as the other one:
+    single-character stored values that never move, and an explicit *unknown*
+    rather than a blank — a blank cannot be told apart from a question nobody
+    asked, which is the ambiguity the day list refuses when it prints "No bill".
+    """
+
+    SINGLE = 'S', 'Single'
+    MARRIED = 'M', 'Married'
+    WIDOWED = 'W', 'Widowed'
+    DIVORCED = 'D', 'Divorced'
     OTHER = 'O', 'Other'
     UNKNOWN = 'U', 'Not recorded'
 
@@ -32,7 +49,30 @@ class Patient(OrgOwnedModel, SoftDeleteModel):
     )
     sex = models.CharField(max_length=1, choices=Sex.choices, default=Sex.UNKNOWN)
     phone = models.CharField(max_length=32, blank=True, db_index=True)
+    # The second number a patient gives — a spouse's, a neighbour's shop.
+    # Indexed and searched, which is the whole reason it is a column rather
+    # than a line in ``address``: a number the search cannot find is worse than
+    # no second number, because reception concludes the patient is not
+    # registered and creates a duplicate. See docs/adr/0020-the-case-record.md.
+    alt_phone = models.CharField(max_length=32, blank=True, db_index=True)
+    # Recorded and displayed, never sent to. There is no SMTP on this box and
+    # ADR 0013 settled that no recovery path will assume one, so this is a
+    # contact detail and building on it later is a decision rather than an
+    # increment.
+    email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
+    marital_status = models.CharField(
+        max_length=1, choices=MaritalStatus.choices, default=MaritalStatus.UNKNOWN
+    )
+    occupation = models.CharField(max_length=100, blank=True)
+    # Two columns rather than one box, because the entire point of an emergency
+    # contact is dialling it quickly and a combined free-text field cannot
+    # produce a ``tel:`` href.
+    emergency_contact_name = models.CharField(max_length=200, blank=True)
+    emergency_contact_phone = models.CharField(max_length=32, blank=True)
+    # Free text, not a relation. Whoever sent the patient is as often a former
+    # patient, a pharmacist or a neighbour as anyone this system knows about.
+    referred_by = models.CharField(max_length=200, blank=True)
     registered_branch = models.ForeignKey(
         'organizations.Branch',
         on_delete=models.PROTECT,
@@ -90,6 +130,16 @@ class Patient(OrgOwnedModel, SoftDeleteModel):
         unreliable. Display still shows what was typed.
         """
         return dial_string(self.phone)
+
+    @property
+    def alt_dial(self) -> str:
+        """The second number, ready for a ``tel:`` href. See ``dial``."""
+        return dial_string(self.alt_phone)
+
+    @property
+    def emergency_dial(self) -> str:
+        """The emergency contact's number, ready for a ``tel:`` href."""
+        return dial_string(self.emergency_contact_phone)
 
 
 class PatientClinicalProfile(OrgOwnedModel):

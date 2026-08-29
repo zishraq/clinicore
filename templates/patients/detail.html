@@ -56,9 +56,40 @@
       <div><dt class="text-muted">Patient code</dt><dd class="font-mono">{{ patient.code }}</dd></div>
       <div><dt class="text-muted">Age</dt><dd>{{ patient.age_display }}</dd></div>
       <div><dt class="text-muted">Sex</dt><dd>{{ patient.get_sex_display }}</dd></div>
-      <div><dt class="text-muted">Phone</dt><dd>{{ patient.phone|default:'—' }}</dd></div>
+      {% comment %}
+        Every number on this card is a tel: link built from the dial property
+        rather than from the stored text, because these are free-text boxes and
+        "(017) 1234-5678" is not dialable as typed (patients/models.py).
+      {% endcomment %}
+      <div><dt class="text-muted">Phone</dt>
+        <dd>{% if patient.phone %}<a class="link" href="tel:{{ patient.dial }}">{{ patient.phone }}</a>{% else %}—{% endif %}</dd></div>
+      {% if patient.alt_phone %}
+        <div><dt class="text-muted">Alternative phone</dt>
+          <dd><a class="link" href="tel:{{ patient.alt_dial }}">{{ patient.alt_phone }}</a></dd></div>
+      {% endif %}
+      {% if patient.email %}
+        <div><dt class="text-muted">Email</dt><dd class="break-all">{{ patient.email }}</dd></div>
+      {% endif %}
+      {% if patient.marital_status != 'U' %}
+        <div><dt class="text-muted">Marital status</dt><dd>{{ patient.get_marital_status_display }}</dd></div>
+      {% endif %}
+      {% if patient.occupation %}
+        <div><dt class="text-muted">Occupation</dt><dd>{{ patient.occupation }}</dd></div>
+      {% endif %}
       <div><dt class="text-muted">Branch</dt><dd>{{ patient.registered_branch.name|default:'—' }}</dd></div>
       <div><dt class="text-muted">Address</dt><dd class="whitespace-pre-line">{{ patient.address|default:'—' }}</dd></div>
+      {% if patient.emergency_contact_name or patient.emergency_contact_phone %}
+        <div><dt class="text-muted">Emergency contact</dt>
+          <dd>
+            {{ patient.emergency_contact_name|default:'—' }}
+            {% if patient.emergency_contact_phone %}
+              · <a class="link" href="tel:{{ patient.emergency_dial }}">{{ patient.emergency_contact_phone }}</a>
+            {% endif %}
+          </dd></div>
+      {% endif %}
+      {% if patient.referred_by %}
+        <div><dt class="text-muted">Referred by</dt><dd>{{ patient.referred_by }}</dd></div>
+      {% endif %}
       <div><dt class="text-muted">Registered</dt><dd>{{ patient.created_at|date:'d M Y' }}</dd></div>
     </dl>
     {# Role-filtered here AND enforced by @clinical_access_required on the view. #}

@@ -61,25 +61,42 @@ def generate_patient_code(organization) -> str:
 
 
 def search_patients(organization, query: str):
-    """Name, phone, or code search — what reception actually types (SPEC §6.2)."""
+    """Name, phone, or code search — what reception actually types (SPEC §6.2).
+
+    ``alt_phone`` is searched alongside ``phone`` because a second number the
+    search cannot find is worse than no second number at all: reception dials
+    what the patient gave them, finds nobody, and registers them again. That
+    obligation is the price of the column existing — see
+    docs/adr/0020-the-case-record.md §9.
+    """
     queryset = Patient.objects.for_organization(organization)
     query = (query or '').strip()
     if query:
         queryset = queryset.filter(
             Q(full_name__icontains=query)
             | Q(phone__icontains=query)
+            | Q(alt_phone__icontains=query)
             | Q(code__icontains=query)
         )
     return queryset.select_related('registered_branch')
 
 
-def possible_duplicates(organization, *, full_name: str, phone: str, exclude_pk=None):
-    """Dedupe guard for the create form: same phone, or same name (SPEC §6.2)."""
-    if not (full_name or phone):
+def possible_duplicates(
+    organization, *, full_name: str, phone: str, alt_phone: str = '', exclude_pk=None
+):
+    """Dedupe guard for the create form: same number, or same name (SPEC §6.2).
+
+    Both numbers on the form are matched against both numbers on file, all four
+    ways. A patient whose spouse's number was recorded as their alternative and
+    who now gives that number as their own is the same person, and the guard
+    that cannot see it is the guard that lets the duplicate through.
+    """
+    numbers = [number for number in (phone, alt_phone) if number]
+    if not (full_name or numbers):
         return Patient.objects.none()
     matches = Q()
-    if phone:
-        matches |= Q(phone=phone)
+    if numbers:
+        matches |= Q(phone__in=numbers) | Q(alt_phone__in=numbers)
     if full_name:
         matches |= Q(full_name__iexact=full_name.strip())
     queryset = Patient.objects.for_organization(organization).filter(matches)
