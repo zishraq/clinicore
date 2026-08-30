@@ -67,7 +67,7 @@ two answers that can disagree is how a walk-in ends up filed under next Tuesday.
       <select id="appointment-practitioner" name="practitioner" class="select select-bordered w-full">
         <option value="">Anyone</option>
         {% for person in practitioners %}
-          <option value="{{ person.pk }}">{{ person.full_name }}</option>
+          <option value="{{ person.pk }}" {% if person.pk == default_practitioner.pk %}selected{% endif %}>{{ person.full_name }}</option>
         {% endfor %}
       </select>
     </div>

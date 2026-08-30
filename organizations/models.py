@@ -543,6 +543,15 @@ class Branch(OrgOwnedModel):
     print_order = models.PositiveSmallIntegerField(
         default=0, help_text='Lower numbers print first.'
     )
+    # Which chamber a new visit and a new appointment open on. A column rather
+    # than "whichever sorts first", which is what this was: adding two chambers
+    # with Bengali names moved the default onto one that opens on the second
+    # Friday of the month, and nothing said so. The clinic states it instead of
+    # the collation deciding — see ``services.default_branch``.
+    is_default = models.BooleanField(
+        default=False,
+        help_text='Preselected on a new visit.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -554,7 +563,16 @@ class Branch(OrgOwnedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=['organization', 'code'], name='branch_code_unique_per_org'
-            )
+            ),
+            # Partial, so it constrains the *true* rows only — without the
+            # condition this would allow one default and one non-default per
+            # clinic, which is the opposite of what is wanted. The clearing
+            # that keeps this satisfiable lives in ``BranchForm.save``.
+            models.UniqueConstraint(
+                fields=['organization', 'is_default'],
+                condition=models.Q(is_default=True),
+                name='branch_one_default_per_org',
+            ),
         ]
 
     def __str__(self) -> str:

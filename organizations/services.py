@@ -20,8 +20,23 @@ def active_branches(organization: Organization):
 
 
 def default_branch(organization: Organization) -> Branch | None:
-    """The branch to preselect on forms; single-branch clinics are the norm."""
-    return active_branches(organization).first()
+    """The branch to preselect on a new visit or appointment.
+
+    The chamber the clinic marked, then the lowest ``print_order``, and only
+    then the name. **Name is deliberately last.** It used to be the whole rule,
+    and the day two Bengali-named chambers were added the default moved to one
+    that opens on the second Friday of the month — the collation decided where
+    visits were recorded, and nothing on any screen said so. Renaming a chamber
+    must not be able to do that either.
+
+    Inactive chambers are excluded, so deactivating the marked one falls back
+    rather than preselecting a chamber the clinic has closed.
+    """
+    return (
+        active_branches(organization)
+        .order_by('-is_default', 'print_order', 'name')
+        .first()
+    )
 
 
 def organization_branches(organization: Organization):

@@ -24,6 +24,10 @@
             {% if not branch.is_active %}
               <span class="badge badge-ghost badge-sm ml-1">Not in use</span>
             {% endif %}
+            {% if branch.is_default %}
+              {# Which chamber new visits open on, said on the list rather than only inside the form. #}
+              <span class="badge badge-outline badge-sm ml-1 text-[var(--cc-primary)]">Default</span>
+            {% endif %}
             {% if branch.show_on_prescription %}
               <span class="badge badge-outline badge-sm ml-1">On prescriptions</span>
             {% endif %}

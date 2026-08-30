@@ -27,8 +27,9 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from accounts.permissions import require_membership
-from accounts.services import prescribing_users
+from accounts.services import default_practitioner, prescribing_users
 from organizations.models import Branch
+from organizations.services import default_branch
 from patients.models import Patient
 from scheduling import services
 from scheduling.models import Appointment, AppointmentStatus, DayPart
@@ -345,8 +346,18 @@ def appointment_create(request):
         {
             'branches': branches,
             'error': error,
-            'default_branch': _selected_branch(request) or branches.first(),
+            # The day being filtered wins — the receptionist is looking at one
+            # chamber's list — and otherwise the chamber the clinic marked, not
+            # whichever name sorts first (organizations.services.default_branch).
+            'default_branch': _selected_branch(request)
+            or default_branch(request.organization),
             'practitioners': prescribing_users(request.organization),
+            # Same rule as the visit form: the signed-in user when they treat
+            # patients, else the only prescriber there is. "Anyone" stays the
+            # first option, so a clinic with two prescribers is still asked.
+            'default_practitioner': default_practitioner(
+                request.organization, membership
+            ),
             'day_parts': DayPart.choices,
             'selected_patient': _requested_patient(request),
             'redirect_to': _redirect_target(request),

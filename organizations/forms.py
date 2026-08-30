@@ -6,6 +6,7 @@ chambers are. Terminology gets its own screen later.
 """
 
 from django import forms
+from django.db import transaction
 
 from organizations.models import (
     CONTACT_MAX_LENGTH,
@@ -377,6 +378,7 @@ class BranchForm(forms.ModelForm):
             'schedule_note',
             'show_on_prescription',
             'print_order',
+            'is_default',
             'is_active',
         ]
         labels = {
@@ -385,6 +387,7 @@ class BranchForm(forms.ModelForm):
             'schedule_note': 'When this chamber is open',
             'show_on_prescription': 'List this chamber on printed prescriptions',
             'print_order': 'Order on the prescription',
+            'is_default': 'Use this chamber by default on new visits',
             'is_active': 'In use',
         }
         help_texts = {
@@ -395,6 +398,11 @@ class BranchForm(forms.ModelForm):
                 'Leave blank for a chamber that opens daily.'
             ),
             'print_order': 'Lower numbers print first.',
+            'is_default': (
+                'Only one chamber can be the default. Ticking it here takes it '
+                'off whichever chamber holds it now — there is nothing to '
+                'untick first.'
+            ),
             'is_active': (
                 'Turn this off instead of deleting. A chamber cannot be removed '
                 'once patients or visits are recorded against it.'
@@ -411,6 +419,7 @@ class BranchForm(forms.ModelForm):
             'print_order': forms.NumberInput(
                 attrs={**_INPUT, 'type': 'number', 'min': '0'}
             ),
+            'is_default': forms.CheckboxInput(attrs=_CHECKBOX),
             'is_active': forms.CheckboxInput(attrs=_CHECKBOX),
         }
 
@@ -418,6 +427,10 @@ class BranchForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if organization is not None:
             self.instance.organization = organization
+        #: Chambers holding the default that this save is about to take it off.
+        #: Found in ``clean_is_default`` and used in ``save``; seeded here so a
+        #: form that never reaches that field still has the attribute.
+        self.defaults_to_clear: list[int] = []
 
     def clean_code(self) -> str:
         """Upper-cased, and unique within this clinic.
@@ -440,3 +453,46 @@ class BranchForm(forms.ModelForm):
             if clash.exists():
                 raise forms.ValidationError('Another chamber already uses this code.')
         return code
+
+    def clean_is_default(self) -> bool:
+        """Find whichever chamber is the default now, so ``save`` can release it.
+
+        The constraint is on (organization, is_default) and ``organization`` is
+        not a form field, so Django drops it from validation entirely — the same
+        trap as ``clean_code`` above, written up in docs/MVP-NOTES.md.
+
+        Unlike the code, the answer here is not a refusal. Being made to untick
+        the previous default before ticking this one is a step that exists only
+        to serve the constraint, and a clinic that gets it half-done ends up
+        with no default at all. The old one is released in the same transaction
+        instead; a clash that somehow survives that is reported by the view
+        rather than reaching the browser as an IntegrityError page.
+        """
+        value = self.cleaned_data['is_default']
+        self.defaults_to_clear = []
+        organization_id = self.instance.organization_id
+        if not value or not organization_id:
+            return value
+        held_by = Branch.all_objects.filter(
+            organization_id=organization_id, is_default=True
+        )
+        if self.instance.pk:
+            held_by = held_by.exclude(pk=self.instance.pk)
+        self.defaults_to_clear = list(held_by.values_list('pk', flat=True))
+        return value
+
+    def save(self, commit=True):
+        """Release the old default and claim the new one, or do neither.
+
+        One transaction, because the two halves are one change: a clinic left
+        with the flag on nobody silently falls back to print order, and one left
+        with it on two is refused by the constraint on the next write.
+        """
+        if not commit:
+            return super().save(commit=False)
+        with transaction.atomic():
+            if self.defaults_to_clear:
+                Branch.all_objects.filter(pk__in=self.defaults_to_clear).update(
+                    is_default=False
+                )
+            return super().save(commit=True)

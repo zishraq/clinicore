@@ -12,6 +12,7 @@ __all__ = [
     'active_memberships',
     'add_member',
     'create_member',
+    'default_practitioner',
     'organization_members',
     'practitioner_letterhead',
     'prescribing_users',
@@ -53,6 +54,26 @@ def prescribing_users(organization):
         memberships__is_active=True,
         memberships__role__in=PRESCRIBING_ROLES,
     ).distinct()
+
+
+def default_practitioner(organization, membership=None):
+    """Who to preselect as the treating practitioner, or ``None`` for nobody.
+
+    A rule rather than a column. A "default doctor" setting would be wrong the
+    day the clinic hires a second one, and it would go on being wrong quietly.
+
+    The signed-in user when they are somebody who treats patients — they are
+    almost always the one writing the visit. Otherwise the only prescriber
+    there is, when there is exactly one, which is the receptionist booking for
+    the single-doctor clinic. A clinic with two gets nothing preselected: the
+    field is required, so an empty one asks a question, while the wrong name
+    preselected is a prescription signed by somebody who never saw the patient.
+    """
+    if membership is not None and membership.role in PRESCRIBING_ROLES:
+        return membership.user
+    # Two is all that has to be fetched to know the answer is "not exactly one".
+    people = list(prescribing_users(organization)[:2])
+    return people[0] if len(people) == 1 else None
 
 
 def organization_members(organization):

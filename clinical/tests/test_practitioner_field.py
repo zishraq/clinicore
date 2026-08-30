@@ -10,9 +10,11 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from accounts.models import Role
 from clinical.forms import EncounterForm
 from clinical.models import Encounter
 from core.context import organization_context
+from organizations.models import Branch
 from patients.models import Patient
 
 pytestmark = pytest.mark.django_db
@@ -131,3 +133,74 @@ def test_a_practitioner_is_still_prefilled(client, organization, practitioner):
     response = client.get(reverse('clinical:encounter_create'))
 
     assert response.context['form'].initial['practitioner'] == practitioner.pk
+
+
+# --- What the form opens on -------------------------------------------------
+#
+# Rule-based, never a "default doctor" column: such a column would be wrong the
+# day the clinic hires a second practitioner, and it would go on being wrong
+# quietly. See accounts.services.default_practitioner.
+
+
+def test_the_only_practitioner_is_preselected_for_somebody_who_treats_nobody(
+    client, organization, practitioner, developer
+):
+    """The single-doctor clinic, which is most of them.
+
+    A developer (or, on the day list, a receptionist) opening the form is not
+    the one treating, but there is only one person who could be — so the field
+    is answered rather than asked.
+    """
+    client.force_login(developer)
+    response = client.get(reverse('clinical:encounter_create'))
+
+    assert response.context['form'].initial['practitioner'] == practitioner.pk
+
+
+def test_two_practitioners_and_the_field_is_left_empty(
+    client, organization, practitioner, developer, make_member
+):
+    """Genuinely conditional on the count.
+
+    Preselecting the wrong name on a prescription is worse than an empty field:
+    the field is required, so nothing can be saved without an answer, and the
+    empty one asks the question out loud.
+    """
+    make_member(organization, role=Role.PRACTITIONER, phone='01700000005')
+
+    client.force_login(developer)
+    response = client.get(reverse('clinical:encounter_create'))
+
+    assert 'practitioner' not in response.context['form'].initial
+
+
+def test_the_signed_in_practitioner_still_wins_over_the_count(
+    client, organization, practitioner, make_member
+):
+    """Two prescribers, and the one writing the visit is preselected."""
+    make_member(organization, role=Role.PRACTITIONER, phone='01700000005')
+
+    client.force_login(practitioner)
+    response = client.get(reverse('clinical:encounter_create'))
+
+    assert response.context['form'].initial['practitioner'] == practitioner.pk
+
+
+def test_the_visit_form_opens_on_the_chamber_the_clinic_marked(
+    client, organization, branch, practitioner
+):
+    """Not the one whose name sorts first (organizations.services.default_branch)."""
+    with organization_context(organization):
+        mirpur = Branch.objects.create(
+            organization=organization,
+            name='Mirpur Chamber',
+            code='MIR',
+            is_default=True,
+        )
+
+    client.force_login(practitioner)
+    response = client.get(reverse('clinical:encounter_create'))
+
+    assert response.context['form'].initial['branch'] == mirpur.pk
+    # The old rule was "first by name", which is the other one.
+    assert branch.name < mirpur.name

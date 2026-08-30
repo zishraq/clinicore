@@ -118,6 +118,11 @@ class Command(BaseCommand):
                     # chamber, so that chamber prints.
                     'show_on_prescription': True,
                     'print_order': 0,
+                    # The only chamber there is, so it is the one new visits
+                    # open on. The migration marks nothing for the clinics
+                    # already running — they keep today's behaviour until
+                    # somebody ticks the box at Settings → Chambers.
+                    'is_default': True,
                 },
             )
         except CannotCreateOrganization as error:

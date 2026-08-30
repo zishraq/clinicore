@@ -232,6 +232,10 @@ class Command(BaseCommand):
                 'code': 'MAIN',
                 'address': '12 Example Road, Dhaka 1207',
                 'phone': '09-600-000000',
+                # Stated rather than left to the ordering. The demo has two
+                # chambers, so it is the demo that would otherwise show a
+                # default decided by which name sorts first.
+                'is_default': True,
             },
         )
         organization.branding = {

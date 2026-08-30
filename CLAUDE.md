@@ -1118,6 +1118,45 @@ the whole price of the column: a second number the search cannot find is worse
 than no second number, because reception concludes the patient is not registered
 and creates the duplicate.
 
+The visit form's two defaults were both wrong, and both are fixed (2026-08-30).
+**Browser-verified end to end** against the running stack: the default ticked on
+মিরপুর released কুষ্টিয়া ১ without an untick, and New visit opened on মিরপুর with
+the signed-in practitioner already chosen.
+
+- **`Branch.is_default` is a column; the name is the last tiebreak.** The
+  default chamber used to be "first by name", so adding two Bengali-named
+  chambers moved it onto one that opens on the second Friday of the month — the
+  collation deciding where visits are recorded, silently.
+  `organizations.services.default_branch` now reads marked → lowest
+  `print_order` → name. Making the name secondary is the point: renaming a
+  chamber must not be able to move it either.
+- **The database enforces one default per clinic**, with a `UniqueConstraint`
+  on (organization, is_default) `condition=Q(is_default=True)`. Partial on
+  purpose — without the condition it would allow one default *and one
+  non-default*, i.e. two chambers at most.
+- **Ticking it releases the old one; the clinic never unticks first.**
+  `BranchForm.clean_is_default` finds whichever chamber holds it (Django drops
+  that constraint from validation because `organization` is not a form field —
+  the same trap as `clean_code`, docs/MVP-NOTES.md) and `BranchForm.save`
+  releases it in the same transaction as the claim. A clash that survives that
+  is a race between two administrators, and `organizations/views.py` catches
+  `IntegrityError` and turns it into a field error rather than a 500.
+- **The migration marks nothing.** An existing clinic keeps today's behaviour
+  until somebody ticks a box; `bootstrap_clinic` marks the one branch it
+  creates, and `bootstrap_demo` marks Main Chamber rather than letting the demo
+  demonstrate the bug.
+- **The practitioner is a rule, not a "default doctor" column** — such a column
+  would be wrong the day the clinic hires a second one, and quietly.
+  `accounts.services.default_practitioner`: the signed-in user when they are in
+  `PRESCRIBING_ROLES`, else the only prescriber there is, else nobody. Genuinely
+  conditional on the count — a two-prescriber clinic gets an empty required
+  field, because the wrong name preselected on a prescription is worse than a
+  field that asks.
+- **The appointment modal had both bugs and takes both fixes**, from the same
+  two functions. Two copies of "who may treat, and where" is exactly what ADR
+  0019 caught once already. "Anyone" stays its first option, so a clinic with
+  two prescribers is still asked.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps, along with ADR 0020's own two unbuilt halves — `Encounter` vitals (§11,

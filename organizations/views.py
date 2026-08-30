@@ -11,6 +11,7 @@ views and reuse the same field-rendering template.
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError
 from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.permissions import (
@@ -123,18 +124,37 @@ def branch_list(request):
 
 
 def _branch_screen(request, branch=None):
-    """Create or edit one chamber. Both halves of the same short form."""
+    """Create or edit one chamber. Both halves of the same short form.
+
+    The save runs through ``form.save()`` rather than ``commit=False``, because
+    releasing whichever chamber currently holds the default has to happen in the
+    same transaction as claiming it — the form owns both halves.
+    """
     membership = require_membership(request)
     organization = membership.organization
     data = request.POST if request.method == 'POST' else None
     form = BranchForm(data, instance=branch, organization=organization)
     if request.method == 'POST' and form.is_valid():
-        saved = form.save(commit=False)
-        saved.organization = organization
-        saved.created_by = saved.created_by or membership.user
-        saved.save()
-        messages.success(request, f'{saved.name} saved.')
-        return redirect('organizations:branch_list')
+        form.instance.organization = organization
+        form.instance.created_by = form.instance.created_by or membership.user
+        try:
+            saved = form.save()
+        except IntegrityError:
+            # The unique constraint covers (organization, is_default), and
+            # ``organization`` is not a form field — so Django excludes it from
+            # validation and a clash arrives here rather than as a field error
+            # (docs/MVP-NOTES.md). The form releases the default it found, so
+            # what is left is one that appeared since it looked: two people
+            # ticking the box at once. Either way it is a sentence on the box
+            # that caused it, never Django's IntegrityError page.
+            form.add_error(
+                'is_default',
+                'Another chamber became the default while this page was open. '
+                'Tick it again to take it over.',
+            )
+        else:
+            messages.success(request, f'{saved.name} saved.')
+            return redirect('organizations:branch_list')
     return render(
         request,
         'organizations/branch_form.html',

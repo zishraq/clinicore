@@ -176,7 +176,11 @@ this file covers what was **not** built and what keeps biting.
   `organizations.forms.BranchForm.clean_code` is the worked example. This is the
   same class as the checkbox trap above: the failing path looks like the working
   one until something collides, and every future org-scoped settings form will
-  meet it.
+  meet it. `clean_is_default` on the same form is the second instance and shows
+  the other answer: it queries for the clash and *releases* it in `save`, in one
+  transaction, because being made to untick the previous default chamber before
+  ticking the next is a step that serves the constraint rather than the clinic.
+  The view still catches `IntegrityError` for the race that leaves.
 
 ### The frontend
 
