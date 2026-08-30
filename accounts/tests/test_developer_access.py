@@ -113,10 +113,14 @@ def test_a_developer_reads_the_narrative_and_the_prescription(
     assert 'Ambroxol syrup' in body
 
 
-def test_a_developer_sees_the_backup_panel(client, developer):
-    """``is_owner`` gates it, and it now means "may administer" (ADR 0019)."""
-    client.force_login(developer)
-    response = client.get(reverse('core:dashboard'))
+def test_a_developer_is_the_only_one_who_sees_the_backup_screen(client, developer):
+    """Backup health moved off the dashboard and behind this role.
 
-    assert response.status_code == 200
-    assert 'backup' in response.context
+    It was gated on ``is_owner`` — "may administer" — and greeted the clinic at
+    every sign-in with a sentence about the server. The screen's own tests are
+    core/tests/test_backup_screen.py; this asserts the role reaches it, beside
+    everything else the role reaches.
+    """
+    client.force_login(developer)
+
+    assert client.get(reverse('core:backup_settings')).status_code == 200

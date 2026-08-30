@@ -23,12 +23,13 @@ from functools import wraps
 from django.core.exceptions import PermissionDenied
 from django.http import Http404
 
-from accounts.models import ADMIN_ROLES, CLINICAL_ROLES
+from accounts.models import ADMIN_ROLES, CLINICAL_ROLES, Role
 
 __all__ = [
     'billing_enabled_required',
     'capability_required',
     'clinical_access_required',
+    'developer_required',
     'owner_required',
     'require_membership',
     'role_required',
@@ -76,6 +77,17 @@ clinical_access_required = role_required(*CLINICAL_ROLES)
 
 # MVP: replace with permission layer
 owner_required = role_required(*ADMIN_ROLES)
+
+#: Whoever looks after the server, which is not the clinic. The one screen
+#: behind this is the backup health card: an administrator can neither fix a
+#: backup that stopped nor tell whether one matters, so putting it in front of
+#: them is noise they cannot act on. A single role rather than a named set,
+#: because there is one question here — "does this person run the box?" — and
+#: inventing ``OPERATIONS_ROLES = {DEVELOPER}`` would be a set with nothing to
+#: distinguish it from the role itself (ADR 0019's rule is about facts that
+#: differ, not about never naming a role).
+# MVP: replace with permission layer
+developer_required = role_required(Role.DEVELOPER)
 
 
 def capability_required(field: str):

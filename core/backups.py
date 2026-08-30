@@ -61,6 +61,18 @@ class BackupStatus:
     age_hours: int | None
     #: True when the most recent attempt failed, even if an older one worked.
     last_attempt_failed: bool
+    #: When it was last *tried*, whatever the outcome. The pair is the point:
+    #: a run that is failing every night has a recent attempt and an old
+    #: success, and showing only one of them tells the wrong half of that.
+    last_attempt: datetime | None = None
+    #: Whether the last run also copied the backup off this box. A backup on
+    #: the same disk as the database survives none of the events that take a
+    #: server — theft, the disk, the flood — so this is the copy that counts.
+    offsite: bool = False
+    #: Free space where the backups are written, in bytes, or None when the
+    #: run predates the scripts reporting it. Backups stop silently when the
+    #: disk fills, which is the failure this number is here to precede.
+    disk_free_bytes: int | None = None
 
 
 def _read(name: str) -> dict | None:
@@ -89,6 +101,15 @@ def _parse(value) -> datetime | None:
     if timezone.is_naive(parsed):
         parsed = timezone.make_aware(parsed)
     return parsed
+
+
+def _whole_number(value) -> int | None:
+    """A byte count from an org-external JSON file, or None for anything else."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
 
 
 def backup_status() -> BackupStatus:
@@ -139,6 +160,9 @@ def backup_status() -> BackupStatus:
         last_success=last_success,
         age_hours=age_hours,
         last_attempt_failed=failed,
+        last_attempt=_parse(data.get('last_attempt')),
+        offsite=bool(data.get('offsite')),
+        disk_free_bytes=_whole_number(data.get('disk_free_bytes')),
     )
 
 
@@ -183,4 +207,5 @@ def restore_check_status() -> BackupStatus:
         last_success=last_success,
         age_hours=age_hours,
         last_attempt_failed=failed,
+        last_attempt=_parse(data.get('last_attempt')),
     )

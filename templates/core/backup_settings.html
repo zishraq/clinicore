@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% comment %}
+  Backup health, DEVELOPER only. This used to be a banner on the dashboard,
+  where it greeted the clinic at every sign-in with "Backups are unproven" — a
+  sentence about the server, in front of people who can neither fix a backup
+  that stopped nor judge whether one matters.
+
+  It is a screen rather than a banner now, which also lets it say the quiet
+  things: a healthy backup used to render nothing at all, so "it is working"
+  and "nothing is configured" looked identical. Here every line is always
+  present and carries its own state.
+
+  Rendered from core.backups, which reports "never run" for a missing, unreadable
+  or truncated status file rather than assuming the best. Nothing on this page
+  can be acted on from inside the application; the fix is in docs/RUNBOOK.md.
+{% endcomment %}
+
+{% block title %}Backups{% endblock %}
+{% block page_title %}Backups{% endblock %}
+
+{% block content %}
+<div class="card-surface rounded-xl p-6 max-w-2xl space-y-5">
+
+  {# The headline. Styled on `level` and nothing else, like the banner was. #}
+  <div class="border-l-4 pl-4
+              {% if backup.level == 'danger' %}border-l-[var(--cc-danger)]
+              {% elif backup.level == 'warning' %}border-l-[var(--cc-warning)]
+              {% else %}border-l-[var(--cc-success)]{% endif %}">
+    <p class="font-semibold {% if backup.level == 'danger' %}text-[var(--cc-danger)]{% endif %}">
+      {% if backup.level == 'danger' %}Backups are not running
+      {% elif backup.level == 'warning' %}Check the backups
+      {% else %}Backups are running{% endif %}
+    </p>
+    {% comment %}
+      Only when it adds something. At level ok the summary is the headline word
+      for word ("Backups are running."), and the same sentence twice reads as a
+      stutter — the two differ exactly when something is wrong, which is when
+      the detail is worth the line.
+    {% endcomment %}
+    {% if backup.level != 'ok' %}<p class="text-sm mt-1">{{ backup.summary }}</p>{% endif %}
+  </div>
+
+  <dl class="grid gap-x-6 gap-y-3 sm:grid-cols-[14rem_1fr] text-sm">
+
+    <dt class="text-muted">Last good backup</dt>
+    <dd>
+      {% if backup.last_success %}
+        {{ backup.last_success|date:'d M Y, H:i' }}
+        <span class="text-muted">({{ backup.age_hours }} hours ago)</span>
+      {% else %}
+        <span class="text-[var(--cc-danger)]">Never</span>
+      {% endif %}
+    </dd>
+
+    {% comment %}
+      The pair matters. A run failing every night has a recent attempt and an
+      old success, and either one on its own tells the wrong half of that.
+    {% endcomment %}
+    <dt class="text-muted">Last attempt</dt>
+    <dd>
+      {% if backup.last_attempt %}
+        {{ backup.last_attempt|date:'d M Y, H:i' }}
+        {% if backup.last_attempt_failed %}
+          <span class="text-[var(--cc-danger)]">— failed</span>
+        {% endif %}
+      {% else %}
+        <span class="text-muted">Never</span>
+      {% endif %}
+    </dd>
+
+    <dt class="text-muted">Copied off this server</dt>
+    <dd>
+      {% if backup.offsite %}
+        Yes, on the last run
+      {% else %}
+        {# The copy that counts: theft, the disk and the flood each take both. #}
+        <span class="text-[var(--cc-warning)]">No</span>
+        <span class="text-muted">— the backups exist only on this box</span>
+      {% endif %}
+    </dd>
+
+    <dt class="text-muted">Last test restore</dt>
+    <dd>
+      {% if restore_check.last_success %}
+        {{ restore_check.last_success|date:'d M Y' }}
+      {% else %}
+        <span class="text-[var(--cc-warning)]">Never</span>
+      {% endif %}
+    </dd>
+
+    <dt class="text-muted">Free disk for backups</dt>
+    <dd>
+      {% if backup.disk_free_bytes %}
+        {{ backup.disk_free_bytes|filesizeformat }}
+      {% else %}
+        {# Measured on the host by deploy/backup.sh; the container cannot. #}
+        <span class="text-muted">Not reported by the last run</span>
+      {% endif %}
+    </dd>
+  </dl>
+
+  {% if restore_check.level != 'ok' %}
+    <div class="border-l-4 border-l-[var(--cc-warning)] pl-4">
+      <p class="font-semibold">Backups are unproven</p>
+      <p class="text-sm mt-1">
+        {{ restore_check.summary }}
+        A backup nobody has restored is a guess.
+      </p>
+    </div>
+  {% endif %}
+
+  <p class="text-xs text-muted">
+    Nothing here is fixed from this screen. The steps are in the runbook under
+    “Backups stopped running”; on the server, <code>deploy/status.sh</code>
+    answers the same questions with more detail. A backup is expected every
+    night ({{ warn_hours }} hours before this page says anything) and a test
+    restore every month (every {{ restore_check_days }} days).
+  </p>
+</div>
+{% endblock %}

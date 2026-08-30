@@ -197,9 +197,21 @@ Check them:
 journalctl -u clinicore-backup --since "3 days ago"
 ```
 
-The administrator's dashboard in the app also shows a banner when the last
-backup is more than 36 hours old, and a red one past 72 hours. **That banner is
-the main way you find out**, because this server cannot send email.
+The app reports the same thing at **Settings → Backups**: last good backup and
+how old it is, the last attempt and whether it failed, whether the last run was
+copied off this box, the last test restore, and the free disk. It says "Backups
+are not running" once the last good one is more than 72 hours old, and "Check
+the backups" past 36 hours or after any failed attempt.
+
+**That screen is the main way you find out**, because this server cannot send
+email — but only *you* find out from it. It is behind the **Developer** role, so
+the two of you see it and nobody at the clinic does; an administrator gets 403
+on the URL and no link in the menu. It used to be a banner on everybody's
+dashboard, which meant the doctor was told at every sign-in that the backups
+were unproven — true, and nothing he could act on.
+
+Nothing on that screen is fixed from inside the app. It reads the same status
+files `status.sh` reads, and the fix is always here.
 
 ### Backups stopped running
 
@@ -392,6 +404,10 @@ After deploying it, set your own role on **Team → your own row**. The dropdown
 on your own row offers only the roles that can still administer the clinic —
 that is deliberate, so that nobody can accidentally leave the clinic with no
 administrator.
+
+Do it. **Settings → Backups is behind that role**, so until at least one account
+holds Developer, nothing in the application reports the state of the backups to
+anyone.
 
 ---
 

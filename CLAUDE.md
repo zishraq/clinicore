@@ -1157,6 +1157,37 @@ the signed-in practitioner already chosen.
   0019 caught once already. "Anyone" stays its first option, so a clinic with
   two prescribers is still asked.
 
+Backup health left the dashboard on 2026-08-30 and is a screen at
+**Settings → Backups**, DEVELOPER only (`core.views.backup_settings`,
+`/settings/backups/`). It had been greeting the whole clinic at every sign-in
+with "Backups are unproven" — true, and nothing a doctor or a receptionist can
+act on. Rules:
+
+- **`accounts.permissions.developer_required` is a new gate**, and a single
+  role rather than a named set: there is one question here ("does this person
+  run the box?"), and `OPERATIONS_ROLES = {DEVELOPER}` would be a set with
+  nothing to distinguish it from the role. `Membership.is_developer` exists so
+  the nav template still compares no role string itself.
+- **The dashboard does not look the status up**, not merely not render it —
+  `_dashboard_context` no longer imports `core.backups` at all. Same posture as
+  billing's switch: a template that forgot a conditional has nothing to leak.
+- **A screen can say the quiet things a banner cannot.** The banner rendered
+  nothing when all was well, so "backups are running" and "nothing is
+  configured" looked identical. Every line on the screen is always present and
+  carries its own state, including the two the banner never had: whether the
+  last run was copied off the box, and the free disk where backups are written.
+- **The free disk is measured by `deploy/backup.sh`, not by the app.** The web
+  container can only see the filesystem `STATUS_DIR` happens to be mounted
+  from, which is not necessarily `BACKUP_DIR`. It goes into the status JSON as
+  `disk_free_bytes`, and the helper always prints a number — an empty
+  substitution there would write `"disk_free_bytes": ,` and turn the whole file
+  into "no information", i.e. an alarm about the wrong thing. A run that
+  predates it renders "Not reported by the last run", never 0 bytes free.
+- **`docs/RUNBOOK.md` no longer says the dashboard banner is how you find out.**
+  It names the screen, who can see it, and that the update note's "set your own
+  role to Developer" step is now load-bearing: until one account holds it,
+  nothing in the application reports the backups to anybody.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps, along with ADR 0020's own two unbuilt halves — `Encounter` vitals (§11,

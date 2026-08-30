@@ -34,7 +34,7 @@
     {% if membership.is_owner %}
       <li>
         {# The team screen lives in the accounts namespace, so the group opens on its url_name rather than on a namespace alone. #}
-        <details {% if 'organizations' in request.resolver_match.namespaces or 'member' in request.resolver_match.url_name %}open{% endif %}>
+        <details {% if 'organizations' in request.resolver_match.namespaces or 'member' in request.resolver_match.url_name or 'backup' in request.resolver_match.url_name %}open{% endif %}>
           <summary>Settings</summary>
           <ul>
             {# Lives in the accounts app, but it is a settings job and belongs where an administrator looks for one. #}
@@ -45,6 +45,10 @@
             <li><a href="{% url 'organizations:feature_settings' %}" class="{% if request.resolver_match.url_name == 'feature_settings' %}active{% endif %}">Features</a></li>
             <li><a href="{% url 'organizations:prescription_settings' %}" class="{% if request.resolver_match.url_name == 'prescription_settings' %}active{% endif %}">Prescription</a></li>
             <li><a href="{% url 'organizations:branch_list' %}" class="{% if 'branch' in request.resolver_match.url_name %}active{% endif %}">Chambers</a></li>
+            {# Server health, not clinic configuration. The view is gated on the same role — hiding a link is presentation, not access control. #}
+            {% if membership.is_developer %}
+              <li><a href="{% url 'core:backup_settings' %}" class="{% if request.resolver_match.url_name == 'backup_settings' %}active{% endif %}">Backups</a></li>
+            {% endif %}
           </ul>
         </details>
       </li>

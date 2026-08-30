@@ -1,4 +1,4 @@
-"""Landing page and the deployment healthcheck.
+"""Landing page, the backup screen, and the deployment healthcheck.
 
 Per-role dashboards proper are SPEC §6.7, not the MVP.
 """
@@ -10,7 +10,9 @@ from django.db import connection
 from django.http import JsonResponse
 from django.shortcuts import render
 
-__all__ = ['csrf_failure', 'dashboard', 'healthz']
+from accounts.permissions import developer_required
+
+__all__ = ['backup_settings', 'csrf_failure', 'dashboard', 'healthz']
 
 logger = logging.getLogger(__name__)
 
@@ -75,15 +77,11 @@ def _dashboard_context(request) -> dict:
     from patients.models import Patient
 
     context = {'patient_count': Patient.objects.count()}
-    # Administrators only, and on the landing page rather than behind a settings
-    # link: this box sends no email, so the dashboard is the only place a backup
-    # that stopped three weeks ago can be noticed before it is needed.
-    # MVP: replace with permission layer
-    if request.membership.is_owner:
-        from core.backups import backup_status, restore_check_status
-
-        context['backup'] = backup_status()
-        context['restore_check'] = restore_check_status()
+    # No backup state here, deliberately. It greeted the clinic at every sign-in
+    # with "Backups are unproven", which is a sentence about the server and not
+    # about them: an administrator can neither fix a backup that stopped nor
+    # judge whether one matters. It lives at Settings → Backups now, behind the
+    # DEVELOPER role. This screen belongs to the clinic.
     # MVP: replace with permission layer
     if request.membership.can_view_clinical:
         today = timezone.localdate()
@@ -121,3 +119,36 @@ def _stock_alerts(organization) -> dict:
         },
         'expiry_horizon_days': alerts['within_days'],
     }
+
+
+@login_required
+@developer_required
+def backup_settings(request):
+    """Whether this server's backups are running, and whether they are proven.
+
+    Gated on the role at the view, not by hiding the link — a hidden link is one
+    bookmark away from being reached (ADR 0012). DEVELOPER rather than
+    administrator because it is a fact about the box: nothing on this page can
+    be acted on from inside the application, and the runbook is the fix.
+
+    Everything here fails towards alarm; ``core.backups`` reports *never run*
+    for a status file that is missing, unreadable or truncated, so a fresh box
+    with nothing configured cannot look healthy.
+    """
+    from core.backups import (
+        BACKUP_WARN_HOURS,
+        RESTORE_CHECK_DANGER_DAYS,
+        backup_status,
+        restore_check_status,
+    )
+
+    return render(
+        request,
+        'core/backup_settings.html',
+        {
+            'backup': backup_status(),
+            'restore_check': restore_check_status(),
+            'warn_hours': BACKUP_WARN_HOURS,
+            'restore_check_days': RESTORE_CHECK_DANGER_DAYS,
+        },
+    )

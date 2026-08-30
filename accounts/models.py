@@ -159,6 +159,19 @@ class Membership(TimeStampedModel):
         """
         return self.role in ADMIN_ROLES
 
+    @property
+    def is_developer(self) -> bool:
+        """Looks after the server rather than the clinic.
+
+        Here so that no template compares a role string itself — the reason
+        ``role_label`` and the three role sets exist. Only the backup screen
+        reads it, and it is not an administrator's question: an administrator
+        can neither fix a backup that stopped nor judge whether one matters.
+
+        MVP: replace with permission layer (SPEC §6.1 RolePermission).
+        """
+        return self.role == Role.DEVELOPER
+
 
 class PractitionerProfile(models.Model):
     """How one practitioner appears on this clinic's printed letterhead.

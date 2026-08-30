@@ -1,16 +1,18 @@
-"""Backup staleness, and the banner that makes it visible.
+"""Backup staleness, as ``core.backups`` reports it.
 
 The realistic disaster is not a dramatic one — it is a nightly job that stopped
 three weeks ago on a box with no email, noticed on the day someone needs a
 restore. Every case here therefore checks that the app errs towards alarm:
 missing, unreadable and never-succeeded all report danger, never silence.
+
+The screen that renders this is tested in test_backup_screen.py, along with who
+may see it.
 """
 
 import json
 from datetime import timedelta
 
 import pytest
-from django.urls import reverse
 from django.utils import timezone
 
 from core.backups import (
@@ -164,75 +166,3 @@ def test_a_verification_older_than_a_month_and_a_bit_warns(status_dir):
     )
 
     assert restore_check_status().level == 'warning'
-
-
-# --- The banner ------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_the_administrator_sees_a_stale_backup_on_the_dashboard(
-    client, owner, status_dir
-):
-    _write(
-        status_dir,
-        'backup-status.json',
-        ok=True,
-        last_attempt=_hours_ago(24 * 21),
-        last_success=_hours_ago(24 * 21),
-    )
-    client.force_login(owner)
-
-    body = client.get(reverse('core:dashboard')).content.decode()
-
-    assert 'Backups are not running' in body
-
-
-@pytest.mark.django_db
-def test_a_healthy_backup_says_nothing_at_all(client, owner, status_dir):
-    """A banner that is always there stops being read."""
-    _write(
-        status_dir,
-        'backup-status.json',
-        ok=True,
-        last_attempt=_hours_ago(2),
-        last_success=_hours_ago(2),
-    )
-    _write(
-        status_dir,
-        'restore-check.json',
-        ok=True,
-        last_attempt=_hours_ago(48),
-        last_success=_hours_ago(48),
-    )
-    client.force_login(owner)
-
-    body = client.get(reverse('core:dashboard')).content.decode()
-
-    assert 'Backups are not running' not in body
-    assert 'Check the backups' not in body
-    assert 'Backups are unproven' not in body
-
-
-@pytest.mark.django_db
-def test_a_practitioner_is_not_shown_backup_state(client, practitioner, status_dir):
-    """Operational, not clinical. It is also not something they can act on."""
-    client.force_login(practitioner)
-
-    body = client.get(reverse('core:dashboard')).content.decode()
-
-    assert 'Backups are not running' not in body
-    assert 'Backups are unproven' not in body
-
-
-@pytest.mark.django_db
-def test_the_dashboard_survives_a_missing_status_directory(
-    client, owner, settings, tmp_path
-):
-    """Development, and the first boot of a new server, both look like this."""
-    settings.BACKUP_STATUS_DIR = tmp_path / 'does-not-exist'
-    client.force_login(owner)
-
-    response = client.get(reverse('core:dashboard'))
-
-    assert response.status_code == 200
-    assert 'has ever run' in response.content.decode()

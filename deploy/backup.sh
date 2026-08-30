@@ -26,6 +26,20 @@ STARTED="$(now_iso)"
 STAMP="$(date '+%Y-%m-%d_%H%M%S')"
 DAY_OF_MONTH="$(date '+%d')"
 
+disk_free_bytes() {
+    # Free space where the backups are written. Reported here rather than read
+    # by the app: the app is in a container and can only see the filesystem the
+    # status directory happens to be mounted from, which is not necessarily this
+    # one. 0 when it cannot be measured, which the app renders as "not reported"
+    # rather than as an empty disk.
+    # Always a number: an empty substitution here would write
+    # `"disk_free_bytes": ,` and turn the whole status file into something the
+    # app reads as "no information", i.e. an alarm about the wrong thing.
+    local free
+    free="$(df -PB1 "${BACKUP_DIR:-/}" 2>/dev/null | awk 'NR==2 {print $4}')" || true
+    printf '%s' "${free:-0}"
+}
+
 write_status() {
     # $1 = ok|error, $2 = message
     local state="$1" message="$2" success_line
@@ -49,6 +63,7 @@ write_status() {
   "last_success": "$success_line",
   "message": "$(json_escape "$message")",
   "offsite": $([ -n "${RCLONE_REMOTE:-}" ] && echo true || echo false),
+  "disk_free_bytes": $(disk_free_bytes),
   "db_bytes": ${DB_BYTES:-0},
   "media_bytes": ${MEDIA_BYTES:-0}
 }
