@@ -68,6 +68,91 @@ MEDICINE_COLUMNS = (
 )
 
 
+#: How the printed medicines table shares its width: a weight and a cap, in
+#: percent, per column. Narrow where the value is a token ("200C", "2D",
+#: "4 pills"), wide where it is a name or a sentence. Weights rather than
+#: percentages because the column set is data-gated — three columns and eight
+#: both have to fill the row — and caps because a token column given a third of
+#: the row is width taken from the sentence beside it. Instructions is uncapped:
+#: it is the one column that always has a use for more.
+MEDICINE_COLUMN_WEIGHTS = {
+    'name': (23, 35),
+    'strength': (8, 12),
+    'pack_size': (10, 14),
+    'preparation': (11, 15),
+    'dosage': (10, 14),
+    'frequency': (13, 16),
+    'duration': (10, 16),
+    'instructions': (15, None),
+}
+
+
+def _column_widths(keys: list[str]) -> dict[str, float]:
+    """Percentage per column: proportional to weight, clamped to the cap.
+
+    Whatever a cap frees is shared out again over the columns still under
+    theirs; when every present column is capped, the caps scale up instead so
+    the row is still full. Either way the shares sum to exactly 100, which is
+    the property ``table-layout: fixed`` depends on — a fixed table whose
+    columns add up to more than its width grows to fit them, and that growth
+    is the overflow being prevented.
+    """
+    widths: dict[str, float] = {}
+    pending = list(keys)
+    remaining = 100.0
+    while pending:
+        total = sum(MEDICINE_COLUMN_WEIGHTS[key][0] for key in pending)
+        capped = [
+            key
+            for key in pending
+            if MEDICINE_COLUMN_WEIGHTS[key][1] is not None
+            and remaining * MEDICINE_COLUMN_WEIGHTS[key][0] / total
+            > MEDICINE_COLUMN_WEIGHTS[key][1]
+        ]
+        if not capped:
+            for key in pending:
+                widths[key] = remaining * MEDICINE_COLUMN_WEIGHTS[key][0] / total
+            break
+        for key in capped:
+            widths[key] = MEDICINE_COLUMN_WEIGHTS[key][1]
+            remaining -= widths[key]
+            pending.remove(key)
+    scale = 100 / sum(widths.values())
+    rounded = {key: round(width * scale, 1) for key, width in widths.items()}
+    rounded[keys[-1]] = round(100 - sum(rounded[key] for key in keys[:-1]), 1)
+    return rounded
+
+
+def _medicine_columns(sections: dict, terms: dict) -> list[dict]:
+    """The printed table's columns, each with its percentage of the row."""
+    labels = {
+        'name': 'Medicine',
+        'strength': terms['strength'],
+        'pack_size': terms['pack_size'],
+        'preparation': terms['preparation'],
+        'dosage': 'Dosage',
+        'frequency': 'Frequency',
+        'duration': 'Duration',
+        'instructions': 'Instructions',
+    }
+    keys = ['name', *(c for c in MEDICINE_COLUMNS if sections[f'show_{c}'])]
+    widths = _column_widths(keys)
+    return [{'key': key, 'label': labels[key], 'width': widths[key]} for key in keys]
+
+
+def _medicine_rows(medicines: list, columns: list[dict]) -> list[list[str]]:
+    """One list of cell values per medicine, in column order."""
+    return [
+        [
+            item.name_snapshot
+            if column['key'] == 'name'
+            else getattr(item, column['key'])
+            for column in columns
+        ]
+        for item in medicines
+    ]
+
+
 def _prescription_sections(items: list) -> dict:
     """Split a prescription into its two halves, plus one flag per column.
 
@@ -516,15 +601,19 @@ def prescription_print(request, pk: int):
         size = PrintSize.A5
     items = list(prescription.items.all())
     organization = request.organization
+    # Two sections: medicines carry a dose, advice does not. Each is omitted
+    # entirely when empty rather than printing a bare header.
+    sections = _prescription_sections(items)
+    columns = _medicine_columns(sections, organization.terms)
     return render(
         request,
         'print/prescription.html',
         {
             'encounter': encounter,
             'prescription': prescription,
-            # Two sections: medicines carry a dose, advice does not. Each is
-            # omitted entirely when empty rather than printing a bare header.
-            **_prescription_sections(items),
+            **sections,
+            'medicine_columns': columns,
+            'medicine_rows': _medicine_rows(sections['medicines'], columns),
             'sidebar_sections': _sidebar_sections(encounter),
             'page_size': size,
             # Interpolated into CSS, so all three come from validated accessors.

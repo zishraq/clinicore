@@ -213,7 +213,10 @@
       margin-top: {% if page_size == 'A4' %}4mm{% else %}1.8mm{% endif %};
       display: grid;
       {% if page_size == 'A4' %}
-        grid-template-columns: 62mm 1fr;
+        /* 50mm, down from the design's 62mm: the sidebar holds short labelled
+           notes, the ℞ side holds a table with up to eight columns, and the
+           twelve millimetres are worth far more to the table. */
+        grid-template-columns: 50mm 1fr;
         min-height: 150mm;
       {% else %}
         /* A5 is 148mm wide: a 62mm sidebar would leave the Rx area under
@@ -227,7 +230,7 @@
     .sidebar {
       {% if page_size == 'A4' %}
         border-right: 1px solid var(--border);
-        padding-right: 4mm;
+        padding-right: 3mm;
         display: flex;
         flex-direction: column;
         gap: 6mm;
@@ -252,7 +255,7 @@
     .rules span { border-bottom: 1px dotted var(--border); }
 
     .rx-area {
-      {% if page_size == 'A4' %}padding-left: 6mm;{% endif %}
+      {% if page_size == 'A4' %}padding-left: 4mm;{% endif %}
       display: flex;
       flex-direction: column;
       min-width: 0;
@@ -281,31 +284,50 @@
       margin: 0 0 1.5mm;
     }
 
-    /* Auto layout, deliberately: a fixed one held the name column to its
-       declared width and broke "Azithromycin" across two lines, and the
-       medicine's name is the one thing on this sheet that must be read
-       without effort. The widths below stay as hints. */
-    table.items { width: 100%; border-collapse: collapse; margin-top: 1mm; }
+    /* Fixed layout, so the table can never be wider than the column it sits
+       in. Auto layout let eight columns negotiate a 149mm table into a 110mm
+       slot, and Chrome's print then shrank the whole sheet to fit — which is
+       what made an A4 print look like an A5 dropped onto A4 paper. Every
+       header carries a percentage width, computed in the view from the
+       columns this prescription actually has, so three columns and eight both
+       fill the row (clinical/views.py _medicine_columns). */
+    table.items {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      margin-top: 1mm;
+      /* A4's Rx column (124mm) is narrower than an A5 sheet (130mm), so the
+         table steps down from the 11pt body there to A5's 9pt; A5
+         keeps the body size it always had. */
+      {% if page_size == 'A4' %}font-size: .82em;{% endif %}
+    }
+    /* Sentence case, not the small-caps caption the rest of the sheet uses:
+       eight uppercase, letter-spaced headers cost a fifth more width than the
+       values under them, and it was the headers, not the doses, that broke
+       mid-word first. */
     table.items th {
       text-align: left;
-      font-size: .78em;
-      text-transform: uppercase;
-      letter-spacing: .04em;
+      font-size: .74em;
+      font-weight: 600;
       color: var(--muted);
       border-bottom: 1px solid var(--primary);
-      padding: {% if page_size == 'A4' %}1.2mm 2mm 1.2mm 0{% else %}0.8mm 2mm 0.8mm 0{% endif %};
+      padding: {% if page_size == 'A4' %}1.2mm 1mm 1.2mm 0{% else %}0.8mm 1mm 0.8mm 0{% endif %};
+      vertical-align: bottom;
+      overflow-wrap: break-word;
     }
     table.items td {
-      padding: {% if page_size == 'A4' %}1.6mm 2mm 1.6mm 0{% else %}0.85mm 2mm 0.85mm 0{% endif %};
+      padding: {% if page_size == 'A4' %}1.6mm 1.5mm 1.6mm 0{% else %}0.85mm 1.5mm 0.85mm 0{% endif %};
       border-bottom: 1px solid #F1F5F9;
       vertical-align: top;
       /* break-word, not anywhere: only a word that cannot fit at all is
-         split, so ordinary names stay whole. */
+         split, so ordinary names stay whole. In a fixed layout this is what
+         stands between a long value and the edge of the paper — a duration
+         the patient cannot read is a dosing error. */
       overflow-wrap: break-word;
     }
-    table.items td.name { font-weight: 600; width: 34%; }
+    table.items td.name { font-weight: 600; }
     /* Advice lines are sentences, not names, so they get the room. */
-    table.items.advice td.name { width: 46%; font-weight: 500; }
+    table.items.advice td.name { font-weight: 500; }
     /* Never split a prescribed item across two sheets. */
     table.items tr { break-inside: avoid; page-break-inside: avoid; }
 
@@ -552,19 +574,12 @@
                 across an A5 sheet, and four of them empty is the worse document
                 (clinical/views.py _prescription_sections).
               {% endcomment %}
-              <tr><th>Medicine</th>{% if show_strength %}<th>{{ terms.strength }}</th>{% endif %}{% if show_pack_size %}<th>{{ terms.pack_size }}</th>{% endif %}{% if show_preparation %}<th>{{ terms.preparation }}</th>{% endif %}{% if show_dosage %}<th>Dosage</th>{% endif %}{% if show_frequency %}<th>Frequency</th>{% endif %}{% if show_duration %}<th>Duration</th>{% endif %}{% if show_instructions %}<th>Instructions</th>{% endif %}</tr>
+              <tr>{% for column in medicine_columns %}<th style="width:{{ column.width }}%">{{ column.label }}</th>{% endfor %}</tr>
             </thead>
             <tbody>
-              {% for item in medicines %}
+              {% for row in medicine_rows %}
                 <tr>
-                  <td class="name">{{ item.name_snapshot }}</td>
-                  {% if show_strength %}<td>{{ item.strength|default:'—' }}</td>{% endif %}
-                  {% if show_pack_size %}<td>{{ item.pack_size|default:'—' }}</td>{% endif %}
-                  {% if show_preparation %}<td>{{ item.preparation|default:'—' }}</td>{% endif %}
-                  {% if show_dosage %}<td>{{ item.dosage|default:'—' }}</td>{% endif %}
-                  {% if show_frequency %}<td>{{ item.frequency|default:'—' }}</td>{% endif %}
-                  {% if show_duration %}<td>{{ item.duration|default:'—' }}</td>{% endif %}
-                  {% if show_instructions %}<td>{{ item.instructions|default:'—' }}</td>{% endif %}
+                  {% for value in row %}<td{% if forloop.first %} class="name"{% endif %}>{{ value|default:'—' }}</td>{% endfor %}
                 </tr>
               {% endfor %}
             </tbody>
@@ -575,7 +590,7 @@
           <p class="section-title" {% if medicines %}style="margin-top:5mm"{% endif %}>Advice</p>
           <table class="items advice">
             <thead>
-              <tr><th>Advice</th><th>Frequency</th><th>Duration</th><th>Notes</th></tr>
+              <tr><th style="width:46%">Advice</th><th style="width:16%">Frequency</th><th style="width:16%">Duration</th><th style="width:22%">Notes</th></tr>
             </thead>
             <tbody>
               {% for item in advice_items %}

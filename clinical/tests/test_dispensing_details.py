@@ -505,12 +505,12 @@ def test_the_printout_carries_only_the_columns_this_visit_filled_in(
     body = client.get(
         reverse('clinical:prescription_print', args=[encounter.pk])
     ).content.decode()
-    assert '<th>Potency</th>' in body
-    assert '<th>Quantity</th>' in body
-    assert '<th>Type</th>' in body
+    assert '>Potency</th>' in body
+    assert '>Quantity</th>' in body
+    assert '>Type</th>' in body
     # Handled verbally at this clinic, so they are not on the sheet at all.
     for label in ('Dosage', 'Frequency', 'Duration', 'Instructions'):
-        assert f'<th>{label}</th>' not in body
+        assert f'>{label}</th>' not in body
 
 
 def test_a_visit_that_recorded_a_dosage_still_prints_it(
@@ -524,9 +524,9 @@ def test_a_visit_that_recorded_a_dosage_still_prints_it(
     body = client.get(
         reverse('clinical:prescription_print', args=[encounter.pk])
     ).content.decode()
-    assert '<th>Dosage</th>' in body
+    assert '>Dosage</th>' in body
     assert '4 pills' in body
-    assert '<th>Duration</th>' not in body
+    assert '>Duration</th>' not in body
 
 
 def test_recorded_values_still_print_after_the_switches_go_off(

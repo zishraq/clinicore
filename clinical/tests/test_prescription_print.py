@@ -1,5 +1,8 @@
 """The printed prescription: two sections, each present only when it has content."""
 
+import itertools
+import re
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
@@ -154,3 +157,130 @@ def test_a_prescription_with_nothing_on_it_carries_no_rx_mark(
     body = response.content.decode()
     assert 'No items prescribed' in body
     assert '℞' not in body
+
+
+# --- The medicines table: one medicine per row, and never wider than the sheet.
+#
+# A fixed-layout table with percentage widths that sum to 100 cannot exceed its
+# container, which is the guarantee these tests read back out of the markup. The
+# paper itself is checked by printing to PDF (see the commit that added them);
+# what a status-code test can prove is that every rendered table carries that
+# guarantee, at both sizes and for every column set.
+
+_WIDTH_RE = re.compile(r'<th style="width:([\d.]+)%">')
+
+
+def _tables(body: str) -> list[str]:
+    return re.findall(r'<table class="items[^"]*">(.*?)</table>', body, re.S)
+
+
+def _print(client, prescription, size: str) -> str:
+    response = client.get(
+        reverse('clinical:prescription_print', args=[prescription.encounter_id]),
+        {'size': size},
+    )
+    assert response.status_code == 200
+    return response.content.decode()
+
+
+def _add_full_medicine(organization, prescription, name='Lycopodium Clavatum'):
+    item = _add_medicine(organization, prescription, name=name)
+    item.strength = '1M'
+    item.pack_size = '1/2 ounce'
+    item.preparation = 'Liquid'
+    item.duration = '1 month'
+    item.instructions = 'In a little water at bedtime, half an hour after food'
+    item.save()
+    return item
+
+
+@pytest.mark.parametrize('size', ['A5', 'A4'])
+def test_a_medicine_with_all_eight_columns_is_one_row(
+    client, practitioner, organization, prescription, size
+):
+    with organization_context(organization):
+        _add_full_medicine(organization, prescription)
+        _add_full_medicine(organization, prescription, name='Nux Vomica')
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, size)
+    assert 'table-layout: fixed' in body
+    medicines = _tables(body)[0]
+    widths = [float(w) for w in _WIDTH_RE.findall(medicines)]
+    assert len(widths) == 8
+    assert round(sum(widths), 1) == 100.0
+    # One <tr> per medicine in the body, each carrying every column: a value
+    # that does not fit wraps inside its cell rather than becoming a second row.
+    rows = re.findall(r'<tr>\s*(?:<td[^>]*>.*?</td>\s*)+</tr>', medicines, re.S)
+    assert len(rows) == 2
+    assert all(row.count('<td') == 8 for row in rows)
+
+
+@pytest.mark.parametrize('size', ['A5', 'A4'])
+def test_the_minimum_column_set_fills_the_row(
+    client, practitioner, organization, prescription, size
+):
+    """Medicine, strength and instructions only — the narrowest realistic case."""
+    with organization_context(organization):
+        item = PrescriptionItem.objects.create(
+            organization=organization,
+            prescription=prescription,
+            item_type=ItemType.MEDICATION,
+            product=Product.objects.create(organization=organization, name='Sulphur'),
+            strength='200C',
+            instructions='One dose only, do not repeat',
+        )
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, size)
+    medicines = _tables(body)[0]
+    widths = [float(w) for w in _WIDTH_RE.findall(medicines)]
+    assert len(widths) == 3
+    assert round(sum(widths), 1) == 100.0
+    # The sentence gets the room a token column would waste.
+    assert widths[2] > widths[1]
+    assert medicines.count('<td') == 3
+    assert item.strength in medicines
+
+
+@pytest.mark.parametrize('size', ['A5', 'A4'])
+def test_no_table_on_the_sheet_can_be_wider_than_its_column(
+    client, practitioner, organization, prescription, size
+):
+    """Every table — medicines and advice — is fixed-layout with widths summing
+    to 100, so nothing on the sheet can push past the right edge of the paper."""
+    with organization_context(organization):
+        _add_full_medicine(organization, prescription)
+        _add_advice(organization, prescription)
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, size)
+    tables = _tables(body)
+    assert len(tables) == 2
+    for table in tables:
+        widths = [float(w) for w in _WIDTH_RE.findall(table)]
+        assert widths, 'a column without a declared width lets the table grow'
+        assert round(sum(widths), 1) == 100.0
+    assert body.count('table-layout: fixed') == 1  # one rule, on table.items
+    assert 'white-space: nowrap' not in body.split('<table')[1]
+
+
+def test_every_column_set_shares_the_row_exactly():
+    """All 128 combinations of the optional columns: the shares sum to 100 and no
+    token column outgrows its cap — a fixed table whose columns add up to more
+    than its width grows to fit them, which is the overflow being prevented."""
+    from clinical.views import MEDICINE_COLUMN_WEIGHTS, MEDICINE_COLUMNS, _column_widths
+
+    for n in range(len(MEDICINE_COLUMNS) + 1):
+        for combination in itertools.combinations(MEDICINE_COLUMNS, n):
+            keys = ['name', *combination]
+            widths = _column_widths(keys)
+            assert set(widths) == set(keys)
+            assert round(sum(widths.values()), 1) == 100.0
+            assert min(widths.values()) > 0
+            if 'instructions' in keys:
+                # The sentence absorbs whatever the caps free up.
+                for key in keys:
+                    cap = MEDICINE_COLUMN_WEIGHTS[key][1]
+                    if cap is not None:
+                        assert widths[key] <= cap + 0.1
