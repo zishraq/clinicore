@@ -23,7 +23,7 @@ from clinical.forms import (
     PrescriptionForm,
     PrescriptionItemFormSet,
 )
-from clinical.models import Encounter, EncounterPhoto, EncounterStatus, PrintSize
+from clinical.models import Encounter, EncounterPhoto, EncounterStatus
 from organizations.services import default_branch
 from patients.models import Patient
 from scheduling import services as scheduling_services
@@ -250,7 +250,9 @@ def _encounter_form_context(request, encounter=None):
         organization=organization,
         requires_reason=bool(encounter and encounter.is_locked),
     )
-    prescription_form = PrescriptionForm(data, instance=prescription)
+    prescription_form = PrescriptionForm(
+        data, instance=prescription, organization=organization
+    )
     item_formset = PrescriptionItemFormSet(
         data, instance=prescription, organization=organization
     )
@@ -596,11 +598,14 @@ def prescription_print(request, pk: int):
         Encounter.objects.select_related('patient', 'practitioner', 'branch'), pk=pk
     )
     prescription = services.prescription_for(encounter)
-    size = request.GET.get('size', prescription.print_size).upper()
-    if size not in PrintSize.values:
-        size = PrintSize.A5
-    items = list(prescription.items.all())
     organization = request.organization
+    # The stored size is the doctor's intent, the setting is what the clinic
+    # offers today, and the sheet is the intersection: a request for a size
+    # that is not offered renders at one that is, and nothing stored moves.
+    size = organization.print_size_for(
+        request.GET.get('size', prescription.print_size).upper()
+    )
+    items = list(prescription.items.all())
     # Two sections: medicines carry a dose, advice does not. Each is omitted
     # entirely when empty rather than printing a bare header.
     sections = _prescription_sections(items)
@@ -616,6 +621,9 @@ def prescription_print(request, pk: int):
             'medicine_rows': _medicine_rows(sections['medicines'], columns),
             'sidebar_sections': _sidebar_sections(encounter),
             'page_size': size,
+            # The toolbar offers a toggle only when there is something to
+            # toggle: one size means no buttons rather than one dead one.
+            'size_options': organization.print_sizes,
             # Interpolated into CSS, so all three come from validated accessors.
             # The template derives the darker tone and the tint from the first
             # with ``color-mix`` and falls back to these, so a clinic that sets

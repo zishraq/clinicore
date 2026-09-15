@@ -229,7 +229,8 @@ can sanity-check the schema.
 - Prescription print view: **two sections — medicines (with a dosage column) and
   advice (without)** — each omitted entirely when it has no items, so an
   advice-only prescription never prints an empty medicines table. A dedicated
-  print stylesheet, `@page` sized A5 and A4 (user-selectable), clinic letterhead
+  print stylesheet, `@page` sized A5 and A4 (user-selectable, and the clinic
+  can offer one size only — `Organization.prescription_sizes`), clinic letterhead
   from Organization branding, and a clean browser print with no app chrome.
   Verify the print CSS actually renders — this is the single most-used feature
   in the building.

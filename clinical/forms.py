@@ -224,6 +224,17 @@ class PrescriptionForm(forms.ModelForm):
             'print_size': forms.Select(attrs=_SELECT),
         }
 
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A select with one option is noise on the form the doctor fills in
+        # with the patient sitting there. Dropped rather than hidden, and
+        # dropping is safe here where it would not be for a text field:
+        # ``construct_instance`` leaves a column alone when its field is not
+        # on the form, so the visit's stored choice survives untouched and is
+        # back on the form the day the clinic offers both sizes again.
+        if organization is not None and len(organization.print_sizes) == 1:
+            self.fields.pop('print_size')
+
 
 class PrescriptionItemForm(forms.ModelForm):
     """One row of the prescription, medicine or advice.

@@ -91,15 +91,17 @@ class FeatureSettingsForm(forms.ModelForm):
             'advice_enabled',
             'case_record_enabled',
             'temperature_unit',
+            'prescription_sizes',
             *(field.enabled_field for field in PRESCRIBING_FIELDS),
         ]
         widgets = {
             **{name: forms.CheckboxInput(attrs=_CHECKBOX) for name in fields},
-            # The one control on this screen that is not a switch. It belongs
-            # here rather than on a screen of its own because it is the same
-            # kind of answer — how this clinic works — and a settings screen
-            # with one dropdown on it is a screen that needs explaining.
+            # The two controls on this screen that are not switches. They
+            # belong here rather than on screens of their own because they are
+            # the same kind of answer — how this clinic works — and a settings
+            # screen with one dropdown on it is a screen that needs explaining.
             'temperature_unit': forms.Select(attrs=_SELECT),
+            'prescription_sizes': forms.Select(attrs=_SELECT),
         }
         labels = {
             # What the clinic gets, not what the column is called.
@@ -107,6 +109,7 @@ class FeatureSettingsForm(forms.ModelForm):
             'advice_enabled': 'Prescribe advice',
             'case_record_enabled': 'Take a full case history',
             'temperature_unit': 'Temperature unit',
+            'prescription_sizes': 'Prescription paper',
             **{
                 field.enabled_field: _SWITCH_LABELS[field.key]
                 for field in PRESCRIBING_FIELDS
@@ -131,6 +134,11 @@ class FeatureSettingsForm(forms.ModelForm):
                 'always stored the same way, so changing this converts what '
                 'you see rather than altering anything already recorded.'
             ),
+            'prescription_sizes': (
+                'With one size, the print page offers no A5/A4 choice and the '
+                'visit form no paper box. A size already chosen on a visit is '
+                'kept, and comes back if you offer both again.'
+            ),
             # Said plainly because the switch looks destructive and is not: a
             # clinic that is not ready to put money in the system has to be able
             # to turn this off without wondering what it costs them.
@@ -153,6 +161,7 @@ class FeatureSettingsForm(forms.ModelForm):
         # going missing from the page is caught by asserting that it renders
         # (organizations/tests/test_feature_settings.py), not by validation.
         self.fields['temperature_unit'].required = False
+        self.fields['prescription_sizes'].required = False
         #: Which fields open a new capability, so the screen can rule between
         #: them (templates/organizations/settings_form.html).
         self.capability_switches = [field.enabled_field for field in PRESCRIBING_FIELDS]
@@ -164,6 +173,7 @@ class FeatureSettingsForm(forms.ModelForm):
             'advice_enabled',
             'case_record_enabled',
             'temperature_unit',
+            'prescription_sizes',
         ]
         for field in PRESCRIBING_FIELDS:
             term = DEFAULT_TERMINOLOGY[field.key]
@@ -213,6 +223,13 @@ class FeatureSettingsForm(forms.ModelForm):
         """
         return (
             self.cleaned_data.get('temperature_unit') or self.instance.temperature_unit
+        )
+
+    def clean_prescription_sizes(self) -> str:
+        """Absent means unchanged, for the same reason as the unit above."""
+        return (
+            self.cleaned_data.get('prescription_sizes')
+            or self.instance.prescription_sizes
         )
 
     def clean(self) -> dict:

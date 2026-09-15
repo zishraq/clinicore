@@ -371,3 +371,99 @@ def test_the_signature_notice_and_footer_are_one_block(
     assert 'class="footer"' in tail
     assert 'table.items thead { display: table-header-group; }' in body
     assert 'table.items tr { break-inside: avoid;' in body
+
+
+# --- Which sizes the clinic offers (Organization.prescription_sizes).
+#
+# The stored size is the doctor's intent, the setting is the clinic's current
+# capability, and the sheet is the intersection: coerced at render, never
+# rewritten in the database.
+
+
+def _size_links(body: str) -> list[str]:
+    return re.findall(r'href="\?size=(A[45])"', body)
+
+
+@pytest.mark.parametrize(
+    ('setting', 'links', 'requested', 'rendered'),
+    [
+        ('BOTH', ['A5', 'A4'], 'A4', 'A4'),
+        ('A5', [], 'A4', 'A5'),
+        ('A4', [], 'A5', 'A4'),
+    ],
+)
+def test_each_size_setting_gives_the_right_toolbar_and_the_right_sheet(
+    client,
+    practitioner,
+    organization,
+    prescription,
+    setting,
+    links,
+    requested,
+    rendered,
+):
+    """One size means no toggle at all rather than a single dead button, and a
+    ``?size=`` for the size that is off renders the size that is on."""
+    organization.prescription_sizes = setting
+    organization.save(update_fields=['prescription_sizes', 'updated_at'])
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, requested)
+    assert _size_links(body) == links
+    assert f'size: {rendered};' in body
+    other = 'A5' if rendered == 'A4' else 'A4'
+    assert f'size: {other};' not in body
+
+
+def test_a_visit_that_chose_a4_keeps_it_while_the_clinic_is_a5_only(
+    client, practitioner, organization, prescription
+):
+    """Coerced at render, never at save: the stored choice is untouched, so it
+    is exactly what prints again the day the clinic offers both sizes."""
+    prescription.print_size = 'A4'
+    prescription.save(update_fields=['print_size', 'updated_at'])
+    organization.prescription_sizes = 'A5'
+    organization.save(update_fields=['prescription_sizes', 'updated_at'])
+
+    client.force_login(practitioner)
+    body = client.get(
+        reverse('clinical:prescription_print', args=[prescription.encounter_id])
+    ).content.decode()
+    assert 'size: A5;' in body
+    prescription.refresh_from_db()
+    assert prescription.print_size == 'A4'
+
+    organization.prescription_sizes = 'BOTH'
+    organization.save(update_fields=['prescription_sizes', 'updated_at'])
+    body = client.get(
+        reverse('clinical:prescription_print', args=[prescription.encounter_id])
+    ).content.decode()
+    assert 'size: A4;' in body
+
+
+def test_the_visit_form_drops_the_size_box_when_one_size_is_offered(
+    organization, prescription
+):
+    """And a save through that form leaves the stored size alone — dropping
+    the field is what keeps ``construct_instance`` off the column."""
+    from clinical.forms import PrescriptionForm
+
+    assert 'print_size' in PrescriptionForm(organization=organization).fields
+
+    prescription.print_size = 'A4'
+    prescription.save(update_fields=['print_size', 'updated_at'])
+    organization.prescription_sizes = 'A5'
+    organization.save(update_fields=['prescription_sizes', 'updated_at'])
+
+    form = PrescriptionForm(
+        {'general_instructions': 'Nothing after 9pm.'},
+        instance=prescription,
+        organization=organization,
+    )
+    assert 'print_size' not in form.fields
+    assert form.is_valid(), form.errors
+    with organization_context(organization):
+        form.save()
+    prescription.refresh_from_db()
+    assert prescription.general_instructions == 'Nothing after 9pm.'
+    assert prescription.print_size == 'A4'

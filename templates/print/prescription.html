@@ -519,8 +519,11 @@
 
 <div class="toolbar">
   <button type="button" onclick="window.print()">Print</button>
-  <a href="?size=A5" class="{% if page_size == 'A5' %}current{% endif %}">A5</a>
-  <a href="?size=A4" class="{% if page_size == 'A4' %}current{% endif %}">A4</a>
+  {% if size_options|length > 1 %}
+    {% for option in size_options %}
+      <a href="?size={{ option }}" class="{% if page_size == option %}current{% endif %}">{{ option }}</a>
+    {% endfor %}
+  {% endif %}
   <a href="{% url 'clinical:encounter_detail' encounter.pk %}">Back to {{ terms.encounter|lower }}</a>
 </div>
 

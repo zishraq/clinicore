@@ -509,7 +509,9 @@ Then sign in as the administrator and finish the setup on screen:
 
 - **Settings → Features** — turn on *Record how strong each medicine is* if this
   clinic prescribes potencies, set what it calls the field ("Potency"), and list
-  the usual values one per line.
+  the usual values one per line. *Prescription paper* is which sizes the print
+  page offers; a clinic that prints A5 only sets it so, and the A4 button and
+  the per-visit paper box disappear.
 - **Settings → Billing** — the currency and the consultation fee.
 - **Team** — add the receptionist and any other practitioners. Each gets a
   temporary password the same way, read out and changed on first sign-in.

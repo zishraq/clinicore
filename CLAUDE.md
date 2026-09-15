@@ -1188,6 +1188,68 @@ act on. Rules:
   role to Developer" step is now load-bearing: until one account holds it,
   nothing in the application reports the backups to anybody.
 
+The printed prescription had a second pass on 2026-09-16, from a photograph
+of a real sheet. Four commits; the diagnosis came first and named the cause
+before any width moved. **Verified by printing to PDF with headless Chrome**
+(`pdfinfo` page counts, rasterised and inspected at the right edge) across
+four staged visits at both sizes, and the size setting was driven in the
+browser in all three positions. Rules to know:
+
+- **"A5 on an A4 sheet" was Chrome's shrink-to-fit, not the `@page` rule.**
+  The auto-layout medicines table negotiated eight columns to 149mm inside a
+  110mm column; Chrome scaled the whole document until the overflow fit (the
+  62mm sidebar measured 51mm in the PDF). Independently, `@media print
+  .sheet { min-height: 0 }` left the sheet content-height on paper, so the
+  footer floated mid-page. It is `min-height: 100vh` now — in paged media the
+  viewport is the page area inside the margins — so `.body { flex: 1 }` has
+  something to grow into. On screen the sheet was always 297mm, which is why
+  the preview never showed either.
+- **The medicines table is `table-layout: fixed`, and its widths come from
+  the view.** `clinical.views._column_widths` gives each present column a
+  share from a weight and a cap (`MEDICINE_COLUMN_WEIGHTS`); instructions is
+  uncapped and absorbs what the caps free. All 128 column sets sum to exactly
+  100, asserted — a fixed table whose widths exceed 100% grows, which is the
+  overflow being prevented. Headers are sentence case (uppercase cost a fifth
+  more width and broke mid-word first); the A4 table runs at A5's 9pt since
+  A4's column (124mm) is narrower than an A5 sheet (130mm).
+- **A5 is a budget, measured band by band.** The worst realistic visit (four
+  medicines, eight columns, sentence instructions, two advice with notes,
+  full letterhead, notice, two chambers, three contacts) went from 277.7mm
+  to 196.5mm on a 210mm sheet by leading (1.45 → 1.3, 1.2 in cells), 8mm
+  margins, chips on the degrees line, a one-row patient bar, side-by-side
+  notes, run-in Instructions/Follow-up labels, dropping the duplicate
+  "Advice" caption, and the stamp sharing the contacts line. Nothing the
+  clinic chose to print was cut. `scratchpad/print/bands.py` in the session
+  transcript is the measuring tool; rebuild it before touching heights.
+- **A sheet that spills reads as one.** `thead` repeats, rows never split,
+  and the signature moved into `.band.tail` with the notice and footer so one
+  `break-inside: avoid` keeps them together. On A5 the tail, the labelled
+  lines and the advice table carry `break-before: avoid`, so page two opens
+  with the end of the prescription. **That only works because the A5 body is
+  plain blocks**: Chrome honours `break-before: avoid` by searching back for
+  an earlier break, and a grid or flex column there sends it to before the
+  body — page one becomes a bare letterhead. A4 keeps its grid and only the
+  keep-together; a spilled A4 may strand its footer, written into the
+  template as the accepted cost.
+- **`Organization.prescription_sizes` is one field with three values**, BOTH
+  (default) / A5 / A4, so "neither" is unrepresentable. It governs what is
+  *offered*: the toolbar shows no toggle at all with one size, `?size=` for
+  the other size renders the offered one (`Organization.print_size_for`), and
+  `PrescriptionForm` drops the per-visit select. **Coerced at render, never at
+  save**: a visit that chose A4 keeps A4 in the database while the clinic is
+  A5-only, and offering both again restores it exactly — the billing switch's
+  rule. The single-size values are spelled as `clinical.PrintSize` spells
+  them, asserted, because the stored size is compared against them directly.
+- **The receipt's own `?size=` is untouched.** The setting is named for the
+  prescription and the clinic that wants it has billing off; extend it to
+  `billing.views.invoice_print` if a clinic asks.
+- **Browser checks with no signed-in Chrome window**: mint a session
+  server-side (`Client().force_login(user)`, read `session.session_key`),
+  set it as `document.cookie` on the login page via the JS tool, and reload.
+  No password is typed. Delete the session rows afterwards. Also found: the
+  Save button no-op'd on both a ref click and a coordinate click in the
+  driven tab; `form.requestSubmit()` from the JS tool posts the real form.
+
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
 gaps, along with ADR 0020's own two unbuilt halves — `Encounter` vitals (§11,

@@ -18,6 +18,7 @@ __all__ = [
     'Branch',
     'Organization',
     'PrescribingField',
+    'PrescriptionSizes',
     'clean_suggestions',
     'default_branding',
     'default_terminology',
@@ -291,6 +292,21 @@ PRESCRIBING_FIELDS = (
 )
 
 
+class PrescriptionSizes(models.TextChoices):
+    """Which paper the printed prescription is offered on.
+
+    One field with three values rather than two booleans, so that "neither" is
+    unrepresentable. The two single-size values are spelled exactly as
+    ``clinical.models.PrintSize`` spells them, which is what lets a stored
+    ``Prescription.print_size`` be checked against ``Organization.print_sizes``
+    without a mapping in between (asserted in organizations/tests).
+    """
+
+    BOTH = 'BOTH', 'A5 and A4'
+    A5 = 'A5', 'A5 only'
+    A4 = 'A4', 'A4 only'
+
+
 class Organization(TimeStampedModel):
     """The tenant. Not org-owned itself, so it keeps a plain manager."""
 
@@ -374,6 +390,17 @@ class Organization(TimeStampedModel):
         blank=True,
         help_text='One per line, printed along the foot of the prescription.',
     )
+    # Which sizes the print page offers. Default BOTH, so nothing changes for
+    # an existing clinic; the clinic that prints A5 only loses the A4 button
+    # and the per-visit size box. A capability, not data: a visit's stored
+    # ``print_size`` is never rewritten, so turning A4 back on restores every
+    # visit's own choice exactly (the billing switch's rule).
+    prescription_sizes = models.CharField(
+        max_length=4,
+        choices=PrescriptionSizes.choices,
+        default=PrescriptionSizes.BOTH,
+        help_text='Which paper sizes the printed prescription offers.',
+    )
     # A capability switch like ``advice_enabled``, one size larger: it hides a
     # whole app rather than half a form. Default True, so nothing changes for a
     # clinic that never touches it — the clinic that is not ready to put money
@@ -418,6 +445,24 @@ class Organization(TimeStampedModel):
         if not self.slug:
             self.slug = slugify(self.name)[:60]
         super().save(*args, **kwargs)
+
+    @property
+    def print_sizes(self) -> list[str]:
+        """The sizes a prescription may print at, A5 first."""
+        if self.prescription_sizes == PrescriptionSizes.BOTH:
+            return [PrescriptionSizes.A5.value, PrescriptionSizes.A4.value]
+        return [self.prescription_sizes]
+
+    def print_size_for(self, requested: str) -> str:
+        """The size a sheet renders at: ``requested`` if offered, else the first.
+
+        Coercion happens here, at render, and nowhere else. A ``?size=`` for a
+        size the clinic has switched off — or a visit that chose A4 before the
+        clinic went A5-only — renders at the size that is offered rather than
+        erroring, and nothing stored moves.
+        """
+        sizes = self.print_sizes
+        return requested if requested in sizes else sizes[0]
 
     @property
     def temperature_symbol(self) -> str:
