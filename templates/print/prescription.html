@@ -224,8 +224,8 @@
     .body {
       flex: 1;
       margin-top: {% if page_size == 'A4' %}4mm{% else %}1.8mm{% endif %};
-      display: grid;
       {% if page_size == 'A4' %}
+        display: grid;
         /* 50mm, down from the design's 62mm: the sidebar holds short labelled
            notes, the ℞ side holds a table with up to eight columns, and the
            twelve millimetres are worth far more to the table. */
@@ -234,13 +234,13 @@
       {% else %}
         /* A5 is 148mm wide: a 62mm sidebar would leave the Rx area under
            55mm, which cannot hold a medicines table. The sections stack above
-           it instead. */
-        grid-template-columns: 1fr;
-        /* The Rx row takes whatever height is spare, not the notes above it:
-           auto rows would split the slack between them and open a gap under
-           the diagnosis. */
-        grid-template-rows: auto 1fr;
-        gap: 2mm;
+           it instead — as plain blocks, not a grid: when the sheet spills to
+           a second page, Chrome honours the tail's `break-before: avoid` only
+           by searching back through block boxes for an earlier break, and a
+           grid (or a flex column) here sends it all the way back to before
+           the body, leaving page one with nothing but the letterhead.
+           Measured, not assumed. */
+        display: block;
       {% endif %}
     }
 
@@ -284,9 +284,7 @@
     .rules span { border-bottom: 1px dotted var(--border); }
 
     .rx-area {
-      {% if page_size == 'A4' %}padding-left: 4mm;{% endif %}
-      display: flex;
-      flex-direction: column;
+      {% if page_size == 'A4' %}padding-left: 4mm;{% else %}margin-top: 2mm;{% endif %}
       min-width: 0;
     }
     {% comment %}
@@ -303,7 +301,7 @@
       line-height: 1;
       color: var(--primary);
     }
-    .rx-content { flex: 1; min-width: 0; }
+    .rx-content { min-width: 0; }
 
     .section-title {
       font-size: .8em;
@@ -347,6 +345,9 @@
        eight uppercase, letter-spaced headers cost a fifth more width than the
        values under them, and it was the headers, not the doses, that broke
        mid-word first. */
+    /* Repeat the header row on every page a table runs onto: a continued
+       table with no header is a block of doses nobody can read. */
+    table.items thead { display: table-header-group; }
     table.items th {
       text-align: left;
       font-size: .74em;
@@ -358,10 +359,12 @@
       overflow-wrap: break-word;
     }
     table.items td {
-      padding: {% if page_size == 'A4' %}1.6mm 1.5mm 1.6mm 0{% else %}0.7mm 1.5mm 0.7mm 0{% endif %};
+      padding: {% if page_size == 'A4' %}1.2mm 1.5mm 1.2mm 0{% else %}0.7mm 1.5mm 0.7mm 0{% endif %};
       border-bottom: 1px solid #F1F5F9;
       vertical-align: top;
-      {% if page_size != 'A4' %}line-height: 1.2;{% endif %}
+      /* Tighter than the sheet's leading: a five-line instruction at the
+         body's 1.45 is what pushed five medicines off an A4. */
+      line-height: {% if page_size == 'A4' %}1.25{% else %}1.2{% endif %};
       /* break-word, not anywhere: only a word that cannot fit at all is
          split, so ordinary names stay whole. In a fixed layout this is what
          stands between a long value and the edge of the paper — a duration
@@ -374,9 +377,24 @@
     /* Never split a prescribed item across two sheets. */
     table.items tr { break-inside: avoid; page-break-inside: avoid; }
 
-    /* A5 cannot afford an A4's worth of white space above the rule; the
-       sheet running to a second page costs more than a roomy signature. */
-    .signature { margin-top: {% if page_size == 'A4' %}12mm{% else %}2mm{% endif %}; text-align: right; break-inside: avoid; }
+    /* --- Tail: signature, notice, footer ---------------------------------- */
+    {% comment %}
+      One block, kept whole on paper. The signature lives here rather than at
+      the foot of the Rx column so that on a sheet that spills to a second page
+      the signature, the notice and the chambers travel together and never
+      alone: the tail refuses a page break in front of it, and the labelled
+      lines and the advice table refuse one too, so the break lands inside
+      the tables instead and page two opens with the end of the prescription
+      — repeated table header, last rows, signature, footer. A4 keeps only
+      the keep-together: its body is a grid, which defeats the search for an
+      earlier break (see .body), and a full A4 is rare enough to accept a
+      footer of its own on the second page. Every row still refuses to split.
+    {% endcomment %}
+    .tail { break-inside: avoid; page-break-inside: avoid; }
+    {% if page_size != 'A4' %}
+      .tail, .labelled, table.items.advice { break-before: avoid; page-break-before: avoid; }
+    {% endif %}
+    .signature { margin-top: {% if page_size == 'A4' %}4mm{% else %}2mm{% endif %}; text-align: right; }
     .signature .line {
       display: inline-block;
       border-top: 1px solid var(--text);
@@ -681,16 +699,16 @@
           <p class="labelled"><span class="section-title">Follow-up</span>{{ encounter.follow_up_date|date:'d M Y' }}</p>
         {% endif %}
       </div>
-
-      <div class="signature">
-        <div class="line">
-          {% if letterhead_practitioner %}{{ letterhead_practitioner.display_name }}{% else %}{{ encounter.practitioner.full_name }}{% endif %}
-        </div>
-      </div>
     </div>
   </div>
 
-  <div class="band">
+  <div class="band tail">
+    <div class="signature">
+      <div class="line">
+        {% if letterhead_practitioner %}{{ letterhead_practitioner.display_name }}{% else %}{{ encounter.practitioner.full_name }}{% endif %}
+      </div>
+    </div>
+
     {% if organization.prescription_notice %}
       <p class="notice">{{ organization.prescription_notice }}</p>
     {% endif %}

@@ -349,3 +349,25 @@ def test_a5_prints_only_the_sections_with_something_in_them(
     assert '<h4>Clinical Findings</h4>' not in body
     assert '<h4>Investigation</h4>' not in body
     assert 'class="rules"' not in body
+
+
+def test_the_signature_notice_and_footer_are_one_block(
+    client, practitioner, organization, prescription
+):
+    """What a sheet that spills to a second page must keep together — the
+    paper behaviour itself (header row repeated, no row split, the tail never
+    stranded alone) is checked by printing to PDF; this pins the structure
+    that behaviour depends on."""
+    organization.prescription_notice = 'Bring this sheet next time.'
+    organization.save()
+    with organization_context(organization):
+        _add_medicine(organization, prescription)
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, 'A5')
+    tail = re.search(r'<div class="band tail">(.*?)</article>', body, re.S).group(1)
+    assert 'class="signature"' in tail
+    assert 'Bring this sheet next time.' in tail
+    assert 'class="footer"' in tail
+    assert 'table.items thead { display: table-header-group; }' in body
+    assert 'table.items tr { break-inside: avoid;' in body
