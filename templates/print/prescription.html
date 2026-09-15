@@ -411,7 +411,13 @@
       html, body { background: #fff; }
       .sheet {
         width: auto;
-        min-height: 0;
+        /* The page area — in paged media the viewport is the page box inside
+           the @page margins, so this is the on-screen 297mm/210mm less the
+           margins, without restating them. It is what lets .body grow and
+           puts the footer at the foot of the paper. `0` here left the sheet
+           content-height on paper: the sidebar's rule stopped at the
+           signature and the footer floated a third of the way up an A4. */
+        min-height: 100vh;
         margin: 0;
         padding: 0;
         box-shadow: none;
