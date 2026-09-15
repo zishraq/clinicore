@@ -76,14 +76,14 @@ MEDICINE_COLUMNS = (
 #: the row is width taken from the sentence beside it. Instructions is uncapped:
 #: it is the one column that always has a use for more.
 MEDICINE_COLUMN_WEIGHTS = {
-    'name': (23, 35),
+    'name': (20, 35),
     'strength': (8, 12),
     'pack_size': (10, 14),
     'preparation': (11, 15),
     'dosage': (10, 14),
     'frequency': (13, 16),
     'duration': (10, 16),
-    'instructions': (15, None),
+    'instructions': (18, None),
 }
 
 

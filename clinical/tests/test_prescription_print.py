@@ -171,7 +171,7 @@ _WIDTH_RE = re.compile(r'<th style="width:([\d.]+)%">')
 
 
 def _tables(body: str) -> list[str]:
-    return re.findall(r'<table class="items[^"]*">(.*?)</table>', body, re.S)
+    return re.findall(r'<table class="items[^"]*"[^>]*>(.*?)</table>', body, re.S)
 
 
 def _print(client, prescription, size: str) -> str:
@@ -284,3 +284,68 @@ def test_every_column_set_shares_the_row_exactly():
                     cap = MEDICINE_COLUMN_WEIGHTS[key][1]
                     if cap is not None:
                         assert widths[key] <= cap + 0.1
+
+
+# --- The sidebar: what was found, and room to write when nothing was.
+
+
+def _rules(body: str, heading: str) -> int:
+    """How many ruled lines the sheet prints under ``heading``, 0 if none."""
+    section = re.search(
+        rf'<h4>{heading}</h4>\s*(?:<p>.*?</p>|<div class="rules">(.*?)</div>)',
+        body,
+        re.S,
+    )
+    assert section, f'{heading} is not on the sheet'
+    return (section.group(1) or '').count('<span>')
+
+
+def test_an_empty_sidebar_section_keeps_its_heading_and_rules_on_a4(
+    client, practitioner, organization, prescription
+):
+    """Nothing recorded under a heading is not a reason to drop the heading:
+    the doctor writes there by hand, which is what the rules are for. The
+    paper form's counts — three, two, one — are what an empty section prints."""
+    client.force_login(practitioner)
+    body = _print(client, prescription, 'A4')
+    assert _rules(body, 'Clinical Findings') == 3
+    assert _rules(body, 'Investigation') == 2
+    assert _rules(body, 'Diagnosis') == 1
+    # Complaint is not a heading on the paper design; it appears only when a
+    # complaint was recorded.
+    assert '<h4>Complaint</h4>' not in body
+
+
+def test_a_recorded_section_prints_its_text_instead_of_rules(
+    client, practitioner, organization, prescription
+):
+    encounter = prescription.encounter
+    encounter.chief_complaint = 'Recurrent acidity after meals'
+    encounter.assessment = 'Gastro-oesophageal reflux'
+    encounter.save()
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, 'A4')
+    assert '<h4>Complaint</h4>' in body
+    assert 'Recurrent acidity after meals' in body
+    assert _rules(body, 'Diagnosis') == 0
+    assert 'Gastro-oesophageal reflux' in body
+    # Untouched sections still offer their lines.
+    assert _rules(body, 'Clinical Findings') == 3
+
+
+def test_a5_prints_only_the_sections_with_something_in_them(
+    client, practitioner, organization, prescription
+):
+    """A5 has no room for four sets of ruled lines above the medicines; empty
+    sections are omitted there, and a recorded one is printed."""
+    encounter = prescription.encounter
+    encounter.assessment = 'Gastro-oesophageal reflux'
+    encounter.save()
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, 'A5')
+    assert '<h4>Diagnosis</h4>' in body
+    assert '<h4>Clinical Findings</h4>' not in body
+    assert '<h4>Investigation</h4>' not in body
+    assert 'class="rules"' not in body
