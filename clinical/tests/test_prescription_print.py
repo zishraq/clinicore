@@ -19,6 +19,30 @@ from patients.models import Patient
 
 pytestmark = pytest.mark.django_db
 
+# A test that searches the raw response for a string can be satisfied — or
+# broken — by a stylesheet comment, a class name or a CSS rule, none of which
+# is on the paper. The sheet is heavily commented, and one such comment once
+# put the ℞ character on every "empty" sheet. So the assertions read two
+# views of the response: what renders, and which rules apply.
+_STYLE_RE = re.compile(r'<style>.*?</style>', re.S)
+_HTML_COMMENT_RE = re.compile(r'<!--.*?-->', re.S)
+_CSS_COMMENT_RE = re.compile(r'/\*.*?\*/', re.S)
+
+
+def _markup(body: str) -> str:
+    """The document without its stylesheet or HTML comments — what renders."""
+    return _HTML_COMMENT_RE.sub('', _STYLE_RE.sub('', body))
+
+
+def _css(body: str) -> str:
+    """The stylesheet with its comments stripped — the rules that apply."""
+    return _CSS_COMMENT_RE.sub('', _STYLE_RE.search(body).group(0))
+
+
+def _page_size(body: str) -> str:
+    """The paper the ``@page`` rule declares, read from the rule itself."""
+    return re.search(r'@page\s*\{[^}]*?size:\s*(A[45]);', _css(body)).group(1)
+
 
 @pytest.fixture
 def prescription(organization, branch, practitioner):
@@ -72,7 +96,7 @@ def test_advice_only_prescription_prints_without_a_medicines_table(
         reverse('clinical:prescription_print', args=[prescription.encounter_id])
     )
     assert response.status_code == 200
-    body = response.content.decode()
+    body = _markup(response.content.decode())
 
     assert 'Walk 30 minutes daily.' in body
     assert '>Advice</th>' in body
@@ -85,7 +109,8 @@ def test_advice_only_prescription_prints_without_a_medicines_table(
     # entirely absent" back when the mark lived inside that section. It now
     # heads the whole right-hand column, so the proxy no longer measures what it
     # was written to measure — and advice is half of what a practitioner
-    # prescribes (SPEC §5), so an advice-only sheet is a prescription.
+    # prescribes (SPEC §5), so an advice-only sheet is a prescription. Read
+    # off the rendered markup: a stylesheet comment mentions the mark too.
     assert '℞' in body
 
 
@@ -99,7 +124,7 @@ def test_medicine_only_prescription_prints_without_an_advice_table(
     response = client.get(
         reverse('clinical:prescription_print', args=[prescription.encounter_id])
     )
-    body = response.content.decode()
+    body = _markup(response.content.decode())
 
     assert '>Medicine</th>' in body
     assert 'Amoxicillin 500mg' in body
@@ -119,12 +144,12 @@ def test_both_sections_render_and_advice_carries_no_dosage_column(
     )
     body = response.content.decode()
 
-    assert '>Medicine</th>' in body
-    assert '>Advice</th>' in body
+    assert '>Medicine</th>' in _markup(body)
+    assert '>Advice</th>' in _markup(body)
     # One dosage column, in the medicines table only.
-    assert body.count('>Dosage</th>') == 1
+    assert _markup(body).count('>Dosage</th>') == 1
     # The A5/A4 geometry is untouched by the split.
-    assert 'size: A5' in body
+    assert _page_size(body) == 'A5'
 
 
 def test_the_printed_name_is_the_snapshot_not_the_live_catalog_row(
@@ -154,7 +179,7 @@ def test_a_prescription_with_nothing_on_it_carries_no_rx_mark(
     response = client.get(
         reverse('clinical:prescription_print', args=[prescription.encounter_id])
     )
-    body = response.content.decode()
+    body = _markup(response.content.decode())
     assert 'No items prescribed' in body
     assert '℞' not in body
 
@@ -204,7 +229,7 @@ def test_a_medicine_with_all_eight_columns_is_one_row(
 
     client.force_login(practitioner)
     body = _print(client, prescription, size)
-    assert 'table-layout: fixed' in body
+    assert 'table-layout: fixed' in _css(body)
     medicines = _tables(body)[0]
     widths = [float(w) for w in _WIDTH_RE.findall(medicines)]
     assert len(widths) == 8
@@ -261,8 +286,9 @@ def test_no_table_on_the_sheet_can_be_wider_than_its_column(
         widths = [float(w) for w in _WIDTH_RE.findall(table)]
         assert widths, 'a column without a declared width lets the table grow'
         assert round(sum(widths), 1) == 100.0
-    assert body.count('table-layout: fixed') == 1  # one rule, on table.items
-    assert 'white-space: nowrap' not in body.split('<table')[1]
+    assert _css(body).count('table-layout: fixed') == 1  # one rule, on table.items
+    # No inline nowrap on any cell: a value that does not fit wraps.
+    assert 'nowrap' not in _markup(body)
 
 
 def test_every_column_set_shares_the_row_exactly():
@@ -316,7 +342,7 @@ def test_an_empty_sidebar_section_keeps_its_heading_and_rules(
     assert _rules(body, 'Diagnosis') == 1
     # Complaint is not a heading on the paper design; it appears only when a
     # complaint was recorded.
-    assert '<h4>Complaint</h4>' not in body
+    assert '<h4>Complaint</h4>' not in _markup(body)
 
 
 def test_a_recorded_section_prints_its_text_instead_of_rules(
@@ -329,7 +355,7 @@ def test_a_recorded_section_prints_its_text_instead_of_rules(
 
     client.force_login(practitioner)
     body = _print(client, prescription, 'A4')
-    assert '<h4>Complaint</h4>' in body
+    assert '<h4>Complaint</h4>' in _markup(body)
     assert 'Recurrent acidity after meals' in body
     assert _rules(body, 'Diagnosis') == 0
     assert 'Gastro-oesophageal reflux' in body
@@ -353,7 +379,7 @@ def test_the_body_is_the_designs_two_columns_at_both_sizes(
 
     client.force_login(practitioner)
     body = _print(client, prescription, size)
-    css = re.search(r'<style>(.*?)</style>', body, re.S).group(1)
+    css = _css(body)
     body_rule = re.search(r'\.body \{(.*?)\}', css, re.S).group(1)
     assert 'display: grid' in body_rule
     assert re.search(r'grid-template-columns: \d+mm 1fr', body_rule)
@@ -361,14 +387,15 @@ def test_the_body_is_the_designs_two_columns_at_both_sizes(
     # No size-conditional break avoidance that only works on a flattened body.
     assert 'break-before: avoid' not in css
 
-    rx = re.search(r'<div class="rx-area">(.*?)\n    </div>\n  </div>', body, re.S)
+    markup = _markup(body)
+    rx = re.search(r'<div class="rx-area">(.*?)\n    </div>\n  </div>', markup, re.S)
     assert rx and 'class="signature"' in rx.group(1)
-    tail = re.search(r'<div class="band tail">(.*?)</article>', body, re.S).group(1)
+    tail = re.search(r'<div class="band tail">(.*?)</article>', markup, re.S).group(1)
     assert 'class="signature"' not in tail
     assert 'Bring this sheet next time.' in tail
     assert 'class="footer"' in tail
-    assert 'table.items thead { display: table-header-group; }' in body
-    assert 'table.items tr { break-inside: avoid;' in body
+    assert 'table.items thead { display: table-header-group; }' in css
+    assert 'table.items tr { break-inside: avoid;' in css
 
 
 def test_the_derived_tones_are_plain_hex_not_color_mix(
@@ -383,11 +410,11 @@ def test_the_derived_tones_are_plain_hex_not_color_mix(
     organization.save()
 
     client.force_login(practitioner)
-    body = _print(client, prescription, 'A5')
-    assert not re.search(r'--primary-\w+: color-mix', body)
-    assert '--primary: #007791;' in body
-    assert re.search(r'--primary-dark: #[0-9A-F]{6};', body)
-    assert re.search(r'--primary-tint: #[0-9A-F]{6};', body)
+    css = _css(_print(client, prescription, 'A5'))
+    assert 'color-mix' not in css
+    assert '--primary: #007791;' in css
+    assert re.search(r'--primary-dark: #[0-9A-F]{6};', css)
+    assert re.search(r'--primary-tint: #[0-9A-F]{6};', css)
 
 
 # --- Which sizes the clinic offers (Organization.prescription_sizes).
@@ -426,10 +453,8 @@ def test_each_size_setting_gives_the_right_toolbar_and_the_right_sheet(
 
     client.force_login(practitioner)
     body = _print(client, prescription, requested)
-    assert _size_links(body) == links
-    assert f'size: {rendered};' in body
-    other = 'A5' if rendered == 'A4' else 'A4'
-    assert f'size: {other};' not in body
+    assert _size_links(_markup(body)) == links
+    assert _page_size(body) == rendered
 
 
 def test_a_visit_that_chose_a4_keeps_it_while_the_clinic_is_a5_only(
@@ -446,7 +471,7 @@ def test_a_visit_that_chose_a4_keeps_it_while_the_clinic_is_a5_only(
     body = client.get(
         reverse('clinical:prescription_print', args=[prescription.encounter_id])
     ).content.decode()
-    assert 'size: A5;' in body
+    assert _page_size(body) == 'A5'
     prescription.refresh_from_db()
     assert prescription.print_size == 'A4'
 
@@ -455,7 +480,7 @@ def test_a_visit_that_chose_a4_keeps_it_while_the_clinic_is_a5_only(
     body = client.get(
         reverse('clinical:prescription_print', args=[prescription.encounter_id])
     ).content.decode()
-    assert 'size: A4;' in body
+    assert _page_size(body) == 'A4'
 
 
 def test_the_visit_form_drops_the_size_box_when_one_size_is_offered(

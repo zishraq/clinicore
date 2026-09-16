@@ -1341,6 +1341,11 @@ Ubuntu 24.04 on ARM, Docker Compose behind Caddy for TLS.
   `python -m pytest` is the single spelling used throughout this file. Add
   `-q` when you only want the summary line.
 
+  **Run them against the tree you are committing**, after the last edit and
+  against `HEAD` with a clean working tree if commits were split. A suite that
+  ran before a "comment-only" edit reported 1063 green for a tree that was
+  never committed; the committed one had a failing test (2026-09-16).
+
   `migrate --check` is the odd one out and the reason the list is explicit. The
   other four inspect the *code*; this one inspects **the database you are
   actually developing against**, and exits non-zero when it is behind. Nothing
