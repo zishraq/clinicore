@@ -324,10 +324,11 @@
       table-layout: fixed;
       border-collapse: collapse;
       margin-top: 1mm;
-      /* A4's Rx column (124mm) is narrower than an A5 sheet (130mm), so the
-         table steps down from the 11pt body there to A5's 9pt; A5
-         keeps the body size it always had. */
-      {% if page_size == 'A4' %}font-size: .82em;{% endif %}
+      /* A4's ℞ column (124mm) is narrower than an A5 sheet (130mm), so the
+         table steps down from the 11pt body there to 9pt. A5's runs at .9em
+         (8.1pt): measured, that is the size at which all eight columns fit
+         beside the rail without breaking a word (see MEDICINE_COLUMN_WEIGHTS). */
+      font-size: {% if page_size == 'A4' %}.82em{% else %}.9em{% endif %};
     }
     /* Sentence case, not the small-caps caption the rest of the sheet uses:
        eight uppercase, letter-spaced headers cost a fifth more width than the

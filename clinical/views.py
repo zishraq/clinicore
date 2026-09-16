@@ -75,15 +75,20 @@ MEDICINE_COLUMNS = (
 #: both have to fill the row — and caps because a token column given a third of
 #: the row is width taken from the sentence beside it. Instructions is uncapped:
 #: it is the one column that always has a use for more.
+#:
+#: The weights follow what the values measure: with all eight columns in the
+#: 91mm beside an A5 rail, no word breaks at 8pt only if a token column gets
+#: its token — "200C" needs 9mm, "Globules" 12mm — so the weights are those
+#: widths' share of the row, and the slack is the instructions column's.
 MEDICINE_COLUMN_WEIGHTS = {
-    'name': (20, 35),
-    'strength': (8, 12),
-    'pack_size': (10, 14),
-    'preparation': (11, 15),
+    'name': (19, 35),
+    'strength': (10, 12),
+    'pack_size': (8, 14),
+    'preparation': (14, 15),
     'dosage': (10, 14),
     'frequency': (13, 16),
-    'duration': (10, 16),
-    'instructions': (18, None),
+    'duration': (11, 16),
+    'instructions': (15, None),
 }
 
 
