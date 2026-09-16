@@ -215,6 +215,16 @@ this file covers what was **not** built and what keeps biting.
   automated tab reports `visibilityState === 'hidden'`, so the guard suppresses
   every tick and "did my typed text survive the poll?" passes with no swap ever
   having happened. Force the identical swap by hand or the check is worthless.
+- **A CSS custom property has no fallback declaration.** Ordinary properties
+  are validated at parse time, so `color: #fff; color: color-mix(...)` degrades
+  — an unsupported function is dropped and the hex stays. A custom property
+  is *not*: `--x: #fff; --x: color-mix(...)` keeps the second declaration in
+  every browser, and each `var(--x)` consumer then fails at computed-value
+  time and inherits. The symptom is a page that renders correctly in one
+  browser and colourless in another — on the printed prescription the doctor's
+  name came out in body black and the patient bar lost its tint, with nothing
+  in DevTools flagging the declaration. Derive tones in Python
+  (`organizations.models.mix_hex`) and emit plain hex.
 
 ### Deployment
 

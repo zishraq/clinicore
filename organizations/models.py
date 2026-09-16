@@ -23,6 +23,7 @@ __all__ = [
     'default_branding',
     'default_terminology',
     'hex_color_or',
+    'mix_hex',
 ]
 
 # Branding is org-editable JSON that ends up inside a <style> block, so colours
@@ -33,6 +34,31 @@ _COLOR_RE = re.compile(r'^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$')
 def hex_color_or(value, fallback: str) -> str:
     """Return ``value`` if it is a plain hex colour, else ``fallback``."""
     return str(value) if _COLOR_RE.match(str(value)) else fallback
+
+
+def mix_hex(color: str, other: str, weight: float) -> str:
+    """``weight`` of ``color`` blended with the rest of ``other``, as ``#rrggbb``.
+
+    Done here rather than with CSS ``color-mix`` because a custom property is
+    never validated at parse time: a ``--x: color-mix(...)`` declaration wins
+    the cascade even where the browser cannot evaluate it, and every property
+    that reads ``var(--x)`` then fails at computed-value time and inherits —
+    the doctor's name printed in the body's text colour and the patient bar
+    lost its tint on any browser without ``color-mix``. A plain hex value
+    cannot fail that way.
+    """
+
+    def channels(hex_color: str) -> tuple[int, ...]:
+        digits = hex_color.lstrip('#')
+        if len(digits) == 3:
+            digits = ''.join(d * 2 for d in digits)
+        return tuple(int(digits[i : i + 2], 16) for i in (0, 2, 4))
+
+    mixed = (
+        round(a * weight + b * (1 - weight))
+        for a, b in zip(channels(color), channels(other), strict=True)
+    )
+    return '#{:02X}{:02X}{:02X}'.format(*mixed)
 
 
 # SPEC §7 seed palette. Copied onto every new Organization so rebranding is a
@@ -530,22 +556,20 @@ class Organization(TimeStampedModel):
 
     @property
     def primary_dark_color(self) -> str:
-        """Darker brand tone, safe to interpolate into CSS.
+        """Darker brand tone for the printed sheet, derived from ``primary_color``.
 
-        A fallback only: the print stylesheet derives this from ``primary`` with
-        ``color-mix`` so that setting one colour is enough, and falls back to
-        this where that is unsupported.
+        Derived rather than read from the palette so that setting one colour
+        is enough for a coherent sheet: the palette's own ``primary-dark`` is
+        the seed blue until somebody edits JSON, and a clinic that chose teal
+        would otherwise print its name in blue-black. See ``mix_hex`` for why
+        this is not CSS ``color-mix``.
         """
-        return hex_color_or(
-            self.palette.get('primary-dark'), SEED_PALETTE['primary-dark']
-        )
+        return mix_hex(self.primary_color, '#000000', 0.68)
 
     @property
     def primary_tint_color(self) -> str:
-        """Very light brand tone behind bars and chips. Same fallback role."""
-        return hex_color_or(
-            self.palette.get('surface-alt'), SEED_PALETTE['surface-alt']
-        )
+        """Very light brand tone behind bars and chips, derived the same way."""
+        return mix_hex(self.primary_color, '#FFFFFF', 0.08)
 
     @property
     def letterhead(self) -> str:

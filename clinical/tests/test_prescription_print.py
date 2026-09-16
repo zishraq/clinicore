@@ -300,14 +300,17 @@ def _rules(body: str, heading: str) -> int:
     return (section.group(1) or '').count('<span>')
 
 
-def test_an_empty_sidebar_section_keeps_its_heading_and_rules_on_a4(
-    client, practitioner, organization, prescription
+@pytest.mark.parametrize('size', ['A4', 'A5'])
+def test_an_empty_sidebar_section_keeps_its_heading_and_rules(
+    client, practitioner, organization, prescription, size
 ):
     """Nothing recorded under a heading is not a reason to drop the heading:
     the doctor writes there by hand, which is what the rules are for. The
-    paper form's counts — three, two, one — are what an empty section prints."""
+    paper form's counts — three, two, one — are what an empty section prints,
+    at both sizes: the design's structure is not size-conditional, and A5
+    once lost the whole rail to fitting work."""
     client.force_login(practitioner)
-    body = _print(client, prescription, 'A4')
+    body = _print(client, prescription, size)
     assert _rules(body, 'Clinical Findings') == 3
     assert _rules(body, 'Investigation') == 2
     assert _rules(body, 'Diagnosis') == 1
@@ -334,43 +337,57 @@ def test_a_recorded_section_prints_its_text_instead_of_rules(
     assert _rules(body, 'Clinical Findings') == 3
 
 
-def test_a5_prints_only_the_sections_with_something_in_them(
-    client, practitioner, organization, prescription
+@pytest.mark.parametrize('size', ['A4', 'A5'])
+def test_the_body_is_the_designs_two_columns_at_both_sizes(
+    client, practitioner, organization, prescription, size
 ):
-    """A5 has no room for four sets of ruled lines above the medicines; empty
-    sections are omitted there, and a recorded one is printed."""
-    encounter = prescription.encounter
-    encounter.assessment = 'Gastro-oesophageal reflux'
-    encounter.save()
-
-    client.force_login(practitioner)
-    body = _print(client, prescription, 'A5')
-    assert '<h4>Diagnosis</h4>' in body
-    assert '<h4>Clinical Findings</h4>' not in body
-    assert '<h4>Investigation</h4>' not in body
-    assert 'class="rules"' not in body
-
-
-def test_the_signature_notice_and_footer_are_one_block(
-    client, practitioner, organization, prescription
-):
-    """What a sheet that spills to a second page must keep together — the
-    paper behaviour itself (header row repeated, no row split, the tail never
-    stranded alone) is checked by printing to PDF; this pins the structure
-    that behaviour depends on."""
+    """The reference design's structure, pinned: the rail and the ℞ column
+    side by side, the signature at the foot of the ℞ column, and the notice
+    and chambers below the body as one block. A5 was once flattened to plain
+    blocks so a spilled sheet could pull its footer back — a change to every
+    sheet for the rare one, and the wrong trade."""
     organization.prescription_notice = 'Bring this sheet next time.'
     organization.save()
     with organization_context(organization):
         _add_medicine(organization, prescription)
 
     client.force_login(practitioner)
-    body = _print(client, prescription, 'A5')
+    body = _print(client, prescription, size)
+    css = re.search(r'<style>(.*?)</style>', body, re.S).group(1)
+    body_rule = re.search(r'\.body \{(.*?)\}', css, re.S).group(1)
+    assert 'display: grid' in body_rule
+    assert re.search(r'grid-template-columns: \d+mm 1fr', body_rule)
+    assert 'border-right: 1px solid var(--border)' in css
+    # No size-conditional break avoidance that only works on a flattened body.
+    assert 'break-before: avoid' not in css
+
+    rx = re.search(r'<div class="rx-area">(.*?)\n    </div>\n  </div>', body, re.S)
+    assert rx and 'class="signature"' in rx.group(1)
     tail = re.search(r'<div class="band tail">(.*?)</article>', body, re.S).group(1)
-    assert 'class="signature"' in tail
+    assert 'class="signature"' not in tail
     assert 'Bring this sheet next time.' in tail
     assert 'class="footer"' in tail
     assert 'table.items thead { display: table-header-group; }' in body
     assert 'table.items tr { break-inside: avoid;' in body
+
+
+def test_the_derived_tones_are_plain_hex_not_color_mix(
+    client, practitioner, organization, prescription
+):
+    """A custom property is never validated at parse time, so a ``color-mix``
+    declaration wins the cascade even where the browser cannot evaluate it —
+    and every colour reading it then inherits. The doctor's name printed in
+    body black and the patient bar lost its tint. The tones come from Python
+    (``organizations.models.mix_hex``) and reach the sheet as hex."""
+    organization.branding = {**organization.branding, 'palette': {'primary': '#007791'}}
+    organization.save()
+
+    client.force_login(practitioner)
+    body = _print(client, prescription, 'A5')
+    assert not re.search(r'--primary-\w+: color-mix', body)
+    assert '--primary: #007791;' in body
+    assert re.search(r'--primary-dark: #[0-9A-F]{6};', body)
+    assert re.search(r'--primary-tint: #[0-9A-F]{6};', body)
 
 
 # --- Which sizes the clinic offers (Organization.prescription_sizes).

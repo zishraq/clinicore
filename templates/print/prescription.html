@@ -47,15 +47,15 @@
     }
 
     :root {
+      /* All three are plain hex, derived in Python from the one colour the
+         clinic sets (organizations.models.mix_hex). Not CSS color-mix: a
+         custom property is never validated at parse time, so a color-mix
+         declaration wins the cascade even where the browser cannot evaluate
+         it, and everything reading it then inherits — the doctor's name in
+         body black, the patient bar with no tint. */
       --primary: {{ letterhead_color }};
-      /* Declared twice on purpose. The second wins where color-mix is
-         supported, so a clinic that sets one brand colour gets a coherent
-         darker tone and tint; where it is not, the declaration is invalid at
-         parse time and dropped, leaving the validated palette value above. */
       --primary-dark: {{ letterhead_dark }};
-      --primary-dark: color-mix(in srgb, var(--primary) 72%, #000);
       --primary-tint: {{ letterhead_tint }};
-      --primary-tint: color-mix(in srgb, var(--primary) 8%, #fff);
       --text: #1F2937;
       --muted: #6B7280;
       --border: #E5E7EB;
@@ -221,71 +221,58 @@
     .field .blank { flex: 1; border-bottom: 1px dashed var(--rule); min-height: 3.5mm; }
 
     /* --- Body ------------------------------------------------------------ */
+    {% comment %}
+      The reference design's structure, at both sizes: a left rail carrying
+      the three clinical headings with their ruled lines and a vertical rule
+      down its edge, the ℞ column beside it, and the signature at the foot of
+      that column. Only the measurements are size-conditional. The rail is
+      narrower than the design's 62mm because the ℞ side holds a table of up
+      to eight columns where the design has free space; on A5 it is as narrow
+      as a rail can be and still be one.
+    {% endcomment %}
     .body {
       flex: 1;
-      margin-top: {% if page_size == 'A4' %}4mm{% else %}1.8mm{% endif %};
-      {% if page_size == 'A4' %}
-        display: grid;
-        /* 50mm, down from the design's 62mm: the sidebar holds short labelled
-           notes, the ℞ side holds a table with up to eight columns, and the
-           twelve millimetres are worth far more to the table. */
-        grid-template-columns: 50mm 1fr;
-        min-height: 150mm;
-      {% else %}
-        /* A5 is 148mm wide: a 62mm sidebar would leave the Rx area under
-           55mm, which cannot hold a medicines table. The sections stack above
-           it instead — as plain blocks, not a grid: when the sheet spills to
-           a second page, Chrome honours the tail's `break-before: avoid` only
-           by searching back through block boxes for an earlier break, and a
-           grid (or a flex column) here sends it all the way back to before
-           the body, leaving page one with nothing but the letterhead.
-           Measured, not assumed. */
-        display: block;
-      {% endif %}
+      margin-top: {% if page_size == 'A4' %}4mm{% else %}2mm{% endif %};
+      display: grid;
+      grid-template-columns: {% if page_size == 'A4' %}50mm{% else %}38mm{% endif %} 1fr;
+      min-height: {% if page_size == 'A4' %}150mm{% else %}95mm{% endif %};
     }
 
     .sidebar {
-      {% if page_size == 'A4' %}
-        border-right: 1px solid var(--border);
-        padding-right: 3mm;
-        display: flex;
-        flex-direction: column;
-        /* Spread down the whole body, the way the paper form lays them out:
-           the space goes between the sections, never into one, so each
-           heading has room under it for the doctor's own hand. The gap is
-           the floor for when the notes are long. */
-        justify-content: space-between;
-        gap: 6mm;
-        /* So the last section has room under it too, rather than sitting on
-           the foot of the column with nowhere to write. */
-        padding-bottom: 14mm;
-      {% else %}
-        /* Side by side, sharing the width equally however many there are:
-           three short notes across one row is a third of the height of a
-           two-column grid that put the third one under the first. */
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1.5mm 4mm;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 1.2mm;
-      {% endif %}
+      border-right: 1px solid var(--border);
+      padding-right: {% if page_size == 'A4' %}3mm{% else %}2mm{% endif %};
+      display: flex;
+      flex-direction: column;
+      gap: {% if page_size == 'A4' %}5.5mm{% else %}3.5mm{% endif %};
+      min-width: 0;
     }
-    {% if page_size != 'A4' %}.sidebar > div { flex: 1 1 36mm; min-width: 0; }{% endif %}
     .sidebar h4 {
-      margin: 0 0 {% if page_size == 'A4' %}1.5mm{% else %}.4mm{% endif %};
+      margin: 0 0 {% if page_size == 'A4' %}1.5mm{% else %}1mm{% endif %};
       font-size: .82em;
       text-transform: uppercase;
       letter-spacing: .05em;
       font-weight: 700;
       color: var(--primary);
     }
-    .sidebar p { margin: 0; font-size: .92em; white-space: pre-line; }
-    .rules { display: flex; flex-direction: column; gap: 5mm; margin-top: 3mm; }
+    .sidebar p { margin: 0; font-size: .92em; white-space: pre-line; overflow-wrap: break-word; }
+    .rules {
+      display: flex;
+      flex-direction: column;
+      gap: {% if page_size == 'A4' %}5.5mm{% else %}4.5mm{% endif %};
+      margin-top: {% if page_size == 'A4' %}3mm{% else %}2.5mm{% endif %};
+    }
     .rules span { border-bottom: 1px dotted var(--border); }
 
+    /* Three rows — mark, content, signature — with the middle one taking the
+       height, so the signature sits at the foot of the column. A grid, not a
+       flex column: Chrome sizes a fragmented flex container before the page
+       breaks inside it are known, and on a sheet that spilled the notice and
+       footer were laid over the last lines of the prescription. Measured. */
     .rx-area {
-      {% if page_size == 'A4' %}padding-left: 4mm;{% else %}margin-top: 2mm;{% endif %}
+      padding-left: {% if page_size == 'A4' %}4mm{% else %}2.5mm{% endif %};
       min-width: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
     }
     {% comment %}
       U+211E is not in Hind Siliguri, so this is the one place the sheet asks
@@ -294,6 +281,7 @@
       self-hosted file for a single glyph.
     {% endcomment %}
     .rx-mark {
+      grid-row: 1;
       margin: 0 0 {% if page_size == 'A4' %}2mm{% else %}.5mm{% endif %};
       font-family: 'DejaVu Serif', 'Liberation Serif', 'Times New Roman', 'Segoe UI Symbol', Georgia, serif;
       font-size: {% if page_size == 'A4' %}2.6em{% else %}1.6em{% endif %};
@@ -301,7 +289,7 @@
       line-height: 1;
       color: var(--primary);
     }
-    .rx-content { min-width: 0; }
+    .rx-content { grid-row: 2; min-width: 0; }
 
     .section-title {
       font-size: .8em;
@@ -377,24 +365,23 @@
     /* Never split a prescribed item across two sheets. */
     table.items tr { break-inside: avoid; page-break-inside: avoid; }
 
-    /* --- Tail: signature, notice, footer ---------------------------------- */
     {% comment %}
-      One block, kept whole on paper. The signature lives here rather than at
-      the foot of the Rx column so that on a sheet that spills to a second page
-      the signature, the notice and the chambers travel together and never
-      alone: the tail refuses a page break in front of it, and the labelled
-      lines and the advice table refuse one too, so the break lands inside
-      the tables instead and page two opens with the end of the prescription
-      — repeated table header, last rows, signature, footer. A4 keeps only
-      the keep-together: its body is a grid, which defeats the search for an
-      earlier break (see .body), and a full A4 is rare enough to accept a
-      footer of its own on the second page. Every row still refuses to split.
+      The signature sits at the foot of the ℞ column, as the design has it, so
+      the rail's vertical rule runs down beside it. On a sheet that spills to
+      a second page it follows the end of the prescription; the notice and the
+      chambers below are one block that never splits, but may land on the
+      second page by themselves. That is the accepted cost of keeping the
+      two-column body: a `break-before: avoid` on the tail only works when the
+      body is plain blocks, and it was tried — it restructured every sheet to
+      improve the rare one.
     {% endcomment %}
-    .tail { break-inside: avoid; page-break-inside: avoid; }
-    {% if page_size != 'A4' %}
-      .tail, .labelled, table.items.advice { break-before: avoid; page-break-before: avoid; }
-    {% endif %}
-    .signature { margin-top: {% if page_size == 'A4' %}4mm{% else %}2mm{% endif %}; text-align: right; }
+    .signature {
+      grid-row: 3;
+      align-self: end;
+      padding-top: {% if page_size == 'A4' %}8mm{% else %}4mm{% endif %};
+      text-align: right;
+      break-inside: avoid; page-break-inside: avoid;
+    }
     .signature .line {
       display: inline-block;
       border-top: 1px solid var(--text);
@@ -405,7 +392,8 @@
       text-align: center;
     }
 
-    /* --- Footer ---------------------------------------------------------- */
+    /* --- Tail: notice, footer -------------------------------------------- */
+    .tail { break-inside: avoid; page-break-inside: avoid; }
     .notice {
       text-align: center;
       font-size: .82em;
@@ -414,14 +402,16 @@
       white-space: pre-line;
     }
     .footer { border-top: 1.5px solid var(--primary); padding-top: {% if page_size == 'A4' %}2mm{% else %}0.8mm{% endif %}; }
+    /* Two blocks side by side at both sizes, as the design has them, each
+       with room around it. */
     .chambers {
       display: grid;
-      grid-template-columns: {% if page_size == 'A4' %}1fr 1fr{% else %}1fr{% endif %};
-      gap: {% if page_size == 'A4' %}1.5mm{% else %}.6mm{% endif %} 3mm;
-      font-size: {% if page_size == 'A4' %}.78em{% else %}.72em{% endif %};
-      line-height: {% if page_size == 'A4' %}1.3{% else %}1.25{% endif %};
+      grid-template-columns: 1fr 1fr;
+      gap: {% if page_size == 'A4' %}2mm 3mm{% else %}1.5mm 2.5mm{% endif %};
+      font-size: {% if page_size == 'A4' %}.78em{% else %}.76em{% endif %};
+      line-height: {% if page_size == 'A4' %}1.35{% else %}1.3{% endif %};
       background: #FAFAFA;
-      padding: {% if page_size == 'A4' %}1.5mm{% else %}1mm{% endif %} 2.5mm;
+      padding: {% if page_size == 'A4' %}1.8mm 2.8mm{% else %}1.5mm 2.5mm{% endif %};
       border-radius: 1mm;
     }
     .chamber strong { color: var(--primary-dark); }
@@ -609,13 +599,12 @@
     <div class="sidebar">
       {% comment %}
         Data where there is data, ruled lines where there is not — the sheet is
-        still something a doctor writes on. The lines are A4 only: A5 has no
-        room for four sets of them, and printing them there would push the
-        medicines table off the page. Sections gate on their own content, never
-        on a current setting (the rule ADR 0015 states for the strength column).
+        still something a doctor writes on, and an empty heading keeps its
+        rules at both sizes. Sections gate on their own content, never on a
+        current setting (the rule ADR 0015 states for the strength column).
       {% endcomment %}
       {% for section in sidebar_sections %}
-        {% if section.text or section.rules and page_size == 'A4' %}
+        {% if section.text or section.rules %}
           <div>
             <h4>{{ section.label }}</h4>
             {% if section.text %}
@@ -702,16 +691,16 @@
           <p class="labelled"><span class="section-title">Follow-up</span>{{ encounter.follow_up_date|date:'d M Y' }}</p>
         {% endif %}
       </div>
+
+      <div class="signature">
+        <div class="line">
+          {% if letterhead_practitioner %}{{ letterhead_practitioner.display_name }}{% else %}{{ encounter.practitioner.full_name }}{% endif %}
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="band tail">
-    <div class="signature">
-      <div class="line">
-        {% if letterhead_practitioner %}{{ letterhead_practitioner.display_name }}{% else %}{{ encounter.practitioner.full_name }}{% endif %}
-      </div>
-    </div>
-
     {% if organization.prescription_notice %}
       <p class="notice">{{ organization.prescription_notice }}</p>
     {% endif %}

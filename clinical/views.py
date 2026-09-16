@@ -624,10 +624,10 @@ def prescription_print(request, pk: int):
             # The toolbar offers a toggle only when there is something to
             # toggle: one size means no buttons rather than one dead one.
             'size_options': organization.print_sizes,
-            # Interpolated into CSS, so all three come from validated accessors.
-            # The template derives the darker tone and the tint from the first
-            # with ``color-mix`` and falls back to these, so a clinic that sets
-            # one colour gets a coherent sheet.
+            # Interpolated into CSS, so all three are plain hex: the first is
+            # validated, the other two are derived from it in Python
+            # (organizations.models.mix_hex) so a clinic that sets one colour
+            # gets a coherent sheet on every browser.
             'letterhead_color': organization.primary_color,
             'letterhead_dark': organization.primary_dark_color,
             'letterhead_tint': organization.primary_tint_color,

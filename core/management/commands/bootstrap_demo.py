@@ -5,7 +5,7 @@ medicines. No real patient data or clinic identity is ever committed (SPEC §8).
 
 It refuses to run with ``DJANGO_DEBUG`` off, which is to say it cannot run on a
 server at all. The medicines and patients it invents cannot be deleted
-afterwards — products and patients are referenced by prescriptions, invoice
+afterward — products and patients are referenced by prescriptions, invoice
 lines and stock movements, so a delete either fails on a PROTECT or orphans the
 record — so a real clinic acquiring them has no way back. Standing a real clinic
 up is ``bootstrap_clinic``, which is a separate command for exactly that reason.

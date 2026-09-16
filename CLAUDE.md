@@ -925,9 +925,11 @@ and by printing the page to PDF. Rules to know:
   markup in the database — an injection surface on a document handed to
   patients — or a parser for Bengali ordinals.
 - **Colours are derived, so the clinic sets one.** `--primary` comes from the
-  validated `primary_color`; `--primary-dark` and `--primary-tint` are declared
-  twice, the second a `color-mix` that wins where supported and is dropped at
-  parse time where it is not. A literal `#007791` anywhere is a bug.
+  validated `primary_color`; `--primary-dark` and `--primary-tint` are derived
+  from it **in Python** (`organizations.models.mix_hex`) and reach the sheet as
+  plain hex. They were CSS `color-mix` with a hex "fallback" declared first,
+  which was wrong — see the 2026-09-16 entry. A literal `#007791` anywhere is
+  a bug.
 - **`print-color-adjust: exact` is load-bearing and only visible on paper.**
   Confirmed in the print preview with *Background graphics unchecked*: the
   tinted patient bar and the teal schedule chip still print. Without it they
@@ -947,13 +949,12 @@ and by printing the page to PDF. Rules to know:
   section prints ruled lines — the sheet is still something a doctor writes on.
   Chief complaint is not on the paper design at all and prints only when it has
   data, so nothing that printed before stops printing.
-- **A5 is not the design.** The design is A4-only; A5 collapses to one column
-  with the sidebar stacked above the ℞ area, and roughly twenty spacing values
-  are size-conditional because a full visit (3 medicines, 2 advice,
-  instructions, follow-up, chambers, contact strip) overflowed to a second page
-  by 172px before they were tuned. Measured by printing to PDF and reading the
-  page count, not by eye — `pdfinfo | grep Pages` is the check to repeat after
-  touching this template.
+- **A5 is the same design, smaller.** It was built as a one-column collapse
+  with the rail stacked above the ℞ area and no ruled lines, and that was
+  reverted on 2026-09-16 (below): the reference's structure is fixed at both
+  sizes and only measurements are size-conditional. Measured by printing to
+  PDF and reading the page count, not by eye — `pdfinfo | grep Pages` is the
+  check to repeat after touching this template.
 - **One assertion in `test_prescription_print.py` was reversed and is
   documented in place**: `'℞' not in body` for an advice-only sheet became
   `'℞' in body`. It was a proxy for "the medicines section is absent" when the
@@ -1221,16 +1222,10 @@ browser in all three positions. Rules to know:
   "Advice" caption, and the stamp sharing the contacts line. Nothing the
   clinic chose to print was cut. `scratchpad/print/bands.py` in the session
   transcript is the measuring tool; rebuild it before touching heights.
-- **A sheet that spills reads as one.** `thead` repeats, rows never split,
-  and the signature moved into `.band.tail` with the notice and footer so one
-  `break-inside: avoid` keeps them together. On A5 the tail, the labelled
-  lines and the advice table carry `break-before: avoid`, so page two opens
-  with the end of the prescription. **That only works because the A5 body is
-  plain blocks**: Chrome honours `break-before: avoid` by searching back for
-  an earlier break, and a grid or flex column there sends it to before the
-  body — page one becomes a bare letterhead. A4 keeps its grid and only the
-  keep-together; a spilled A4 may strand its footer, written into the
-  template as the accepted cost.
+- **A sheet that spills keeps its rows and its header.** `thead` repeats and
+  rows never split. The rest of the spill work from this pass — signature in
+  the tail, `break-before: avoid`, the A5 body flattened to plain blocks so
+  that would work — was **reverted on 2026-09-16**; see that entry.
 - **`Organization.prescription_sizes` is one field with three values**, BOTH
   (default) / A5 / A4, so "neither" is unrepresentable. It governs what is
   *offered*: the toolbar shows no toggle at all with one size, `?size=` for
@@ -1249,6 +1244,63 @@ browser in all three positions. Rules to know:
   No password is typed. Delete the session rows afterwards. Also found: the
   Save button no-op'd on both a ref click and a coordinate click in the
   driven tab; `form.requestSubmit()` from the JS tool posts the real form.
+
+The 2026-09-16 spill work broke the clinic's layout and was reverted the same
+day, from a real A5 print. **The constraint, stated plainly now:
+`docs/reference/prescription-design.html` is the authority on structure at
+both sizes.** Fitting work may change type size, leading, padding, margins and
+column widths. It may not change which elements exist, where they sit relative
+to each other, or what colour they are — and if something cannot fit without a
+structural change, stop and report the measurement rather than restructure.
+Re-verified by printing staged visits to PDF (`stage.py` in the session
+scratchpad builds a clinic shaped like the reference — teal, Bengali
+letterhead, two footer chambers, eight-column rows — and prints every case at
+both sizes) and inspecting the raster. What was wrong and what it is now:
+
+- **The two-column body is back at A5**: rail (38mm, 50mm on A4) with its
+  vertical rule, ℞ column beside it, the signature at the foot of the ℞
+  column as the design has it. The rail stacks its sections from the top with
+  a gap, as the reference does; the A4 "spread" (`space-between`) went with
+  the rest.
+- **Investigation and Diagnosis print their headings and rules at A5** too.
+  The `and page_size == 'A4'` gate on the rules is gone;
+  `test_an_empty_sidebar_section_keeps_its_heading_and_rules` is parametrised
+  over both sizes and the A5 test that asserted the omission is deleted.
+- **The colour bug was `color-mix`, and the "fallback" never worked.** A
+  custom property is *never* validated at parse time, so
+  `--primary-dark: color-mix(...)` won the cascade in every browser; where
+  `color-mix` is unsupported, every `color`/`background` reading it fails at
+  computed-value time and inherits — doctor's name in body black, patient bar
+  with no tint, chips gone, chamber names black. Confirmed by swapping in an
+  unknown function and sampling the raster. Both tones now come from
+  `organizations.models.mix_hex` as hex; `primary_dark_color` /
+  `primary_tint_color` derive from `primary_color` rather than reading the
+  palette's seed blue. Elements on `var(--primary)` directly (headings, ℞,
+  footer rule) were never affected by this: `--primary` has been a single
+  plain-hex declaration since the redesign, and the ink sampled from the
+  printed raster is `#007791` for COMPLAINT, ℞ and the clinic name at both
+  sizes. Instructions / Follow-up are `--muted` grey by design. A sheet on
+  which *those* also came out dark was printed in greyscale, not by a
+  cascade failure — check the printer before the template.
+- **Footer chambers are two side-by-side blocks at both sizes**, with the
+  reference's padding. The schedule chip stays inline in the sentence, which
+  is where the reference puts it.
+- **The ℞ column is a grid (`auto 1fr auto`), not a flex column.** Chrome
+  sizes a fragmented flex container before it knows about the page breaks
+  inside it, so on a spilled sheet the notice and footer were painted over
+  the last lines of the prescription. A grid paginates correctly; measured
+  with a nine-medicine visit at both sizes.
+- **The eight-column table fits beside the A5 rail without breaking a word
+  at 8pt** — measured, not assumed: the longest word per column needs
+  16.9/9.0/5.8/12.3/8.4/11.6/9.6/12.4mm (86mm) and the ℞ column is 91.5mm.
+  The old weights gave strength 7.3mm and preparation 10.1mm, so "200C" and
+  "Globules" broke mid-word; `MEDICINE_COLUMN_WEIGHTS` now follows what the
+  values measure (19/10/8/14/10/13/11/15). The A5 table runs at .9em (8.1pt).
+- **The accepted cost is a stranded footer on a spilled sheet.** A
+  nine-medicine A4 puts the notice and chambers alone on page two; a
+  nine-medicine A5 puts the advice table, follow-up, signature, notice and
+  footer on page two together. Every sheet else — typical, blank, and the
+  four-medicine/eight-column/two-advice worst case — is one page at both sizes.
 
 Next: SPEC §11 phases remain suspended. Reporting (§6.7), `FieldDefinition`,
 `RolePermission`, patient-level attachments and the audit log are the remaining
